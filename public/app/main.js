@@ -27,7 +27,7 @@ const esc = (s) => String(s ?? '').replace(/\u001b/g, '');
 
 /* ---------- themes ---------- */
 const THEME_KEY = 'agenttail-theme';
-const THEME_LIST = ['matrix', 'amber', 'ice', 'dracula', 'paper'];
+const THEME_LIST = ['matrix', 'amber', 'red', 'ice', 'dracula', 'paper'];
 const THEME_JS = {
   matrix: {
     monaco: {
@@ -97,6 +97,41 @@ const THEME_JS = {
       selectionBackground: '#4a3410',
       black: '#000000',
       brightBlack: '#6b4e28',
+    },
+  },
+  red: {
+    monaco: {
+      base: 'vs-dark',
+      rules: [
+        { token: 'comment', foreground: '7a3a44', fontStyle: 'italic' },
+        { token: 'keyword', foreground: 'ff3b4f' },
+        { token: 'string', foreground: 'ffb3a1' },
+        { token: 'number', foreground: 'ffb347' },
+        { token: 'type', foreground: 'ff7aa8' },
+        { token: 'delimiter', foreground: 'c98a91' },
+        { token: 'tag', foreground: 'ff3b4f' },
+      ],
+      colors: {
+        'editor.background': '#0d0405',
+        'editor.foreground': '#ffd9dc',
+        'editorLineNumber.foreground': '#5e252c',
+        'editorLineNumber.activeForeground': '#ff3b4f',
+        'editorCursor.foreground': '#ff3b4f',
+        'editor.selectionBackground': '#3a0c0e',
+        'editor.lineHighlightBackground': '#170608',
+        'editorGutter.background': '#0d0405',
+        'editorIndentGuide.background1': '#330b0e',
+        'editorWidget.background': '#120506',
+        'editorWidget.border': '#4a1015',
+      },
+    },
+    terminal: {
+      background: 'rgba(0,0,0,0.62)',
+      foreground: '#ff6b78',
+      cursor: '#ff3b4f',
+      selectionBackground: '#4a1015',
+      black: '#000000',
+      brightBlack: '#6b2830',
     },
   },
   ice: {
@@ -309,6 +344,7 @@ window.__agenttailTerm = term;
 const ANSI_PALETTES = {
   matrix: { green: 46, greenDim: 35, white: 255, cyan: 51, amber: 221, red: 203, magenta: 207, grey: 244 },
   amber: { green: 214, greenDim: 136, white: 230, cyan: 222, amber: 214, red: 203, magenta: 215, grey: 137 },
+  red: { green: 203, greenDim: 160, white: 224, cyan: 210, amber: 215, red: 213, magenta: 212, grey: 138 },
   ice: { green: 51, greenDim: 37, white: 255, cyan: 45, amber: 221, red: 203, magenta: 207, grey: 244 },
   dracula: { green: 141, greenDim: 98, white: 255, cyan: 117, amber: 215, red: 203, magenta: 212, grey: 244 },
   paper: { green: 28, greenDim: 22, white: 236, cyan: 30, amber: 130, red: 124, magenta: 90, grey: 240 },

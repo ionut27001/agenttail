@@ -347,7 +347,7 @@ try {
   check(await evalExpr(`/AGENT NOW/.test(document.getElementById('activityLabel').textContent)`), 'the activity bar is labelled as the agent status');
 
   console.log('\nthemes');
-  check(await evalExpr(`JSON.stringify(window.__theme.list()) === JSON.stringify(['matrix', 'amber', 'ice', 'dracula', 'paper']) && document.getElementById('themeSelect').options.length === 5`), 'five themes are offered in Settings');
+  check(await evalExpr(`JSON.stringify(window.__theme.list()) === JSON.stringify(['matrix', 'amber', 'red', 'ice', 'dracula', 'paper']) && document.getElementById('themeSelect').options.length === 6`), 'six themes are offered in Settings');
   const matrixBg = await evalExpr(`getComputedStyle(document.body).backgroundColor`);
   check(await evalExpr(`!document.documentElement.dataset.theme || document.documentElement.dataset.theme === 'matrix'`), 'matrix is the default theme');
   await evalExpr(`(() => { const sel = document.getElementById('themeSelect'); sel.value = 'paper'; sel.dispatchEvent(new Event('change')); return true; })()`);
@@ -357,6 +357,9 @@ try {
   check(paper.logo !== 'rgb(55, 242, 138)' && paper.agent0 === '#118a4a', 'the logo and agent colours follow the light theme', JSON.stringify(paper));
   await reloadPage();
   check(await evalExpr(`document.documentElement.dataset.theme === 'paper'`), 'the saved theme is applied on load');
+  await evalExpr(`window.__theme.set('red'); true`);
+  await sleep(200);
+  check(await evalExpr(`document.documentElement.dataset.theme === 'red' && getComputedStyle(document.documentElement).getPropertyValue('--green').trim() === '#ff3b4f' && getComputedStyle(document.documentElement).getPropertyValue('--red').trim() !== '#ff3b4f'`), 'the red theme is crimson, and errors keep a colour of their own');
   await evalExpr(`window.__theme.set('matrix'); true`);
   await sleep(200);
   check(await evalExpr(`getComputedStyle(document.body).backgroundColor`) === matrixBg, 'switching back restores the matrix colours');
