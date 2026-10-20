@@ -12,7 +12,7 @@ Thanks for considering a contribution.
 
 - `server.js` — the local HTTP server (read side, SSE, control endpoints).
 - `lib/` — session sources (dsh, Claude Code, Antigravity), redaction, roots, the agents overview, the ACP control plane.
-- `public/index.html` — the page markup; `public/app/` holds its stylesheet and classic scripts, loaded in order: `main.js` (event pipeline, editor, console, chat, layout), `control.js`, `agents.js` (overview, watch wall, alerts) and the wall widgets (`wall-editor.js`, `wall-console.js`, `wall-map.js`, `wall-timeline.js`), then `context.js`.
+- `public/index.html` — the page markup; `public/app/` holds its stylesheet and classic scripts, loaded in order: `main.js` (event pipeline, editor, console, chat, layout), `control.js`, `agents.js` (overview, watch wall, alerts) and the wall widgets (`wall-editor.js`, `wall-console.js`, `wall-map.js`, `wall-timeline.js`, `wall-tree.js`), then `context.js`.
 - `public/vendor/` — vendored Monaco, xterm.js and fonts; nothing loads from a CDN.
 - `test/` — one suite per area; `npm test` runs them all.
 
