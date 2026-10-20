@@ -168,6 +168,9 @@ async function captureHero() {
   await waitEval(`document.body && !document.body.classList.contains('loading-session')`, 15000);
   await sleep(400);
   const demo = await startDemo();
+  // Start recording mid-action: the build is streaming in the console, the
+  // chat shows the agent thinking and the editor is typing the change.
+  await waitEval(`/EDITING/.test(document.getElementById('activityText').textContent) && !document.getElementById('jobBar').classList.contains('hidden')`, 20000);
   const frames = [];
   let streamShot = null;
   for (let i = 0; i < 52; i++) {
