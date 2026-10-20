@@ -1124,8 +1124,10 @@
   #newSessionBtn.hidden { display: none; }
   .stat.model .v, .stat.perm .v { font-size: 10px; max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
   .stat.perm .v { color: var(--amber); max-width: 108px; }
+  #turnSparkWrap { display: inline-flex; align-items: center; gap: 5px; cursor: help; }
+  #turnSparkWrap.hidden { display: none; }
+  #turnSparkLabel { color: var(--muted); font-size: 9px; letter-spacing: .1em; }
   #turnSpark { width: 72px; height: 16px; display: block; }
-  #turnSpark.hidden { display: none; }
   #approvalBadge {
     padding: 1px 7px; color: var(--text-on-amber); background: var(--amber); border: 1px solid var(--amber);
     border-radius: 10px; font-size: 10px; font-weight: 700; letter-spacing: .04em;
@@ -1412,7 +1414,7 @@
         <span id="chatActive" class="pane-tag hidden">● active</span>
         <span class="chat-views"><button id="chatViewChat" type="button">Chat</button><button id="chatViewLog" class="active" type="button">Log</button></span>
         <span class="chat-spacer"></span>
-        <canvas id="turnSpark" class="hidden" width="144" height="32" title="cost per turn"></canvas>
+        <span id="turnSparkWrap" class="hidden"><span id="turnSparkLabel">$/TURN</span><canvas id="turnSpark" width="144" height="32" title="cost per turn"></canvas></span>
         <button id="chatExport" type="button" title="Export this session as Markdown">MD</button>
         <button id="chatDock" type="button" title="Dock the agent to the right side (Ctrl+Shift+.)" aria-pressed="false">⇥</button>
         <button id="chatPin" type="button" title="Pin auto-scroll">📌</button>
@@ -5976,29 +5978,39 @@ termObserver.observe($('term'));
   function drawTurnSpark() {
     const canvas = $c('turnSpark');
     if (!canvas) return;
-    const data = state.turnCosts || [];
-    if (!data.length) { canvas.classList.add('hidden'); return; }
+    const wrap = $c('turnSparkWrap');
+    const data = (state.turnCosts || []).slice(-24);
+    if (!data.length) { wrap?.classList.add('hidden'); return; }
     const costs = data.map((entry) => Number(entry.cost) || 0);
     const tokens = data.map((entry) => Number(entry.tokens) || 0);
     const useCost = costs.some((value) => value > 0);
     const values = useCost ? costs : tokens;
     const max = Math.max(1e-9, ...values);
-    canvas.classList.remove('hidden');
+    wrap?.classList.remove('hidden');
+    const label = $c('turnSparkLabel');
+    if (label) label.textContent = useCost ? '$/TURN' : 'TOK/TURN';
+    // One bar per finished turn, newest on the right. A minimum height keeps
+    // equal (or tiny) turns visible as bars instead of a flat line.
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.strokeStyle = useCost ? cssVar('--green', '#37f28a') : cssVar('--cyan', '#5ce1e6');
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
+    const slot = canvas.width / Math.max(values.length, 6);
+    const barW = Math.max(2, slot - 2);
+    const base = useCost ? cssVar('--green', '#37f28a') : cssVar('--cyan', '#5ce1e6');
     values.forEach((value, index) => {
-      const x = (index / Math.max(1, values.length - 1)) * (canvas.width - 2) + 1;
-      const y = canvas.height - 2 - (value / max) * (canvas.height - 4);
-      if (index) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+      const h = Math.max(4, (value / max) * (canvas.height - 2));
+      const x = canvas.width - (values.length - index) * slot + 1;
+      ctx.globalAlpha = index === values.length - 1 ? 1 : 0.55;
+      ctx.fillStyle = base;
+      ctx.fillRect(x, canvas.height - h, barW, h);
     });
-    ctx.stroke();
+    ctx.globalAlpha = 1;
     const last = data[data.length - 1];
-    canvas.title = useCost
-      ? `cost per turn (last ${data.length}): $${Number(last.cost || 0).toFixed(4)}`
-      : `tokens per turn (last ${data.length}): ${fmtInt(Number(last.tokens || 0))} (no price for this model)`;
+    const total = values.reduce((a, b) => a + b, 0);
+    const tip = useCost
+      ? `Cost per turn, newest on the right (last ${data.length} turns)\nlast turn ${Number(last.cost || 0).toFixed(4)} · total ${total.toFixed(4)} · highest ${max.toFixed(4)}`
+      : `Tokens per turn, newest on the right (last ${data.length} turns; no price for this model)\nlast turn ${fmtInt(Number(last.tokens || 0))} · highest ${fmtInt(max)}`;
+    canvas.title = tip;
+    if (wrap) wrap.title = tip;
   }
 
   /* ---------- wiring ---------- */

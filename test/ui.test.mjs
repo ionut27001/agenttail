@@ -872,6 +872,8 @@ try {
   check(!!mdView && mdView.bold.includes('Summary') && mdView.bold.includes('Build:') && mdView.bold.includes('running'), 'Log view renders bold text, including inside tables', JSON.stringify(mdView?.bold));
   check(!!mdView && mdView.nested === 2 && mdView.ordered === 2 && mdView.heading === 'Next steps', 'Log view renders nested lists, ordered lists and headings', JSON.stringify(mdView));
   check(!!mdView && !mdView.raw && mdView.ws === 'normal', 'no raw markdown markers are left in the Log view', JSON.stringify(mdView));
+  const spark = await evalExpr(`(() => { const w = document.getElementById('turnSparkWrap'); return { shown: !w.classList.contains('hidden'), label: document.getElementById('turnSparkLabel').textContent, title: w.title }; })()`);
+  check(spark.shown && /^(\$|TOK)\/TURN$/.test(spark.label) && /per turn, newest on the right/.test(spark.title), 'the per-turn chart is labelled and explains itself', JSON.stringify(spark));
 
   console.log('\nagent side mode');
   const sideGeom = () => evalExpr(`(() => {
