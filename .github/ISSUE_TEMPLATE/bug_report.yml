@@ -1,0 +1,63 @@
+name: Bug report
+description: Something in agenttail doesn't work as expected
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. **Don't paste raw session logs, tokens, emails or paths with your username.** Session logs can contain private code and conversations. Redacted excerpts are fine.
+  - type: input
+    id: version
+    attributes:
+      label: agenttail version
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How do you run it?
+      options:
+        - Windows exe
+        - npx / npm
+        - Portable zip (node server.js)
+        - From source
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS and browser
+      placeholder: "Windows 11, Chrome 141"
+    validations:
+      required: true
+  - type: dropdown
+    id: source
+    attributes:
+      label: Session source
+      multiple: true
+      options:
+        - DeepSeek Harness
+        - Claude Code
+        - Antigravity CLI
+        - Not source-specific
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Start agenttail
+        2. Open a live session
+        3. ...
+  - type: textarea
+    id: logs
+    attributes:
+      label: Console output or screenshot (redacted)
+      description: The terminal output of agenttail and, if relevant, a screenshot with stream mode on.
+      render: text
