@@ -1143,7 +1143,7 @@
     transition: transform .38s cubic-bezier(.2, .8, .2, 1), opacity .3s;
   }
   #wall.focus .wp-console { transform-origin: 50% 100%; }
-  #wall.focus .wp-think { transform-origin: 84% 100%; display: flex; flex-direction: column; background: var(--bg-2); overflow: hidden; }
+  #wall.focus .wp-think { transform-origin: 84% 100%; display: flex; flex-direction: column; background: var(--bg-2); overflow: hidden; top: auto; max-height: 70%; }
   #wall.focus .wall-pane:not(.show-console) .wp-console,
   #wall.focus .wall-pane:not(.show-think) .wp-think { transform: translateY(46%) scale(.06); opacity: 0; pointer-events: none; }
   #wall.focus .wall-pane.show-console .wp-editor,
@@ -1152,7 +1152,7 @@
   .wp-think .th-head .dots i { display: inline-block; width: 4px; height: 4px; margin-right: 3px; border-radius: 50%; background: var(--c); animation: tdot 1.2s infinite; }
   .wp-think .th-head .dots i:nth-child(2) { animation-delay: .2s; }
   .wp-think .th-head .dots i:nth-child(3) { animation-delay: .4s; }
-  .wp-think .th-body { flex: 1; min-height: 0; overflow: hidden; padding: 10px 14px; display: flex; flex-direction: column; justify-content: flex-end; gap: 6px; font-size: 12px; line-height: 1.55; }
+  .wp-think .th-body { flex: 1; min-height: 0; overflow: hidden; padding: 10px 14px; display: flex; flex-direction: column; justify-content: flex-start; gap: 6px; font-size: 12px; line-height: 1.55; }
   .wp-think .th-reason { color: var(--muted); font-style: italic; white-space: pre-wrap; }
   .wp-think .th-reply { color: var(--text); white-space: pre-wrap; }
   #wall.focus .wp-dock { display: flex; position: absolute; left: 0; right: 0; bottom: 0; height: 30px; z-index: 6; gap: 6px; align-items: center; padding: 0 8px; border-top: 1px solid var(--line-soft); background: var(--panel); }
@@ -1217,6 +1217,8 @@
   .wp-score .sc b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
   .wp-score .sc-bad b { color: var(--red); }
   .wp-score .sc-streak.hot b { color: var(--amber); }
+  /* Keep the header short: no ✓ count, ✗ only after a failure, 🔥 only on a streak. */
+  .wp-score .sc-ok, .wp-score .sc-bad.zero, .wp-score .sc-streak:not(.hot) { display: none; }
   .wp-score .sc.pop b { animation: sc-pop .45s ease-out; }
   @keyframes sc-pop { 0% { transform: scale(1.7); color: var(--c); } 100% { transform: scale(1); } }
   /* wall: repo map with agent cursors */
@@ -1275,6 +1277,13 @@
   .chat-views button { font-size: 11px; padding: 1px 6px; border: 1px solid var(--line); background: transparent; color: var(--muted); }
   .chat-views button.active { color: var(--green); border-color: var(--green-dim); background: var(--bg-3); }
   .md-code { background: var(--bg-code); border: 1px solid var(--border); border-radius: 3px; padding: 5px 7px; margin: 4px 0; overflow: auto; max-height: 220px; color: var(--text-code); font-family: var(--mono); font-size: 11px; line-height: 1.45; white-space: pre; }
+  .chat-earlier { align-self: center; margin: 2px 0 6px; padding: 2px 12px; border: 1px dashed var(--line); border-radius: 12px; background: transparent; color: var(--muted); font-size: 10.5px; cursor: pointer; }
+  .chat-earlier:hover { color: var(--green); border-color: var(--green-dim); }
+  .msg-thought { margin: 0 0 4px; font-size: 10.5px; color: var(--muted); }
+  .msg-thought > summary { cursor: pointer; list-style: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-style: italic; }
+  .msg-thought > summary::-webkit-details-marker { display: none; }
+  .msg-thought[open] > summary { color: var(--green-soft); }
+  .msg-thought > div { margin: 4px 0 6px; padding: 4px 0 4px 8px; border-left: 2px solid var(--border-strong); color: var(--muted); white-space: normal; font-size: 11px; }
   .md-inline { background: var(--bg-inline); border: 1px solid var(--border-strong); border-radius: 2px; padding: 0 3px; color: var(--cyan); font-family: var(--mono); font-size: 11px; }
   #chatLog .md { white-space: normal; line-height: 1.55; }
   .md > :first-child { margin-top: 0; }
@@ -1430,6 +1439,7 @@
   body.ui-compact-stats .metrics { display: none; }
   body.ui-compact-stats #statsChip { display: inline-flex; }
   body.ui-compact-sys .sys-meters { display: none; }
+  body:not(.fx-meters) .sys-meters, body:not(.fx-meters) #sysChip { display: none !important; }
   body.ui-compact-sys #sysChip { display: inline-flex; }
   @media (max-width: 900px) {
     .brand span { display: none; }
@@ -1582,22 +1592,27 @@
         <div class="fx-head"><span>SETTINGS</span><button id="fxClose" type="button" title="Close (Esc)">✕</button></div>
         <div class="fx-section">PLAYBACK &amp; DISPLAY</div>
         <label class="fx-speed">TYPE <input id="speed" type="range" min="20" max="1600" step="10" value="220" /><span id="speedVal">220</span></label>
-        <label class="fx-intensity">intensity <input id="fxIntensity" type="range" min="0" max="100" step="5" value="40" /><span id="fxIntensityVal">40%</span></label>
         <label class="fx-scale">UI <select id="uiScale"><option value="0.9">90%</option><option value="1">100%</option><option value="1.15">115%</option><option value="1.3">130%</option></select></label>
         <label class="fx-scale">THEME <select id="themeSelect" title="Colour theme"><option value="matrix">matrix</option><option value="amber">amber</option><option value="ice">ice</option><option value="dracula">dracula</option><option value="paper">paper</option></select></label>
         <div class="fx-section">VIEW</div>
         <div class="fx-grid">
         <label><input type="checkbox" data-fx="follow" checked /> follow mode</label>
         <label><input type="checkbox" id="showHiddenBox" /> show hidden files</label>
-        <label><input type="checkbox" data-fx="sys" /> show system</label>
-        <label><input type="checkbox" data-fx="boot" checked /> boot sequence</label>
-        <label><input type="checkbox" data-fx="crt" checked /> CRT scanlines</label>
-        <label><input type="checkbox" data-fx="matrix" /> matrix rain</label>
-        <label><input type="checkbox" data-fx="cursor" checked /> block cursor</label>
-        <label><input type="checkbox" data-fx="glitch" checked /> error glitch</label>
-        <label><input type="checkbox" data-fx="spark" checked /> sparkline + odometer</label>
+        <label title="System and tool injections in the chat (collapsed)"><input type="checkbox" data-fx="sys" /> show system messages</label>
+        <label title="Print the agent's replies in the console too; by default the console keeps to commands and their output"><input type="checkbox" data-fx="consoleSay" /> agent replies in console</label>
+        <label title="CPU, RAM and GPU usage in the header"><input type="checkbox" data-fx="meters" /> system meters</label>
         <label><input type="checkbox" data-fx="heat" checked /> tree heat</label>
         <label title="Notify when an agent waits for an approval or stops working while this tab is in the background"><input type="checkbox" id="notifyBox" /> desktop notifications</label>
+        </div>
+        <div class="fx-section">EFFECTS</div>
+        <label class="fx-intensity">intensity <input id="fxIntensity" type="range" min="0" max="100" step="5" value="40" /><span id="fxIntensityVal">40%</span></label>
+        <div class="fx-grid">
+        <label><input type="checkbox" data-fx="boot" checked /> boot sequence</label>
+        <label><input type="checkbox" data-fx="spark" checked /> sparkline + odometer</label>
+        <label><input type="checkbox" data-fx="cursor" checked /> block cursor</label>
+        <label><input type="checkbox" data-fx="crt" /> CRT scanlines</label>
+        <label><input type="checkbox" data-fx="glitch" /> error glitch</label>
+        <label><input type="checkbox" data-fx="matrix" /> matrix rain</label>
         </div>
         <div class="fx-sep"></div>
         <button id="replayBtn" disabled title="Replay a finished session from the start">REPLAY</button>
@@ -3186,7 +3201,7 @@ async function applyEvent(ev) {
       }
       if (ev.text) {
         setActivity('replying', '', 'chat');
-        termSay(ev.text, ev.agent);
+        if (fx.consoleSay) termSay(ev.text, ev.agent);
         chatPush({ kind: 'agent', text: ev.text, agent: ev.agent });
       }
       break;
@@ -4204,7 +4219,7 @@ window.addEventListener('resize', () => {
 });
 
 /* ---------- visual effects (all behind toggles) ---------- */
-const FX_DEFAULTS = { boot: true, crt: true, matrix: false, cursor: true, glitch: true, spark: true, heat: true, sys: false, follow: true, intensity: 40 };
+const FX_DEFAULTS = { boot: true, crt: false, matrix: false, cursor: true, glitch: false, spark: true, heat: true, sys: false, follow: true, consoleSay: false, meters: false, intensity: 40 };
 const fx = { ...FX_DEFAULTS };
 try { Object.assign(fx, JSON.parse(localStorage.getItem('agenttail-fx') || '{}')); } catch { /* ignore */ }
 if (typeof fx.intensity !== 'number') fx.intensity = 40;
@@ -4976,7 +4991,8 @@ window.__activity = {
 window.__ui = { get scale() { return uiScale; }, set: applyUiScale };
 
 /* ---------- agent chat ---------- */
-const chat = { pinned: true, unread: 0, items: [], log: [], view: 'chat' };
+const CHAT_WINDOW = 250;
+const chat = { pinned: true, unread: 0, items: [], log: [], view: 'chat', window: CHAT_WINDOW };
 try { chat.pinned = JSON.parse(localStorage.getItem('agenttail-chat-pin') || 'true'); } catch { /* ignore */ }
 if (typeof chat.pinned !== 'boolean') chat.pinned = true;
 try { chat.view = localStorage.getItem('agenttail-chat-view') === 'chat' ? 'chat' : 'log'; } catch { /* ignore */ }
@@ -4994,6 +5010,7 @@ function chatReset() {
   chat.items = [];
   chat.log = [];
   chat.unread = 0;
+  chat.window = CHAT_WINDOW;
   const log = $('chatLog');
   if (log) log.innerHTML = '';
   chatEmpty();
@@ -5407,10 +5424,14 @@ function chatAppend(item) {
   } else {
     el = document.createElement('div');
     el.className = `chat-msg ${item.kind}`;
-    const who = document.createElement('span');
-    who.className = 'who';
-    who.textContent = (item.kind === 'user' ? 'you' : 'agent') + (item.agent ? ` · ${item.agent}` : '');
-    el.appendChild(who);
+    // Only label what is not obvious: your turns and sub-agents.
+    if (item.kind === 'user' || item.agent) {
+      const who = document.createElement('span');
+      who.className = 'who';
+      who.textContent = item.kind === 'user' ? `you${item.agent ? ' · ' + item.agent : ''}` : `↳ ${item.agent}`;
+      el.appendChild(who);
+    }
+    if (item.thought) el.appendChild(thoughtToggle(item.thought));
     const body = document.createElement('div');
     body.className = 'msg-body';
     renderMarkdown(body, item.text || '');
@@ -5420,9 +5441,31 @@ function chatAppend(item) {
   if (followActive() || chat.pinned) log.scrollTop = log.scrollHeight;
 }
 
+/** A collapsed "reasoning" toggle inside a reply. */
+function thoughtToggle(text) {
+  const details = document.createElement('details');
+  details.className = 'msg-thought';
+  const sum = document.createElement('summary');
+  sum.textContent = `💭 reasoning · ${thinkPreview(text)}`;
+  details.appendChild(sum);
+  const body = document.createElement('div');
+  renderMarkdown(body, text);
+  details.appendChild(body);
+  return details;
+}
+
 function chatPush(item) {
   if (!item) return;
   const quiet = !state.historyDone && !state.replaying;
+  // A reply takes in the reasoning that led to it: one row instead of two.
+  if (item.kind === 'agent') {
+    const last = chat.items[chat.items.length - 1];
+    if (last && last.kind === 'think' && (last.agent || null) === (item.agent || null)) {
+      chat.items.pop();
+      item.thought = last.text;
+      if (last.el) last.el.remove();
+    }
+  }
   if (item.kind === 'think') {
     const text = String(item.text || '').trim();
     if (!text) return;
@@ -5442,7 +5485,7 @@ function chatPush(item) {
     }
     item.streamOpen = item.stream;
     chat.items.push(item);
-    if (!quiet && chat.view === 'chat' && !layout.chatCollapsed) chatAppend(item);
+    if (!quiet && chat.view === 'chat' && !layout.chatCollapsed) { chatAppend(item); trimChatDom(); }
     if (!quiet) updateChatRail();
     return;
   }
@@ -5481,7 +5524,7 @@ function chatPush(item) {
       if (first) first.remove();
     }
   }
-  if (!quiet && chat.view === 'chat' && !layout.chatCollapsed) chatAppend(item);
+  if (!quiet && chat.view === 'chat' && !layout.chatCollapsed) { chatAppend(item); trimChatDom(); }
   else if (item.kind === 'agent' || item.kind === 'user') chat.unread += 1;
   if (!quiet) updateChatRail();
 }
@@ -5499,17 +5542,69 @@ function renderChat() {
     chatEmpty();
     return;
   }
-  for (const item of visible) chatAppend(item);
+  const start = Math.max(0, visible.length - chat.window);
+  if (start > 0) log.appendChild(earlierRow(start));
+  for (let i = start; i < visible.length; i++) chatAppend(visible[i]);
   if (followActive() || chat.pinned) log.scrollTop = log.scrollHeight;
 }
 
-function logResultLine(result) {
+/**
+ * Long sessions render only their latest rows; this row loads more. It keeps
+ * the page responsive after hundreds of tool calls.
+ */
+function earlierRow(hidden) {
+  const row = document.createElement('button');
+  row.type = 'button';
+  row.className = 'chat-earlier';
+  row.textContent = `▲ show ${Math.min(CHAT_WINDOW, hidden)} earlier (${hidden} hidden)`;
+  row.addEventListener('click', () => {
+    const log = $('chatLog');
+    const fromBottom = log.scrollHeight - log.scrollTop;
+    chat.window += CHAT_WINDOW;
+    renderChat();
+    log.scrollTop = log.scrollHeight - fromBottom;
+  });
+  return row;
+}
+
+/** Live appends in the Chat view keep the DOM to the window, too. */
+function trimChatDom() {
+  const log = $('chatLog');
+  if (!log || chat.view !== 'chat') return;
+  const rows = [...log.children].filter((el) => !el.classList.contains('chat-earlier'));
+  const extra = rows.length - chat.window;
+  if (extra < 25) return;
+  for (const el of rows.slice(0, extra)) el.remove();
+  const visible = chat.items.filter((item) => item.kind !== 'system' || fx.sys).length;
+  log.querySelector('.chat-earlier')?.remove();
+  log.insertBefore(earlierRow(Math.max(0, visible - chat.window)), log.firstChild);
+}
+
+/**
+ * One line per tool result: what happened, not the raw payload. Reads report
+ * their size, searches their hits, edits that they applied; commands keep the
+ * exit code and the first line of output. The full text stays in the tooltip.
+ */
+function logResultLine(result, name) {
   if (!result) return '';
-  const text = String(result.text || '').replace(/\s+/g, ' ').trim();
-  const exit = result.exitCode !== undefined && result.exitCode !== null
+  const raw = String(result.text || '');
+  // Tool payloads often come wrapped in tags (<path>, <content>, …).
+  const plain = raw.replace(/<\/?[a-z_][\w-]*>/gi, ' ');
+  const lines = plain.split('\n').filter((l) => l.trim() && !/^\[exit code:/i.test(l.trim()));
+  const first = (lines[0] || '').replace(/\s+/g, ' ').trim();
+  const status = result.exitCode !== undefined && result.exitCode !== null
     ? `exit ${result.exitCode}`
     : (result.isError ? 'error' : 'done');
-  return `${exit}${text ? ' · ' + text.slice(0, 180) : ''}`;
+  const tool = String(name || '').toLowerCase();
+  let detail;
+  if (result.isError) detail = first;
+  else if (tool === 'read' || tool === 'view_file') detail = `${lines.length} line${lines.length === 1 ? '' : 's'}`;
+  else if (['grep', 'glob', 'search', 'find'].includes(tool)) {
+    const found = /found\s+(\d+)\s+(match|file|result)/i.exec(plain);
+    detail = found ? `${found[1]} ${found[2]}${found[1] === '1' ? '' : (found[2].endsWith('h') ? 'es' : 's')}` : `${lines.length} hit${lines.length === 1 ? '' : 's'}`;
+  } else if (EDIT_TOOLS.has(tool)) detail = 'applied';
+  else detail = first;
+  return `${status}${detail ? ' · ' + detail.slice(0, 160) : ''}`;
 }
 
 function renderLog() {
@@ -5520,7 +5615,10 @@ function renderLog() {
     chatEmpty();
     return;
   }
-  for (const item of items) {
+  const start = Math.max(0, items.length - chat.window);
+  if (start > 0) log.appendChild(earlierRow(start));
+  for (let i = start; i < items.length; i++) {
+    const item = items[i];
     if (item.kind === 'system') {
       const el = document.createElement('div');
       el.className = 'chat-sys';
@@ -5530,6 +5628,11 @@ function renderLog() {
       continue;
     }
     if (item.kind === 'think') {
+      const next = items[i + 1];
+      if (next && next.kind === 'agent' && (next.agent || null) === (item.agent || null)) {
+        next.__thought = item.text;
+        continue;
+      }
       const details = document.createElement('details');
       details.className = 'chat-think';
       const sum = document.createElement('summary');
@@ -5546,11 +5649,16 @@ function renderLog() {
       row.className = `log-row log-tool${item.result && item.result.isError ? ' err' : ''}`;
       const cmd = document.createElement('div');
       cmd.className = 'cmd';
-      cmd.textContent = `${item.name === 'pwsh' ? '$' : '✎'} ${item.full || item.text}`;
+      const glyph = item.name === 'pwsh' ? '$'
+        : EDIT_TOOLS.has(item.name) ? '✎'
+          : item.name === 'read' ? '👁'
+            : ['grep', 'glob', 'search', 'find'].includes(String(item.name).toLowerCase()) ? '⌕' : '⚙';
+      cmd.textContent = `${glyph} ${item.full || item.text}`;
       row.appendChild(cmd);
       const res = document.createElement('div');
       res.className = 'res';
-      res.textContent = item.result ? logResultLine(item.result) : 'running…';
+      res.textContent = item.result ? logResultLine(item.result, item.name) : 'running…';
+      if (item.result && item.result.text) res.title = String(item.result.text).slice(0, 2000);
       row.appendChild(res);
       log.appendChild(row);
       continue;
@@ -5576,6 +5684,10 @@ function renderLog() {
     const row = document.createElement('div');
     row.className = `log-row ${item.kind === 'user' ? 'log-user' : 'log-say'}`;
     renderMarkdown(row, item.text || '');
+    if (item.__thought) {
+      row.insertBefore(thoughtToggle(item.__thought), row.firstChild);
+      delete item.__thought;
+    }
     log.appendChild(row);
   }
   if (followActive() || chat.pinned) log.scrollTop = log.scrollHeight;
@@ -6773,7 +6885,7 @@ termObserver.observe($('term'));
         ['bad', '✗', 'commands that failed'],
         ['streak', '🔥', 'green runs in a row'],
       ]) {
-        const part = node('span', `sc sc-${k}`);
+        const part = node('span', `sc sc-${k} zero`);
         part.title = title;
         part.appendChild(node('i', '', glyph));
         part.appendChild(node('b', '', '0'));
@@ -6786,6 +6898,7 @@ termObserver.observe($('term'));
       const shell = new Set();
       const set = (k, pop) => {
         parts[k].querySelector('b').textContent = String(score[k]);
+        parts[k].classList.toggle('zero', score[k] === 0);
         if (pop && !pane.history && !reduced()) {
           parts[k].classList.remove('pop');
           void parts[k].offsetWidth;

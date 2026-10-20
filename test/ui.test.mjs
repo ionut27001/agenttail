@@ -264,6 +264,14 @@ try {
   console.log('\nfinished session');
   const ready = await waitFor(`document.getElementById('liveText')?.textContent === 'FINISHED'`, 20000);
   check(ready, 'page reaches FINISHED for a completed log');
+  // Quieter defaults: no agent replies in the console, no CRT/glitch, no header meters.
+  check(await evalExpr(`(() => { const b = window.__agenttailTerm.buffer.active; let s = ''; for (let i = 0; i < b.length; i++) s += b.getLine(i).translateToString(true) + '\\n'; return !s.includes('I will update'); })()`), 'by default the console keeps to commands and output');
+  check(await evalExpr(`!document.body.classList.contains('fx-crt') && !document.body.classList.contains('fx-glitch') && !document.body.classList.contains('fx-meters')`), 'CRT scanlines, the glitch and the header meters are off by default');
+  check(await evalExpr(`getComputedStyle(document.getElementById('sysMeters')).display === 'none'`), 'the CPU/RAM/GPU meters are hidden until turned on');
+  // The rest of this suite checks the console's reply rendering and the meters.
+  await evalExpr(`localStorage.setItem('agenttail-fx', JSON.stringify({ ...JSON.parse(localStorage.getItem('agenttail-fx') || '{}'), consoleSay: true, meters: true, glitch: true })); true`);
+  await reloadPage();
+  check(await waitFor(`document.getElementById('liveText')?.textContent === 'FINISHED'`, 20000), 'the page reloads with replies in the console and the meters on');
   check(await evalExpr(`document.getElementById('replayBtn').disabled === false`), 'replay button is enabled');
   check(await evalExpr(`document.getElementById('sessionSelect').value === '${fixture.finishedId}'`), 'session picker matches the loaded session');
   check(await evalExpr(`document.getElementById('mSteps').textContent === '3'`), 'steps counted from step/start', await evalExpr(`document.getElementById('mSteps').textContent`));
