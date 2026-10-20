@@ -249,7 +249,10 @@
     <button id="wallChatMode" class="wall-toggle" type="button" title="Show the agent chat and reasoning beside the editor, or inside the console">CHAT: SIDE</button>
     <button id="wallDormantMode" class="wall-toggle" type="button" title="Shrink agents that are waiting or quiet, so working agents get the space">QUIET AGENTS: SHRINK</button>
     <button id="wallClose" type="button" title="Close (Esc)">✕</button></div>
-  <div id="wallGrid"></div>
+  <div id="wallBody">
+    <aside id="wallSide" class="ws-slot ws-tree" aria-label="Files the agents touched"></aside>
+    <div id="wallGrid"></div>
+  </div>
   <div id="wallStrip">
     <button id="wallStripToggle" type="button" title="Show or hide the timeline under the repo map">▾</button>
     <div class="ws-slot ws-map"></div>

@@ -242,6 +242,14 @@
         }
         state.models.clear();
       },
+      /** Open a file on request (the team tree), without an edit animation. */
+      open(p, key) {
+        enqueue(async () => {
+          stopAnimation();
+          await show(p, key);
+          setLabel('viewing', p);
+        });
+      },
       get value() { return state.editor && state.editor.getModel() ? state.editor.getModel().getValue() : ''; },
       get path() { return state.current; },
     };

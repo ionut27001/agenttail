@@ -259,7 +259,8 @@
   // pane: { agent, slots: { editor, console }, history (true while replaying
   // the tail), root }. Widgets live in their own <script> blocks.
   window.__wallHooks = window.__wallHooks || [];
-  // Strip widgets: { create({ slots: { map, timeline }, panes }) -> { onPaneEvent(pane, ev), dispose() } }.
+  // Strip widgets: { create({ slots: { map, timeline, tree }, panes }) -> { onPaneEvent(pane, ev), dispose() } }.
+  // pane.showFile(path, key) opens a file in that pane's editor.
   // Panes open before the strip; their events (history tail first) arrive after.
   window.__wallStripHooks = window.__wallStripHooks || [];
   const WALL_PREFS_KEY = 'agenttail-wall';
@@ -612,6 +613,15 @@
           if (widget) pane.widgets.push(widget);
         } catch (err) { console.error('wall widget failed', err); }
       }
+      // Other widgets (the team tree) can open a file in this pane's editor.
+      pane.showFile = (filePath, key) => {
+        for (const widget of pane.widgets) {
+          if (typeof widget.open === 'function') widget.open(filePath, key || null);
+        }
+        pane.pinnedView = null;
+        pane.view = 'editor';
+        applyView(pane);
+      };
       feed.addEventListener('scroll', () => {
         pane.stick = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 40;
       });
@@ -719,7 +729,11 @@
 
     const strip = { widgets: [] };
     function openStrip() {
-      const slots = { map: document.querySelector('#wallStrip .ws-map'), timeline: document.querySelector('#wallStrip .ws-timeline') };
+      const slots = {
+        map: document.querySelector('#wallStrip .ws-map'),
+        timeline: document.querySelector('#wallStrip .ws-timeline'),
+        tree: document.getElementById('wallSide'),
+      };
       for (const hook of window.__wallStripHooks || []) {
         try {
           const widget = hook.create({ slots, panes: panes.slice() });
@@ -731,7 +745,7 @@
       for (const widget of strip.widgets.splice(0)) {
         try { widget.dispose && widget.dispose(); } catch { /* ignore */ }
       }
-      for (const slot of document.querySelectorAll('#wallStrip .ws-slot')) slot.textContent = '';
+      for (const slot of document.querySelectorAll('#wallStrip .ws-slot, #wallSide')) slot.textContent = '';
     }
     function stripEvent(pane, ev) {
       for (const widget of strip.widgets) {
