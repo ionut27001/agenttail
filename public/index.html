@@ -516,6 +516,86 @@
   .typing i:nth-child(3) { animation-delay: .3s; }
   @keyframes typing { 0%, 60%, 100% { opacity: .2; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-2px); } }
 
+  /* ---------- control (opt-in) ---------- */
+  #newSessionBtn { padding: 3px 7px; font-size: 11px; border: 1px solid var(--green-dim); background: #0b1a13; color: var(--green-soft); white-space: nowrap; }
+  #newSessionBtn:hover { border-color: var(--green); color: var(--green); }
+  #newSessionBtn.hidden { display: none; }
+  .stat.model .v, .stat.perm .v { font-size: 10px; max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
+  .stat.perm .v { color: var(--amber); max-width: 108px; }
+  #turnSpark { width: 72px; height: 16px; display: block; }
+  #turnSpark.hidden { display: none; }
+  #approvalBadge {
+    padding: 1px 7px; color: #1b0d03; background: var(--amber); border: 1px solid #ffd166;
+    border-radius: 10px; font-size: 10px; font-weight: 700; letter-spacing: .04em;
+  }
+  #approvalBadge.hidden { display: none; }
+  #approvalPanel {
+    flex: none; border-top: 1px solid #5a4517; background: #171306; padding: 7px 8px;
+    display: flex; flex-direction: column; gap: 5px;
+  }
+  #approvalPanel.hidden { display: none; }
+  #approvalPanel .ahead { color: var(--amber); font-size: 10px; letter-spacing: .08em; display: flex; gap: 6px; align-items: center; }
+  #approvalPanel .atitle { color: #ffe3a3; font-size: 12px; }
+  #approvalPanel pre {
+    margin: 0; max-height: 150px; overflow: auto; white-space: pre-wrap; word-break: break-word;
+    background: #070d09; border: 1px solid #40320f; border-radius: 3px; padding: 4px 6px;
+    color: #e9ffd9; font-family: var(--mono); font-size: 11px; line-height: 1.45;
+  }
+  #approvalPanel .arow { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  #approvalPanel button { font-size: 11px; padding: 3px 9px; border-radius: 3px; border: 1px solid #3d5a3f; background: #0b1a13; color: var(--green-soft); }
+  #approvalPanel button.approve { border-color: #2f7a4a; color: #7dffab; }
+  #approvalPanel button.reject { border-color: #6b2c33; color: #ff9aa3; }
+  #approvalReason { flex: 1; min-width: 130px; background: #070d09; border: 1px solid #40320f; color: var(--text); font-family: var(--mono); font-size: 11px; padding: 3px 6px; }
+  #composer { flex: none; border-top: 1px solid var(--line); padding: 6px 7px 7px; background: #040a07; display: flex; flex-direction: column; gap: 4px; }
+  #composer.hidden { display: none; }
+  #composerRow { display: flex; gap: 6px; align-items: flex-end; }
+  #composerInput {
+    flex: 1; min-height: 34px; max-height: 150px; resize: none; overflow-y: auto;
+    background: #07130d; color: var(--text); border: 1px solid var(--line); border-radius: 3px;
+    font-family: var(--mono); font-size: 12px; line-height: 1.45; padding: 5px 7px;
+  }
+  #composerInput:focus { outline: none; border-color: var(--green-dim); }
+  #composerInput::placeholder { color: #456a55; }
+  #composerSend, #composerStop, #composerEnd { font-size: 11px; padding: 4px 8px; border: 1px solid var(--line); background: #0b1a13; color: var(--green-soft); white-space: nowrap; }
+  #composerSend { border-color: var(--green-dim); color: var(--green); }
+  #composerStop { border-color: #6b2c33; color: #ff9aa3; }
+  #composerStop:disabled, #composerEnd:disabled { opacity: .5; }
+  #composerStatus { color: var(--muted); font-size: 10px; letter-spacing: .04em; min-height: 12px; }
+  #composerStatus.warn { color: var(--amber); }
+  #composerStatus.err { color: var(--red); }
+  .control-hint { color: var(--muted); font-size: 10px; padding: 4px 2px; display: flex; gap: 6px; align-items: center; }
+  .control-hint.hidden { display: none; }
+  .log-turn { border-top: 1px dashed #173a27; color: var(--amber); font-size: 10px; padding: 3px 2px; letter-spacing: .04em; }
+  #newSessionDialog {
+    width: min(620px, calc(100vw - 24px)); border: 1px solid var(--green-dim); border-radius: 4px;
+    background: #050c09; color: var(--text); padding: 0; box-shadow: 0 20px 60px rgba(0,0,0,.75);
+  }
+  #newSessionDialog::backdrop { background: rgba(0,0,0,.72); }
+  #newSessionDialog .dlg-head { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); color: var(--green); font-size: 12px; letter-spacing: .12em; }
+  #newSessionDialog .dlg-body { padding: 10px 12px; display: grid; gap: 8px; }
+  #newSessionDialog label { display: grid; gap: 3px; color: var(--muted); font-size: 10px; letter-spacing: .06em; }
+  #newSessionDialog select, #newSessionDialog textarea {
+    background: #07130d; color: var(--text); border: 1px solid var(--line); border-radius: 3px;
+    font-family: var(--mono); font-size: 12px; padding: 5px 7px;
+  }
+  #newSessionDialog textarea { min-height: 74px; resize: vertical; }
+  #newSessionDialog .dlg-row { display: flex; gap: 8px; align-items: center; justify-content: flex-end; padding: 8px 12px; border-top: 1px solid var(--line); }
+  #newSessionDialog button { font-size: 11px; padding: 4px 10px; border: 1px solid var(--line); background: #0b1a13; color: var(--green-soft); }
+  #newSessionDialog button.primary { border-color: var(--green-dim); color: var(--green); }
+  #newSessionDialog .dlg-note { color: var(--muted); font-size: 10px; line-height: 1.45; }
+  #newSessionDialog .dlg-note.danger { color: var(--red); }
+  #newSessionDialog .dlg-err { color: var(--red); font-size: 11px; min-height: 14px; }
+  #newSessionDialog .hidden { display: none; }
+  #dangerRow { border: 1px solid #5a1f27; background: #1a0709; padding: 6px 8px; }
+  #dangerRow label { color: #ff9aa3; grid-template-columns: auto 1fr; align-items: center; gap: 7px; }
+  @media (max-width: 1800px) {
+    .stat.model, .stat.perm { display: none; }
+  }
+  @media (max-width: 900px) {
+    #newSessionBtn { width: 24px; padding: 2px 0; font-size: 0; text-align: center; }
+    #newSessionBtn::before { content: '＋'; font-size: 13px; }
+  }
+
   /* ---------- narrow windows ---------- */
   @media (max-width: 1500px) {
     .metrics { display: none; }
@@ -559,11 +639,14 @@
         <div id="sessionMenu" class="hidden"></div>
       </div>
       <button id="nickBtn" title="Set a local nickname for this session">✎</button>
+      <button id="newSessionBtn" class="hidden" type="button" title="New controlled session">＋</button>
     </div>
     <div class="hgroup hmiddle">
       <div class="metrics">
         <span class="stat"><span class="k">STEPS</span><span class="v" id="mSteps">0</span></span>
         <span class="stat"><span class="k">TOKENS</span><span class="v" id="mTokens">0</span></span>
+        <span class="stat model"><span class="k">MODEL</span><span class="v" id="mModel">—</span></span>
+        <span class="stat perm"><span class="k">PERM</span><span class="v" id="mPerm">—</span></span>
         <span class="stat rate"><span class="k">TOK/S</span><canvas id="spark" width="64" height="16"></canvas></span>
         <span class="stat"><span class="k">COST</span><span class="v" id="mCost">$0.0000<span class="period" id="mPeriod"></span></span></span>
       </div>
@@ -608,6 +691,7 @@
     <span class="activity-spacer"></span>
     <span id="followState" class="hidden">FOLLOW PAUSED</span>
     <button id="activityJobs" class="hidden" type="button" title="Running jobs"></button>
+    <button id="approvalBadge" class="hidden" type="button" title="Approval needed">⚠ APPROVAL</button>
     <div id="jobsMenu" class="hidden"></div>
     <span id="loadFill" class="hidden"></span>
     <span class="activity-pulse"></span>
@@ -667,10 +751,30 @@
         <span id="chatActive" class="pane-tag hidden">● active</span>
         <span class="chat-views"><button id="chatViewChat" type="button">Chat</button><button id="chatViewLog" class="active" type="button">Log</button></span>
         <span class="chat-spacer"></span>
+        <canvas id="turnSpark" class="hidden" width="144" height="32" title="cost per turn"></canvas>
         <button id="chatPin" type="button" title="Pin auto-scroll">📌</button>
         <button id="chatClose" type="button" title="Collapse chat (Ctrl+.)">▸</button>
       </div>
       <div id="chatLog"></div>
+      <div id="approvalPanel" class="hidden">
+        <div class="ahead"><span>⚠ PERMISSION REQUIRED</span><span id="approvalTool" class="atitle"></span></div>
+        <pre id="approvalDetail"></pre>
+        <div class="arow">
+          <button id="approvalApprove" class="approve" type="button">Approve</button>
+          <button id="approvalReject" class="reject" type="button">Reject</button>
+          <input id="approvalReason" type="text" maxlength="500" placeholder="optional reason (reject)" />
+        </div>
+      </div>
+      <div id="composer" class="hidden">
+        <div id="composerRow">
+          <textarea id="composerInput" rows="1" placeholder="Message the agent…  (Enter sends, Shift+Enter newline)"></textarea>
+          <button id="composerStop" type="button" title="Cancel the running turn">Stop</button>
+          <button id="composerEnd" type="button" title="Close this owned session">End</button>
+          <button id="composerSend" type="button" title="Send">Send</button>
+        </div>
+        <div id="composerStatus"></div>
+      </div>
+      <div id="controlHint" class="control-hint hidden"></div>
     </aside>
     <aside id="chatRail">
       <button id="chatExpand" type="button" title="Open agent chat (Ctrl+.)">💬</button>
@@ -680,6 +784,32 @@
   </section>
   <div id="bottomRail"><button id="bottomExpand" type="button">▴ CONSOLE · AGENT</button></div>
 </div>
+
+<dialog id="newSessionDialog">
+  <div class="dlg-head"><span>＋ NEW CONTROLLED SESSION</span><span id="dlgStep" style="margin-left:auto;color:var(--muted)">workspace</span></div>
+  <div class="dlg-body">
+    <label>WORKSPACE<select id="dlgWorkspace"><option value="">choose…</option></select></label>
+    <label>PERMISSION PRESET<select id="dlgPreset">
+      <option value="workspace-write">workspace-write — sandboxed, approvals ask</option>
+      <option value="read-only">read-only — no writes, approvals ask</option>
+      <option value="danger-full-access">danger-full-access — no sandbox (explicit only)</option>
+    </select></label>
+    <div id="dangerRow" class="hidden">
+      <label><input id="dlgDanger" type="checkbox" /> I understand this session can modify anything my user can, without sandbox approval.</label>
+    </div>
+    <div id="dlgStep2" class="hidden">
+      <label>MODEL<select id="dlgModel"><option value="">choose…</option></select></label>
+      <label>FIRST MESSAGE<textarea id="dlgMessage" placeholder="What should the agent do?"></textarea></label>
+    </div>
+    <div class="dlg-note">The session is started and owned by agenttail. The dsh log stays the source of truth, so the viewer and controller always agree. <span id="dlgProfile"></span></div>
+    <div id="dlgErr" class="dlg-err"></div>
+  </div>
+  <div class="dlg-row">
+    <button id="dlgCancel" type="button">Cancel</button>
+    <button id="dlgContinue" class="primary" type="button">Continue →</button>
+    <button id="dlgStart" class="primary hidden" type="button">Start session</button>
+  </div>
+</dialog>
 
 <div id="boot" class="hidden">
   <pre id="bootBanner">
@@ -1205,7 +1335,14 @@ const state = {
   pendingCommands: new Map(), // callId -> {command, workdir, time}
   toolNames: new Map(),       // callId -> name
   runningJobs: new Map(),     // jobId -> { label, startedAt, kind }
+  finishedJobs: new Map(),    // jobId -> { label, startedAt, endedAt, ok, callId }
   termMarkers: new Map(),     // callId -> xterm marker
+  route: null,                // { provider, model, contextWindow }
+  preset: null,
+  policy: null,
+  sandbox: null,
+  turnCosts: [],              // one entry per completed turn
+  currentTurnItem: null,
   deletedKeys: new Set(),
   deletedPaths: new Set(),
   es: null,
@@ -1227,6 +1364,11 @@ function isPeak(ts) {
     if (h >= a && h < b) return true;
   }
   return false;
+}
+
+function tokenTotal(usage) {
+  if (!usage) return 0;
+  return (usage.input || 0) + (usage.output || 0) + (usage.cacheRead || 0) + (usage.cacheWrite || 0);
 }
 
 function addUsage(usage, time) {
@@ -1270,6 +1412,21 @@ function renderStats() {
   $('mTokens').title = `input ${s.input.toLocaleString()} · output ${s.output.toLocaleString()} · cache read ${s.cacheRead.toLocaleString()} · cache write ${s.cacheWrite.toLocaleString()}`;
   $('mSteps').textContent = String(s.steps);
   $('mSteps').title = `${s.steps} steps` + (s.turn ? ` · turn ${s.turn} · step ${s.step}` : '');
+  const modelEl = $('mModel');
+  if (modelEl) {
+    const model = state.route?.model || state.session?.model || '';
+    const provider = state.route?.provider || state.session?.provider || '';
+    modelEl.textContent = model ? `${provider ? provider + '/' : ''}${model}` : '—';
+    modelEl.title = model ? `provider ${provider || 'unknown'} · model ${model}` : 'no model recorded for this session';
+  }
+  const permEl = $('mPerm');
+  if (permEl) {
+    const preset = state.preset || state.session?.preset || '';
+    const policy = state.policy || state.session?.policy || '';
+    permEl.textContent = preset || '—';
+    permEl.title = [preset ? `permission preset: ${preset}` : '', policy ? `approval policy: ${policy}` : '']
+      .filter(Boolean).join(' · ') || 'no permission facts recorded';
+  }
   const spark = $('spark');
   if (spark) spark.title = 'tokens per second (recent activity)';
   if (!state.prices) {
@@ -1683,11 +1840,86 @@ async function applyEvent(ev) {
       state.stats.steps += 1;
       state.stats.turn = ev.turn;
       state.stats.step = ev.step;
+      if (state.currentTurnItem && state.currentTurnItem.turn === ev.turn) state.currentTurnItem.steps += 1;
       if (state.historyDone) renderStats();
       break;
 
+    case 'turn': {
+      const item = {
+        kind: 'turn',
+        turn: ev.turn,
+        steps: 0,
+        usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        cost: 0,
+        startedAt: ev.time || Date.now(),
+        endedAt: null,
+      };
+      state.currentTurnItem = item;
+      chat.log.push(item);
+      scheduleLogRender();
+      break;
+    }
+
+    case 'turnEnd': {
+      const item = state.currentTurnItem && state.currentTurnItem.turn === ev.turn
+        ? state.currentTurnItem
+        : chat.log.filter((x) => x.kind === 'turn' && x.turn === ev.turn).pop();
+      if (item) {
+        item.endedAt = ev.time || Date.now();
+        state.turnCosts.push({ turn: item.turn, cost: item.cost, tokens: tokenTotal(item.usage) });
+        if (state.turnCosts.length > 60) state.turnCosts.shift();
+        drawTurnSpark();
+      }
+      state.currentTurnItem = null;
+      scheduleLogRender();
+      break;
+    }
+
+    case 'route':
+      state.route = { provider: ev.provider, model: ev.model, contextWindow: ev.contextWindow };
+      if (state.session) {
+        state.session.provider = ev.provider;
+        state.session.model = ev.model;
+      }
+      chatLogPush({ kind: 'meta', text: `model ${ev.provider ? ev.provider + '/' : ''}${ev.model || '?'}` });
+      if (state.historyDone) renderStats();
+      break;
+
+    case 'preset':
+      state.preset = ev.preset;
+      chatLogPush({ kind: 'meta', text: `permission preset ${ev.preset || '?'}` });
+      if (state.historyDone) renderStats();
+      break;
+
+    case 'policy':
+      state.policy = ev.policy;
+      chatLogPush({ kind: 'meta', text: `approval policy ${ev.policy || '?'}` });
+      if (state.historyDone) renderStats();
+      break;
+
+    case 'sandbox':
+      state.sandbox = ev.mode;
+      chatLogPush({ kind: 'meta', text: `sandbox ${ev.mode || '?'}` });
+      break;
+
     case 'say': {
-      if (ev.usage) addUsage(ev.usage, ev.time);
+      if (ev.usage) {
+        addUsage(ev.usage, ev.time);
+        if (state.currentTurnItem && state.currentTurnItem.turn === ev.turn) {
+          const u = state.currentTurnItem.usage;
+          u.input += ev.usage.input || 0;
+          u.output += ev.usage.output || 0;
+          u.cacheRead += ev.usage.cacheRead || 0;
+          u.cacheWrite += ev.usage.cacheWrite || 0;
+          const rate = state.prices ? (isPeak(ev.time) ? state.prices.peak : state.prices.offPeak) : null;
+          if (rate) {
+            state.currentTurnItem.cost +=
+              ((ev.usage.input || 0) * rate.cacheMiss +
+                (ev.usage.cacheRead || 0) * rate.cacheHit +
+                (ev.usage.output || 0) * rate.output) / state.prices.unit;
+          }
+        }
+      }
       if (ev.thinking) {
         setActivity('thinking', thinkPreview(ev.thinking), 'chat');
         chatPush({ kind: 'think', text: ev.thinking, agent: ev.agent });
@@ -1845,6 +2077,7 @@ async function applyEvent(ev) {
         label: ev.label,
         startedAt: ev.startedAt || Date.now(),
         kind: ev.kind,
+        callId: ev.callId || null,
       });
       setActivity('running', shortLabel(ev.label), 'console');
       termNote(`▶ job running: ${shortLabel(ev.label)}`, C.amber);
@@ -1872,11 +2105,18 @@ async function applyEvent(ev) {
       if (job) {
         state.runningJobs.delete(ev.jobId);
         const ok = ev.status !== 'failed' && !/\b(failed|exit code: [1-9])/i.test(ev.detail || '');
+        state.finishedJobs.set(ev.jobId, {
+          ...job,
+          callId: ev.callId || job.callId || null,
+          endedAt: Date.now(),
+          ok,
+        });
+        if (state.finishedJobs.size > 20) state.finishedJobs.delete(state.finishedJobs.keys().next().value);
+        updateJobBar();
         termNote(
           `${ok ? '✓' : '✗'} job ${ok ? 'finished' : 'failed'} in ${fmtClock(Date.now() - (job.startedAt || Date.now()))}${ev.detail ? ' · ' + ev.detail : ''}`,
           ok ? C.green : C.red,
         );
-        updateJobBar();
         if (ok) {
           activity.kind = 'thinking';
           activity.startedAt = Date.now();
@@ -1949,6 +2189,14 @@ function resetView() {
   state.pendingCommands.clear();
   state.toolNames.clear();
   state.runningJobs.clear();
+  state.finishedJobs.clear();
+  state.route = null;
+  state.preset = null;
+  state.policy = null;
+  state.sandbox = null;
+  state.turnCosts = [];
+  state.currentTurnItem = null;
+  if (typeof drawTurnSpark === 'function') drawTurnSpark();
   $('jobBar').classList.add('hidden');
   for (const marker of state.termMarkers.values()) {
     try { marker.dispose(); } catch { /* ignore */ }
@@ -2015,6 +2263,7 @@ async function openSession(id) {
   if (state.showHidden) qs.set('hidden', '1');
   const es = new EventSource(`/api/stream?${qs}`);
   state.es = es;
+  try { bindControlStream(es, id); } catch { /* control UI is optional */ }
 
   es.addEventListener('meta', (e) => {
     const data = JSON.parse(e.data);
@@ -2118,7 +2367,12 @@ async function openSession(id) {
     if (Array.isArray(data.jobs)) {
       const next = new Map();
       for (const job of data.jobs) {
-        next.set(job.jobId, { label: job.label, startedAt: job.startedAt, kind: job.kind });
+        next.set(job.jobId, {
+          label: job.label,
+          startedAt: job.startedAt,
+          kind: job.kind,
+          callId: job.callId || state.runningJobs.get(job.jobId)?.callId || null,
+        });
       }
       state.runningJobs = next;
       updateJobBar();
@@ -2256,10 +2510,12 @@ function shortId(id) {
 function sessionOption(s) {
   const title = String(s.title || '').replace(/\s+/g, ' ').trim().slice(0, 60) || s.id.slice(0, 8);
   const ws = s.cwd ? s.cwd.replace(/[\\/]+$/, '').split(/[\\/]/).filter(Boolean).pop() : '';
-  const bits = [`${dotChar(s.state)} ${title}`];
+  const bits = [`${dotChar(s.state)} ${title}${s.owned ? ' ✎' : ''}`];
   if (ws) bits.push(ws);
   bits.push(shortId(s.id));
   bits.push(fmtRelative(s.lastEventAt || s.mtimeMs));
+  if (s.model) bits.push(`${s.provider ? s.provider + '/' : ''}${s.model}`);
+  if (s.preset) bits.push(s.preset);
   if (s.steps !== null && s.steps !== undefined) bits.push(`${s.steps} st`);
   if (s.tokens !== null && s.tokens !== undefined) bits.push(`${fmtInt(s.tokens)} tok`);
   if (s.cost !== null && s.cost !== undefined) bits.push(`$${s.cost.toFixed(3)}`);
@@ -2271,7 +2527,11 @@ function sessionOption(s) {
     s.title || s.id,
     s.cwd || '',
     `id ${s.id}`,
+    s.owned ? 'owned by agenttail (✎)' : (s.source === 'dsh' ? 'started outside agenttail, view only' : ''),
     `state: ${s.state}${s.stateDetail ? ' — ' + s.stateDetail : ''}`,
+    s.model ? `model: ${s.provider ? s.provider + '/' : ''}${s.model}` : '',
+    s.preset ? `permission: ${s.preset}` : '',
+    s.policy ? `approval policy: ${s.policy}` : '',
     s.firstUser ? `first prompt: ${String(s.firstUser).replace(/\s+/g, ' ').slice(0, 300)}` : '',
     s.steps !== null && s.steps !== undefined ? `${s.steps} steps` : '',
     s.tokens !== null && s.tokens !== undefined ? `${s.tokens.toLocaleString('en-US')} tokens` : '',
@@ -2286,7 +2546,11 @@ function sessionFullTitle(s) {
     s.title || s.id,
     s.cwd || '',
     `id ${s.id}`,
+    s.owned ? 'owned by agenttail (✎)' : (s.source === 'dsh' ? 'started outside agenttail, view only' : ''),
     `state: ${s.state}${s.stateDetail ? ' — ' + s.stateDetail : ''}`,
+    s.model ? `model: ${s.provider ? s.provider + '/' : ''}${s.model}` : '',
+    s.preset ? `permission: ${s.preset}` : '',
+    s.policy ? `approval policy: ${s.policy}` : '',
     s.firstUser ? `first prompt: ${String(s.firstUser).replace(/\s+/g, ' ').slice(0, 300)}` : '',
     s.steps !== null && s.steps !== undefined ? `${s.steps} steps` : '',
     s.tokens !== null && s.tokens !== undefined ? `${s.tokens.toLocaleString('en-US')} tokens` : '',
@@ -2304,7 +2568,7 @@ function updateSessionButton() {
   if (s) {
     dot.textContent = dotChar(s.state);
     dot.style.color = s.state === 'live' ? 'var(--green)' : s.state === 'idle' ? 'var(--amber)' : 'var(--muted)';
-    title.textContent = String(s.title || s.id).replace(/\s+/g, ' ').trim() || s.id;
+    title.textContent = `${s.owned ? '✎ ' : ''}${String(s.title || s.id).replace(/\s+/g, ' ').trim() || s.id}`;
     sid.textContent = shortId(s.id);
     $('sessionButton').title = sessionFullTitle(s);
   } else {
@@ -2338,13 +2602,16 @@ function buildSessionMenu(list, emptyCount) {
     const meta = [
       ws,
       shortId(s.id),
+      s.owned ? '✎ owned' : 'view only',
+      s.model ? `${s.provider ? s.provider + '/' : ''}${s.model}` : '',
+      s.preset || '',
       fmtRelative(s.lastEventAt || s.mtimeMs),
       s.steps !== null && s.steps !== undefined ? `${s.steps} st` : '',
       s.tokens !== null && s.tokens !== undefined ? `${fmtInt(s.tokens)} tok` : '',
       s.cost !== null && s.cost !== undefined ? `$${s.cost.toFixed(3)}` : '',
       s.stateDetail || '',
     ].filter(Boolean).join(' · ');
-    addRow(`${dotChar(s.state)} ${s.title || s.id}`, meta, sessionFullTitle(s), () => {
+    addRow(`${dotChar(s.state)} ${s.owned ? '✎ ' : ''}${s.title || s.id}`, meta, sessionFullTitle(s), () => {
       $('sessionSelect').value = s.id;
       $('sessionSelect').dispatchEvent(new Event('change'));
       $('sessionMenu').classList.add('hidden');
@@ -3098,34 +3365,61 @@ function updateRunStatus() {
   }
 }
 
+function jumpToJob(job) {
+  const marker = state.termMarkers.get(job.callId);
+  if (marker && !marker.isDisposed) {
+    try { term.scrollToLine(Math.max(0, marker.line - 1)); } catch { /* ignore */ }
+  } else {
+    try { term.scrollToBottom(); } catch { /* ignore */ }
+  }
+  $('jobsMenu').classList.add('hidden');
+}
+
 function updateJobsChip() {
   const btn = $('activityJobs');
   const menu = $('jobsMenu');
   if (!btn || !menu) return;
-  const jobs = [...state.runningJobs.values()]
-    .map((j) => ({ ...j, elapsed: Date.now() - (j.startedAt || Date.now()) }))
-    .filter((j) => j.elapsed > 120000);
-  if (!jobs.length) {
+  const now = Date.now();
+  const running = [...state.runningJobs.entries()]
+    .map(([jobId, job]) => ({ ...job, jobId, elapsed: now - (job.startedAt || now), state: 'running' }))
+    .sort((a, b) => (a.startedAt || 0) - (b.startedAt || 0));
+  const finished = [...state.finishedJobs.entries()]
+    .map(([jobId, job]) => ({ ...job, jobId, elapsed: (job.endedAt || now) - (job.startedAt || now), state: job.ok ? 'finished' : 'failed' }))
+    .filter((job) => now - (job.endedAt || 0) < 5 * 60_000)
+    .slice(-8)
+    .reverse();
+  if (!running.length && !finished.length) {
     btn.classList.add('hidden');
     menu.classList.add('hidden');
     return;
   }
   btn.classList.remove('hidden');
-  const max = Math.max(...jobs.map((j) => j.elapsed));
-  btn.textContent = `${jobs.length} job${jobs.length === 1 ? '' : 's'} running · ${fmtActivityTime(max)}`;
+  btn.textContent = running.length
+    ? `${running.length} job${running.length === 1 ? '' : 's'} running · ${fmtActivityTime(Math.max(...running.map((j) => j.elapsed)))}`
+    : `${finished.length} recent job${finished.length === 1 ? '' : 's'}`;
   menu.innerHTML = '';
-  for (const job of jobs) {
+  for (const job of [...running, ...finished]) {
     const row = document.createElement('div');
     row.className = 'job';
-    const spin = document.createElement('span');
-    spin.className = 'spinner';
+    row.style.cursor = 'pointer';
+    row.title = 'Jump to this job in the console';
+    const icon = document.createElement('span');
+    if (job.state === 'running') {
+      icon.className = 'spinner';
+    } else {
+      icon.textContent = job.state === 'finished' ? '✓' : '✗';
+      icon.style.color = job.state === 'finished' ? 'var(--green)' : 'var(--red)';
+    }
     const label = document.createElement('span');
     label.className = 'lbl';
-    label.textContent = job.label || 'job';
-    const time = document.createElement('span');
-    time.className = 't';
-    time.textContent = fmtActivityTime(job.elapsed);
-    row.append(spin, label, time);
+    label.textContent = job.label || job.jobId || 'job';
+    const stateText = document.createElement('span');
+    stateText.className = 't';
+    stateText.textContent = job.state === 'running'
+      ? `running · ${fmtActivityTime(job.elapsed)}`
+      : `${job.state} · ${fmtActivityTime(job.elapsed)}`;
+    row.append(icon, label, stateText);
+    row.addEventListener('click', () => jumpToJob(job));
     menu.appendChild(row);
   }
 }
@@ -3578,6 +3872,23 @@ function renderLog() {
       log.appendChild(row);
       continue;
     }
+    if (item.kind === 'turn') {
+      const row = document.createElement('div');
+      row.className = 'log-turn';
+      const tok = tokenTotal(item.usage);
+      const dur = item.startedAt && item.endedAt ? ` · ${fmtActivityTime(item.endedAt - item.startedAt)}` : ' · running';
+      const cost = item.cost > 0 ? ` · $${item.cost.toFixed(4)}` : '';
+      row.textContent = `TURN ${item.turn} · ${item.steps} step${item.steps === 1 ? '' : 's'} · ${fmtInt(tok)} tokens${cost}${dur}`;
+      log.appendChild(row);
+      continue;
+    }
+    if (item.kind === 'meta') {
+      const row = document.createElement('div');
+      row.className = 'log-row log-sys';
+      row.textContent = item.text || '';
+      log.appendChild(row);
+      continue;
+    }
     const row = document.createElement('div');
     row.className = `log-row ${item.kind === 'user' ? 'log-user' : 'log-say'}`;
     renderMarkdown(row, item.text || '');
@@ -3649,5 +3960,534 @@ termObserver.observe($('terminalPane'));
 termObserver.observe($('term'));
 }
 </script>
+<script>
+/* ---------- control (opt-in) ---------- */
+(() => {
+  const TOKEN_KEY = 'agenttail-control-token';
+  // The server prints the token in the URL fragment. Fragments are never sent
+  // to the server, so this is the one place the token appears in the browser.
+  (() => {
+    const match = /^#token=([A-Za-z0-9_-]{20,})$/.exec(location.hash || '');
+    if (!match) return;
+    try { sessionStorage.setItem(TOKEN_KEY, match[1]); } catch { /* ignore */ }
+    history.replaceState(null, '', location.pathname + location.search);
+  })();
+
+  const control = {
+    token: (() => { try { return sessionStorage.getItem(TOKEN_KEY) || ''; } catch { return ''; } })(),
+    enabled: false,
+    locked: false,
+    current: null,
+    approvals: [],
+    queued: false,
+    busy: false,
+    dialogSession: null,
+    dialogCancelled: false,
+    starting: false,
+    lastError: '',
+  };
+
+  const $c = (id) => document.getElementById(id);
+
+  async function controlStatus() {
+    try {
+      const res = await fetch('/api/control/status');
+      if (!res.ok) { control.enabled = false; control.locked = false; return; }
+      const data = await res.json();
+      control.enabled = data.enabled === true;
+      control.locked = data.locked === true || data.streamMode === true;
+    } catch {
+      control.enabled = false;
+    }
+  }
+
+  async function controlFetch(path, options = {}) {
+    const headers = { ...(options.headers || {}) };
+    if (control.token) headers.Authorization = `Bearer ${control.token}`;
+    const res = await fetch(path, { ...options, headers });
+    let data = null;
+    try { data = await res.json(); } catch { data = null; }
+    if (!res.ok) {
+      const err = new Error((data && data.error) || `HTTP ${res.status}`);
+      err.status = res.status;
+      throw err;
+    }
+    return data;
+  }
+
+  function setStatus(message, kind = '') {
+    const el = $c('composerStatus');
+    if (!el) return;
+    el.textContent = message || '';
+    el.className = kind;
+  }
+
+  function updateControlChrome() {
+    const newBtn = $c('newSessionBtn');
+    if (newBtn) newBtn.classList.toggle('hidden', !(control.enabled && !control.locked && !!control.token));
+    const composer = $c('composer');
+    const hint = $c('controlHint');
+    if (!composer || !hint) return;
+
+    const c = control.current;
+    const owned = !!(c && c.owned && c.controllable !== false);
+    const canType = owned && !control.locked && !!control.token;
+
+    composer.classList.toggle('hidden', !canType);
+    let text = '';
+    let kind = '';
+    if (control.enabled && control.locked) {
+      text = 'control disabled in stream mode — this session is view only';
+      kind = 'warn';
+    } else if (control.enabled && c && !c.owned && state.source === 'dsh') {
+      text = 'started outside agenttail, view only';
+    } else if (control.enabled && c && c.owned && c.controllable === false) {
+      text = 'this owned session ended — view only';
+    } else if (control.enabled && !control.token) {
+      text = 'control token missing — reopen the URL printed by the server';
+      kind = 'err';
+    }
+    hint.textContent = text;
+    hint.className = `control-hint${text ? '' : ' hidden'}${kind ? ' ' + kind : ''}`;
+
+    const stop = $c('composerStop');
+    const end = $c('composerEnd');
+    if (stop) stop.disabled = !(canType && c && c.running);
+    if (end) end.disabled = !canType;
+    if (canType) {
+      if (c.running) setStatus('turn running · Stop cancels it · a message sent now will be queued');
+      else if (control.queued) setStatus('queued — sends when the current turn ends');
+      else if (control.lastError) setStatus(control.lastError, 'err');
+      else setStatus('Enter sends · Shift+Enter newline');
+    }
+    const badge = $c('approvalBadge');
+    if (badge) badge.classList.toggle('hidden', control.approvals.length === 0 || control.locked || !control.enabled);
+  }
+
+  function handleControlState(next) {
+    control.current = next || null;
+    control.enabled = !!(next && next.enabled) || control.enabled;
+    control.locked = !!(next && next.locked);
+    if (next && next.owned) {
+      if (next.preset) state.preset = next.preset;
+      if (next.provider || next.model) {
+        state.session = state.session || {};
+        state.session.provider = next.provider || state.session.provider;
+        state.session.model = next.model || state.session.model;
+      }
+      if (next.status === 'closed' || next.status === 'exited') control.approvals = [];
+    }
+    control.queued = !!(next && next.queued);
+    if (next && next.error) control.lastError = next.error;
+    updateControlChrome();
+    renderApproval();
+    if (state.historyDone) renderStats();
+  }
+
+  function bindControlStream(es) {
+    control.current = null;
+    control.approvals = [];
+    control.queued = false;
+    control.lastError = '';
+    updateControlChrome();
+
+    es.addEventListener('meta', (event) => {
+      let data;
+      try { data = JSON.parse(event.data); } catch { return; }
+      if (data && data.control) {
+        if (data.control.enabled === true) control.enabled = true;
+        handleControlState(data.control);
+      } else {
+        control.current = null;
+        updateControlChrome();
+      }
+      renderApproval();
+    });
+    es.addEventListener('control', (event) => {
+      try { handleControlState(JSON.parse(event.data)); } catch { /* ignore */ }
+    });
+    es.addEventListener('approval', (event) => {
+      try { upsertApproval(JSON.parse(event.data)); } catch { /* ignore */ }
+    });
+    es.addEventListener('approvalDone', (event) => {
+      try {
+        const done = JSON.parse(event.data);
+        control.approvals = control.approvals.filter((a) => a.approvalId !== done.approvalId);
+        renderApproval();
+        setStatus(done.decision === 'cancelled' ? 'approval cancelled' : `approval ${done.decision === 'approve' ? 'approved' : 'rejected'}`);
+      } catch { /* ignore */ }
+    });
+    es.addEventListener('controlError', (event) => {
+      try {
+        const err = JSON.parse(event.data);
+        control.lastError = err.message || 'control error';
+        setStatus(control.lastError, 'err');
+      } catch { /* ignore */ }
+    });
+  }
+
+  function upsertApproval(approval) {
+    if (!approval || !approval.approvalId) return;
+    const index = control.approvals.findIndex((a) => a.approvalId === approval.approvalId);
+    if (index >= 0) control.approvals[index] = approval;
+    else control.approvals.push(approval);
+    renderApproval();
+  }
+
+  function approvalText(approval) {
+    if (approval.command) return `$ ${approval.command}`;
+    if (approval.diff) {
+      const path = approval.diff.path || '(file)';
+      const oldLines = String(approval.diff.oldText || '').split('\n').map((line) => `- ${line}`).join('\n');
+      const newLines = String(approval.diff.newText || '').split('\n').map((line) => `+ ${line}`).join('\n');
+      return `${path}\n--- old\n${oldLines}\n+++ new\n${newLines}`;
+    }
+    if (approval.content) return approval.content;
+    if (approval.rawInput) return JSON.stringify(approval.rawInput, null, 2);
+    return approval.title || '(no command details were sent)';
+  }
+
+  function renderApproval() {
+    const panel = $c('approvalPanel');
+    const badge = $c('approvalBadge');
+    updateControlChrome();
+    if (!panel || !badge) return;
+    const approval = control.approvals[0] || null;
+    if (!approval || control.locked || !control.enabled) {
+      panel.classList.add('hidden');
+      badge.classList.add('hidden');
+      return;
+    }
+    $c('approvalTool').textContent = approval.title + (approval.kind ? ` · ${approval.kind}` : '');
+    $c('approvalDetail').textContent = approvalText(approval);
+    panel.classList.remove('hidden');
+    badge.classList.remove('hidden');
+    badge.textContent = control.approvals.length > 1
+      ? `⚠ ${control.approvals.length} APPROVALS`
+      : '⚠ APPROVAL';
+    badge.title = approval.title || 'Approval needed';
+    if (document.activeElement !== $c('approvalReason') && document.activeElement !== $c('composerInput')) {
+      $c('approvalApprove').focus({ preventScroll: true });
+    }
+  }
+
+  async function resolveApproval(decision) {
+    if (control.busy) return;
+    const approval = control.approvals[0];
+    if (!approval) return;
+    const reason = decision === 'reject' ? $c('approvalReason').value.trim() : '';
+    control.busy = true;
+    $c('approvalApprove').disabled = true;
+    $c('approvalReject').disabled = true;
+    try {
+      await controlFetch('/api/control/approval', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: state.sessionId, approvalId: approval.approvalId, decision, reason }),
+      });
+      control.approvals = control.approvals.filter((a) => a.approvalId !== approval.approvalId);
+      $c('approvalReason').value = '';
+      setStatus(decision === 'approve' ? 'approved' : 'rejected');
+    } catch (err) {
+      control.lastError = err.message;
+      setStatus(err.message, 'err');
+    } finally {
+      control.busy = false;
+      $c('approvalApprove').disabled = false;
+      $c('approvalReject').disabled = false;
+      renderApproval();
+    }
+  }
+
+  async function sendMessage() {
+    const input = $c('composerInput');
+    const text = input.value;
+    if (!text.trim()) return;
+    try {
+      const result = await controlFetch('/api/control/message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: state.sessionId, text }),
+      });
+      input.value = '';
+      input.style.height = 'auto';
+      control.queued = !!result.queued;
+      control.lastError = '';
+      setStatus(result.queued ? 'queued — sends when the current turn ends' : 'sent');
+      updateControlChrome();
+    } catch (err) {
+      control.lastError = err.message;
+      setStatus(err.message, 'err');
+    }
+  }
+
+  async function stopTurn() {
+    try {
+      await controlFetch('/api/control/stop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: state.sessionId }),
+      });
+      setStatus('stopping…');
+    } catch (err) {
+      setStatus(err.message, 'err');
+    }
+  }
+
+  async function endSession() {
+    if (!window.confirm('End this owned session? It becomes view-only and its agent process stops.')) return;
+    try {
+      await controlFetch('/api/control/close', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: state.sessionId }),
+      });
+      setStatus('session ended');
+      updateControlChrome();
+    } catch (err) {
+      setStatus(err.message, 'err');
+    }
+  }
+
+  /* ---------- new session dialog ---------- */
+  async function openNewSession() {
+    if (!control.enabled || control.locked) return;
+    const dialog = $c('newSessionDialog');
+    $c('dlgErr').textContent = '';
+    $c('dlgStep').textContent = 'workspace';
+    $c('dlgStep2').classList.add('hidden');
+    $c('dlgContinue').classList.remove('hidden');
+    $c('dlgStart').classList.add('hidden');
+    $c('dlgWorkspace').disabled = false;
+    $c('dlgPreset').disabled = false;
+    $c('dlgDanger').checked = false;
+    $c('dlgDanger').disabled = false;
+    $c('dlgMessage').value = '';
+    $c('dlgModel').innerHTML = '';
+    control.dialogSession = null;
+    control.dialogCancelled = false;
+    control.starting = false;
+    $c('dangerRow').classList.toggle('hidden', $c('dlgPreset').value !== 'danger-full-access');
+    dialog.showModal();
+    try {
+      const data = await controlFetch('/api/control/options');
+      const select = $c('dlgWorkspace');
+      select.innerHTML = '';
+      if (!data.workspaces.length) {
+        const opt = document.createElement('option');
+        opt.value = '';
+        opt.textContent = 'no workspaces configured — add paths to control.json';
+        select.appendChild(opt);
+      } else {
+        for (const workspace of data.workspaces) {
+          const opt = document.createElement('option');
+          opt.value = workspace.path;
+          opt.textContent = workspace.label ? `${workspace.label} — ${workspace.path}` : workspace.path;
+          select.appendChild(opt);
+        }
+      }
+      $c('dlgProfile').textContent = `profile: ${data.dshProfile || 'acp'}`;
+    } catch (err) {
+      $c('dlgErr').textContent = err.message;
+    }
+  }
+
+  async function continueNewSession() {
+    if (!control.enabled || control.locked) return;
+    if (control.dialogSession) return;
+    const cwd = $c('dlgWorkspace').value;
+    const preset = $c('dlgPreset').value;
+    if (!cwd) { $c('dlgErr').textContent = 'choose a workspace from the allowlist'; return; }
+    if (preset === 'danger-full-access' && !$c('dlgDanger').checked) {
+      $c('dlgErr').textContent = 'tick the confirmation to use danger-full-access';
+      return;
+    }
+    $c('dlgErr').textContent = '';
+    control.starting = true;
+    $c('dlgContinue').disabled = true;
+    $c('dlgContinue').textContent = 'Starting dsh…';
+    try {
+      const data = await controlFetch('/api/control/session/begin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cwd, preset, confirmDanger: preset === 'danger-full-access' }),
+      });
+      if (control.dialogCancelled) {
+        await controlFetch('/api/control/close', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: data.session.id }),
+        }).catch(() => {});
+        return;
+      }
+      control.dialogSession = data.session;
+      const modelSelect = $c('dlgModel');
+      modelSelect.innerHTML = '';
+      const groups = new Map();
+      for (const model of data.models || []) {
+        const key = model.provider || 'other';
+        if (!groups.has(key)) {
+          const group = document.createElement('optgroup');
+          group.label = key;
+          groups.set(key, group);
+          modelSelect.appendChild(group);
+        }
+        const opt = document.createElement('option');
+        opt.value = model.value;
+        opt.textContent = model.name || model.model || model.value;
+        groups.get(key).appendChild(opt);
+      }
+      if (modelSelect.options.length) modelSelect.value = data.currentModel || modelSelect.options[0].value;
+      else $c('dlgErr').textContent = 'dsh did not advertise a model for this profile';
+      $c('dlgStep').textContent = 'model + first message';
+      $c('dlgStep2').classList.remove('hidden');
+      $c('dlgWorkspace').disabled = true;
+      $c('dlgPreset').disabled = true;
+      $c('dlgDanger').disabled = true;
+      $c('dlgContinue').classList.add('hidden');
+      $c('dlgStart').classList.remove('hidden');
+      $c('dlgMessage').focus();
+    } catch (err) {
+      $c('dlgErr').textContent = err.message;
+    } finally {
+      control.starting = false;
+      $c('dlgContinue').disabled = false;
+      $c('dlgContinue').textContent = 'Continue →';
+    }
+  }
+
+  async function startNewSession() {
+    if (!control.dialogSession) return;
+    const message = $c('dlgMessage').value;
+    if (!message.trim()) { $c('dlgErr').textContent = 'write the first message'; return; }
+    $c('dlgErr').textContent = '';
+    control.starting = true;
+    $c('dlgStart').disabled = true;
+    $c('dlgStart').textContent = 'Starting…';
+    try {
+      const data = await controlFetch('/api/control/session/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: control.dialogSession.id,
+          model: $c('dlgModel').value,
+          message,
+        }),
+      });
+      const id = data.session.id;
+      control.dialogSession = null;
+      control.starting = false;
+      $c('newSessionDialog').close();
+      state.source = 'dsh';
+      $c('sourceSelect').value = 'dsh';
+      sessionKey = '';
+      loadSessions(false);
+      openSession(id);
+      setStatus('session started — waiting for the first log frame…');
+    } catch (err) {
+      $c('dlgErr').textContent = err.message;
+    } finally {
+      control.starting = false;
+      $c('dlgStart').disabled = false;
+      $c('dlgStart').textContent = 'Start session';
+    }
+  }
+
+  async function closeNewSession() {
+    const dialog = $c('newSessionDialog');
+    control.dialogCancelled = true;
+    if (control.starting && !control.dialogSession) {
+      if (dialog.open) dialog.close();
+      return;
+    }
+    if (control.dialogSession && !control.starting) {
+      try {
+        await controlFetch('/api/control/close', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: control.dialogSession.id }),
+        });
+      } catch { /* best effort */ }
+    }
+    control.dialogSession = null;
+    if (dialog.open) dialog.close();
+  }
+
+  /* ---------- cost-per-turn sparkline ---------- */
+  function drawTurnSpark() {
+    const canvas = $c('turnSpark');
+    if (!canvas) return;
+    const data = state.turnCosts || [];
+    if (!data.length) { canvas.classList.add('hidden'); return; }
+    const costs = data.map((entry) => Number(entry.cost) || 0);
+    const tokens = data.map((entry) => Number(entry.tokens) || 0);
+    const useCost = costs.some((value) => value > 0);
+    const values = useCost ? costs : tokens;
+    const max = Math.max(1e-9, ...values);
+    canvas.classList.remove('hidden');
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeStyle = useCost ? '#37f28a' : '#5ce1e6';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    values.forEach((value, index) => {
+      const x = (index / Math.max(1, values.length - 1)) * (canvas.width - 2) + 1;
+      const y = canvas.height - 2 - (value / max) * (canvas.height - 4);
+      if (index) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+    });
+    ctx.stroke();
+    const last = data[data.length - 1];
+    canvas.title = useCost
+      ? `cost per turn (last ${data.length}): $${Number(last.cost || 0).toFixed(4)}`
+      : `tokens per turn (last ${data.length}): ${fmtInt(Number(last.tokens || 0))} (no price for this model)`;
+  }
+
+  /* ---------- wiring ---------- */
+  $c('newSessionBtn').addEventListener('click', openNewSession);
+  $c('dlgContinue').addEventListener('click', continueNewSession);
+  $c('dlgStart').addEventListener('click', startNewSession);
+  $c('dlgCancel').addEventListener('click', closeNewSession);
+  $c('dlgPreset').addEventListener('change', () => {
+    $c('dangerRow').classList.toggle('hidden', $c('dlgPreset').value !== 'danger-full-access');
+  });
+  $c('newSessionDialog').addEventListener('cancel', (event) => {
+    event.preventDefault();
+    closeNewSession();
+  });
+
+  $c('composerSend').addEventListener('click', sendMessage);
+  $c('composerStop').addEventListener('click', stopTurn);
+  $c('composerEnd').addEventListener('click', endSession);
+  $c('composerInput').addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      sendMessage();
+    }
+  });
+  $c('composerInput').addEventListener('input', () => {
+    const input = $c('composerInput');
+    input.style.height = 'auto';
+    input.style.height = `${Math.min(150, input.scrollHeight)}px`;
+  });
+
+  $c('approvalApprove').addEventListener('click', () => resolveApproval('approve'));
+  $c('approvalReject').addEventListener('click', () => resolveApproval('reject'));
+  $c('approvalReason').addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') { event.preventDefault(); resolveApproval('reject'); }
+  });
+  $c('approvalBadge').addEventListener('click', (event) => {
+    event.stopPropagation();
+    $c('approvalPanel').scrollIntoView({ block: 'nearest' });
+    $c('approvalApprove').focus();
+  });
+
+  window.bindControlStream = bindControlStream;
+  window.drawTurnSpark = drawTurnSpark;
+  window.__control = { state: control, status: controlStatus, drawTurnSpark };
+  controlStatus().then(() => updateControlChrome());
+  drawTurnSpark();
+})();
+</script>
+
 </body>
 </html>

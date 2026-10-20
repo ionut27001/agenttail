@@ -2,20 +2,64 @@
 
 ## Local only
 
-agenttail binds to `127.0.0.1` only. It has no authentication because it is not
-reachable from the network. Keep it that way: do not put it behind a reverse
+agenttail binds to `127.0.0.1` only. Read-only endpoints have no authentication
+because they are not reachable from the network. Control is different: see
+below. Keep the bind address as it is: do not put agenttail behind a reverse
 proxy, port-forward it, or change the bind address.
 
 Every request must carry a `Host` header of exactly `127.0.0.1:<port>` or
 `localhost:<port>`; anything else receives `403`. POST requests must also carry
 an `Origin` matching that exact Host and `Content-Type: application/json`.
-Together these block DNS rebinding and cross-site request forgery.
+Together these block DNS rebinding and cross-site request forgery. Control
+POSTs add a bearer token on top of those checks.
 
-## Read-only
+## Read-only by default
 
-The server reads session logs and workspace files. It never writes to session
-stores, transcripts or workspace files. Its only writes are the local nickname
-file and optional configuration files in the agenttail config directory.
+Without `--allow-control` the server reads session logs and workspace files. It
+never writes to session stores, transcripts or workspace files. Its only writes
+are the local nickname file and optional configuration files in the agenttail
+config directory.
+
+With `--allow-control`, agenttail can start **its own** DeepSeek Harness
+sessions through `dsh --profile acp`. Those sessions write ordinary dsh logs and
+may edit the chosen workspace; that is the point of control. Sessions started by
+the Desktop app or another process are never attached to and stay view-only.
+
+## Control (opt-in)
+
+- **Opt-in.** No control endpoint exists unless the server starts with
+  `--allow-control`; without the flag every `/api/control/*` request is `404`.
+- **Session token.** On start the server generates 32 random bytes (base64url)
+  and prints `http://127.0.0.1:<port>/#token=…`. The fragment is not sent in
+  HTTP requests or `Referer`. Every control POST requires
+  `Authorization: Bearer <token>` in addition to Host/Origin/Content-Type.
+  Missing or wrong tokens receive `401`. Tokens are regenerated on each start.
+- **Stream mode lockout.** Stream mode is on by default. While it is on, the
+  input box and approval buttons are hidden and control endpoints return `403`,
+  so a stream can never be used to drive an agent. Use `--no-stream-mode` only
+  when you actually need to type into an agent.
+- **No auto-approve.** agenttail never approves anything by itself. An approval
+  is a user click; rejecting accepts an optional short reason. dsh remains the
+  permission authority.
+- **Permission presets.** The default is `workspace-write` (sandboxed, approval
+  policy `ask`). `read-only` is available. `danger-full-access` removes the
+  sandbox and is available only after an explicit confirmation in the New
+  Session dialog. It cannot be selected by a plain API call without
+  `confirmDanger: true`.
+- **Workspace allowlist.** Controlled sessions can only start in directories
+  listed in `control.json`, and only those directories are offered in the New
+  Session dialog. `roots.json` is a read allowlist and is not reused for
+  write-capable sessions.
+- **Audit log.** Every control action (`start`, `message`, `approve`, `reject`,
+  `stop`, `close`) is appended to `control-audit.log` in the per-user config
+  directory with a timestamp and the owned session id. Message bodies are never
+  written; a message entry records only its length and whether it was queued.
+- **Stream-mode privacy.** Because control is disabled in stream mode, approval
+  payloads (which can contain commands and diffs) are never sent to a stream
+  session.
+
+The control URL is a secret. Anyone who can read it can drive the sessions
+agenttail owns. Prefer a scratch workspace and a narrow `control.json`.
 
 ## Stream mode
 
@@ -33,7 +77,8 @@ agenttail collects **no** telemetry, analytics or crash reports. It makes **no**
 network requests: it only reads local session logs and serves them on
 `127.0.0.1`. All frontend libraries and fonts are vendored under
 `public/vendor/`; the page loads nothing from a CDN. Nothing leaves your
-machine.
+machine. The only exception is the agent itself: a controlled dsh session may
+call its configured model provider, exactly as a normal dsh session does.
 
 ## Reporting a vulnerability
 

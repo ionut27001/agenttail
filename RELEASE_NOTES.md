@@ -1,3 +1,33 @@
+# agenttail v0.2.0
+
+**Opt-in control for DeepSeek Harness, plus a deeper read side.** The default is
+still a local, read-only viewer; control is off unless you pass
+`--allow-control --no-stream-mode`.
+
+## Highlights
+
+- Start and own `dsh --profile acp` sessions: workspace allowlist, live model
+  catalog (including custom providers such as Ollama), permission preset and a
+  first message.
+- Message input with queueing, exact-command approval cards, reject reason,
+  Stop and End, all backed by ACP permissions and cancellation.
+- Owned sessions are marked ✎; sessions started elsewhere stay view-only.
+- Read side: model/provider, permission preset and approval-policy history,
+  per-turn tokens and cost in Log, a cost-per-turn sparkline, and a background
+  job list that jumps to console output.
+- Security: per-start bearer token, `--allow-control` gate, stream-mode lockout,
+  no auto-approve, workspace allowlist and an audit log without message bodies.
+- New `control` test suite; all existing suites still pass.
+
+## Compatibility
+
+- Same Node 24+ requirement and `~/.dsh/sessions` layout.
+- Control needs an `acp` dsh profile (created on first use by dsh) and a
+  `control.json` workspace allowlist.
+- Existing read-only usage is unchanged: no flag, no control endpoints.
+
+---
+
 # agenttail v0.1.0
 
 **tail -f for AI coding agents.** A local, read-only live viewer for DeepSeek Harness, Claude Code and Antigravity CLI sessions.

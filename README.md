@@ -7,10 +7,10 @@
 
 <h1 align="center">agenttail</h1>
 
-<p align="center"><b>tail -f for AI coding agents</b> — one live, read-only dashboard for DeepSeek Harness, Claude Code and Antigravity sessions.</p>
+<p align="center"><b>tail -f for AI coding agents</b> — one live dashboard for DeepSeek Harness, Claude Code and Antigravity sessions, with opt-in control for dsh.</p>
 
 <p align="center">
-  <a href="https://github.com/ionut27001/agenttail/releases"><img alt="release" src="https://img.shields.io/badge/release-v0.1.0-37f28a.svg"></a>
+  <a href="https://github.com/ionut27001/agenttail/releases"><img alt="release" src="https://img.shields.io/badge/release-v0.2.0-37f28a.svg"></a>
   <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-37f28a.svg"></a>
   <a href="https://nodejs.org/"><img alt="node" src="https://img.shields.io/badge/node-%3E%3D24-339933.svg"></a>
   <a href="#quick-start"><img alt="platform" src="https://img.shields.io/badge/platform-Windows%20tested-0078D6.svg"></a>
@@ -28,10 +28,10 @@
   <img src="docs/hero.gif" width="100%" alt="agenttail dashboard: editor typing, console, agent chat and activity bar">
 </p>
 
-agenttail follows the session logs your coding agent already writes and turns them into one calm dashboard: the file being edited, the command being run, the agent chat, and the activity state — live. It never writes to your agent's session store, workspace or transcripts.
+agenttail follows the session logs your coding agent already writes and turns them into one calm dashboard: the file being edited, the command being run, the agent chat, and the activity state — live. By default it is read-only and never writes to your agent's session store, workspace or transcripts. With the opt-in `--allow-control` flag it can also start and drive its own DeepSeek Harness sessions.
 
 > [!NOTE]
-> Read-only, localhost only, no telemetry. agenttail is an independent project, not affiliated with DeepSeek, Anthropic or Google.
+> Read-only by default; control is opt-in and token-protected. Localhost only, no telemetry. agenttail is an independent project, not affiliated with DeepSeek, Anthropic or Google.
 
 ## What it is
 
@@ -88,6 +88,7 @@ Requirements: Node 24+, Windows, macOS or Linux. Windows is the tested platform;
 - 📊 **Meters and layout** — CPU, RAM, GPU, steps, tokens, throughput and estimated cost; dockable console/chat, collapsible rails and 90/100/115/130% UI scale (115% on wide fresh profiles).
 - ⏪ **Replay** — finished sessions replay through the same pipeline, typing animation included, at a chosen speed.
 - 🔒 **Stream mode** — server-side redaction with fail-closed behaviour; add your own rules in `redact.json`.
+- 🎛️ **Control (opt-in)** — start an owned dsh session in an allowlisted folder, send messages, approve or reject commands, stop a turn, and see the model/provider and permission preset. View-only sessions stay read-only.
 
 <table>
   <tr>
@@ -162,14 +163,46 @@ Stream mode is **on by default**. Redaction happens on the server before anythin
 
 Replacement is length-preserving (`▓`) where possible. If redaction throws, the event is **dropped** (`fail closed`); it is never sent raw. Add literals or regexes in `redact.json`, then verify the result before sharing anything.
 
+## Control (opt-in)
+
+Control is **off by default**. Start with `--allow-control` to let agenttail start and own DeepSeek Harness sessions through `dsh --profile acp`:
+
+```bash
+npx agenttail --allow-control --no-stream-mode
+```
+
+The server prints a URL with a random 32-byte token in the fragment:
+
+```
+http://127.0.0.1:8787/#token=…
+```
+
+Every control POST needs `Authorization: Bearer <token>` in addition to the existing Host, Origin and Content-Type checks. Keep the URL private; anyone who can read it can drive the sessions agenttail owns. The token is regenerated on every start.
+
+**Stream mode locks control out.** Stream mode is on by default, so `--allow-control` alone shows a "control disabled in stream mode" hint and refuses control requests with `403`. Use `--no-stream-mode` only when you actually need to type into an agent.
+
+**What control does**
+
+- **New session** — pick an allowlisted workspace, a permission preset (`workspace-write` by default, `read-only`, or `danger-full-access` with an explicit confirmation), a model from the live dsh catalog (including custom providers such as Ollama configured in the ACP profile), and a first message.
+- **Input** — Enter sends; Shift+Enter adds a newline. A message sent during a running turn is queued and sent when that turn ends.
+- **Approvals** — the exact command or diff appears in the chat and the activity bar, with Approve and Reject. Reject accepts an optional short reason. agenttail never auto-approves.
+- **Stop** — cancels the running turn and kills the tool process. **End** closes the owned session; it becomes view-only.
+- **Owned vs view-only** — sessions started by agenttail are marked ✎. Sessions started by the Desktop app or another process are view-only: dsh does not expose a live attach surface, and a second process cannot resume an active session (`session … is already owned by an active write handle`).
+
+Sessions started by agenttail are ordinary dsh sessions under `~/.dsh/sessions`; after agenttail stops they remain visible as view-only sessions. The dsh log is still the read side's source of truth: model/provider, permission preset, approval-policy changes, per-turn tokens and cost, and background jobs come from the log.
+
+Risks in plain words: control starts a coding agent that can run commands and edit files in the chosen workspace. The permission preset is enforced by dsh, not by agenttail. `workspace-write` is the default, but it is still a write-capable agent; review approvals. `danger-full-access` removes the sandbox and is available only through an explicit confirmation. Prefer a scratch folder and a narrow `control.json` allowlist.
+
 ## Security and privacy
 
-- **Read-only.** Session logs, transcripts and workspace files are only read. The only writes are local nicknames and optional config files in the per-user config directory.
-- **Localhost only.** The server binds to `127.0.0.1`; there is no remote listener and no authentication.
+- **Read-only by default.** Without `--allow-control` the server only reads session logs, transcripts and workspace files; its only writes are local nicknames and optional config files in the per-user config directory. Control is opt-in and starts its own dsh sessions; the Desktop app's sessions are never attached to.
+- **Localhost only.** The server binds to `127.0.0.1`; there is no remote listener. Read-only endpoints have no authentication; control endpoints require the per-start token.
 - **DNS rebinding blocked.** Every request must carry `Host: 127.0.0.1:<port>` or `Host: localhost:<port>`, otherwise `403`.
-- **CSRF blocked.** POST requests require an `Origin` matching the exact Host and `Content-Type: application/json`, otherwise `403` before the body is read.
+- **CSRF blocked.** POST requests require an `Origin` matching the exact Host and `Content-Type: application/json`, otherwise `403` before the body is read. Control POSTs additionally require `Authorization: Bearer <token>`.
+- **Control locked in stream mode.** With stream mode on (the default), the input box and approval buttons are hidden and control requests return `403`.
+- **No auto-approve.** Every approval is a human click; the dsh permission preset is the enforcement boundary.
 - **No telemetry.** agenttail collects no analytics, crash reports or usage data.
-- **No external requests.** Monaco, xterm.js and JetBrains Mono are vendored under `public/vendor/` with their licenses. The page loads no CDN and works offline.
+- **No external requests from agenttail.** Monaco, xterm.js and JetBrains Mono are vendored under `public/vendor/` with their licenses. The page loads no CDN and works offline. A controlled dsh session may call its configured model provider, just like a normal dsh session.
 
 See [SECURITY.md](SECURITY.md) for vulnerability reporting and the full privacy statement.
 
@@ -183,7 +216,7 @@ Configuration lives in a per-user directory, never in the repo:
 | Windows | `%APPDATA%\agenttail\` |
 | macOS / Linux | `~/.config/agenttail/` (or `$XDG_CONFIG_HOME/agenttail/`) |
 
-Files: `roots.json`, `redact.json` and `nicknames.json`. Copy [roots.example.json](roots.example.json) and [redact.example.json](redact.example.json) there to start.
+Files: `roots.json`, `redact.json`, `nicknames.json` and (when control is used) `control.json` plus `control-audit.log`. Copy [roots.example.json](roots.example.json), [redact.example.json](redact.example.json) and [control.example.json](control.example.json) there to start.
 
 `roots.json` is the read-only allowlist for extra workspaces and the tree ignore list:
 
@@ -197,6 +230,21 @@ Files: `roots.json`, `redact.json` and `nicknames.json`. Copy [roots.example.jso
 
 The session workspace is always allowed. Junctions/symlinks are followed only when their real target is an allowed root; otherwise they are listed but not expanded. `as` maps an allowed root back into the workspace tree, and `..`, unrelated absolute paths, UNC paths and symlink escapes get `403`. Tree nodes carry an opaque key so redacted display names still open files. Paths the session touched are injected even when the breadth-first walk hits its node/depth budget. `ignore` supports exact names and `*` suffix prefix matching; **show hidden files** in the `⋯` menu re-fetches the tree.
 
+`control.json` is the write-capable workspace allowlist for sessions agenttail starts. Only paths listed here can be chosen in the New Session dialog:
+
+```json
+{
+  "workspaces": [
+    "E:\\dev\\scratch"
+  ],
+  "dshProfile": "acp",
+  "dshHome": "C:\\Users\\you\\.dsh",
+  "maxSessions": 8
+}
+```
+
+`dshProfile` defaults to `acp`; `dshHome` and `patch` are optional. A custom provider such as Ollama must be configured in that ACP profile (or passed as a `patch` overlay) before it appears in the model picker. `workspaces` is the only required field.
+
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `PORT` | `8787` | HTTP port, bound to `127.0.0.1` |
@@ -204,6 +252,8 @@ The session workspace is always allowed. Junctions/symlinks are followed only wh
 | `AGENTTAIL_ROOTS_FILE` | `<config>/roots.json` | Allowlisted roots and ignore list |
 | `AGENTTAIL_REDACT_FILE` | `<config>/redact.json` | Extra redaction literals/patterns |
 | `AGENTTAIL_NICKNAMES_FILE` | `<config>/nicknames.json` | Local display nicknames |
+| `AGENTTAIL_CONTROL_FILE` | `<config>/control.json` | Workspace allowlist for owned sessions |
+| `AGENTTAIL_CONTROL_AUDIT_FILE` | `<config>/control-audit.log` | Control audit log (timestamp, action, session id; no message bodies) |
 | `AGENTTAIL_POLL_MS` | `700` | Log poll interval |
 | `AGENTTAIL_STREAM_MODE` | `on` | Set `off` to disable redaction (not recommended) |
 | `DSH_SESSIONS_ROOT` | `~/.dsh/sessions` | DeepSeek Harness session root |
@@ -211,7 +261,7 @@ The session workspace is always allowed. Junctions/symlinks are followed only wh
 | `ANTIGRAVITY_ROOT` | `~/.gemini/antigravity` | Antigravity transcripts |
 | `AGENTTAIL_NO_OPEN` | unset | Set `1` to skip opening the browser |
 
-`--no-open` and `--no-stream-mode` are accepted on the command line.
+`--allow-control`, `--no-open` and `--no-stream-mode` are accepted on the command line.
 
 </details>
 
@@ -248,17 +298,20 @@ Each source adapter tail-decodes its log and maps it to a common event shape (`s
 <summary><b>Development and limits</b></summary>
 
 ```bash
-npm test                 # smoke, roots, redaction, sources and headless Edge UI suites
+npm test                 # smoke, roots, redaction, sources, control and headless Edge UI suites
 node scripts/demo-session.mjs --play   # synthetic demo (no real data)
 node scripts/capture.mjs               # regenerate docs assets
 ```
 
 The test suites use temporary synthetic fixtures only. The UI suite drives Edge through the DevTools protocol; set `EDGE_PATH` if Edge is not in its default location. Dev-only tools (`esbuild`, `postject`, `gifenc`, `pngjs`) are used for the release build and asset capture; the runtime has no dependencies.
 
+The control design and the dsh ACP evidence are recorded in [docs/dev/input-design.md](docs/dev/input-design.md).
+
 - `smoke` — dsh API/SSE, live/idle/finished states, stale-mtime growth, hysteresis, system user classification, nicknames, job output, sorting, source counts, sys samples, Host/Origin/Content-Type checks.
 - `roots` — allowlisted roots, junction follow/deny, opaque keys, traversal, touched deep paths, ignore list/show-hidden.
 - `redact` — every redaction category, IP:port/UUID/opaque-id rules, network boundaries, live `redact.json`, fail-closed and off mode.
 - `sources` — Claude custom titles/subagents/thinking/pending live, Antigravity normalization, tokens, deletes and live tail.
+- `control` — opt-in gate (404), token (401), stream-mode lockout (403), foreign Origin (403), ACP start/message/approve/stop/close, queueing, audit-without-bodies.
 - `ui` — headless Edge: header, compact picker, meters, activity states, follow, tree legend/tooltips/show-hidden, skeleton/loading bar, chat Chat|Log and grouped tools, replay, splitter persistence, vendored assets, reduced motion and 900/720 px layouts.
 
 Build a standalone Windows exe and the package/portable archives with `node scripts/build-sea.mjs`. Artifacts go to `dist/` (git-ignored).
@@ -266,6 +319,8 @@ Build a standalone Windows exe and the package/portable archives with `node scri
 ### Limits
 
 - Only the newest sessions per source are listed (60 dsh/Claude, 40 Antigravity).
+- Control starts one `dsh --profile acp` process per owned session, because the permission preset is process-level in dsh. ACP is automation-only: no plans, commands, terminals or client filesystem operations.
+- Sessions started outside agenttail are view-only; dsh rejects a second controller for an active session.
 - The tree is a snapshot (2,500 nodes, 12 levels); files created later appear when touched if their parent is known.
 - Peak/off-peak pricing ignores public holidays; GPU metering needs `nvidia-smi`.
 - Windows is tested. macOS and Linux are untested. The Windows exe is unsigned, so SmartScreen may warn.

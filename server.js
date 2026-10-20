@@ -16,10 +16,12 @@ const fsp = fs.promises;
 const path = require('node:path');
 const os = require('node:os');
 const zlib = require('node:zlib');
+const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
 const { Roots } = require('./lib/roots');
 const { Redactor, safeRedact } = require('./lib/redact');
 const { keyFor, relativeInside, isInside } = require('./lib/util');
+const { ControlManager, PRESETS, DEFAULT_PRESET, MAX_MESSAGE } = require('./lib/control');
 const claude = require('./lib/claude');
 const antigravity = require('./lib/antigravity');
 const { deletionsFromCommand } = require('./lib/deletes');
@@ -65,6 +67,18 @@ const MAX_EVENTS = 40000; // per session, in memory
 // Stream mode is on unless the operator starts the server with --no-stream-mode.
 const STREAM_MODE = !ARGS.includes('--no-stream-mode') && envValue('STREAM_MODE') !== 'off';
 
+// Control is opt-in. Without --allow-control no control endpoint exists at all.
+const ALLOW_CONTROL = ARGS.includes('--allow-control');
+const CONTROL_FILE = envValue('CONTROL_FILE') || path.join(CONFIG_DIR, 'control.json');
+const CONTROL_AUDIT_FILE = envValue('CONTROL_AUDIT_FILE') || path.join(CONFIG_DIR, 'control-audit.log');
+const CONTROL_TOKEN = ALLOW_CONTROL ? crypto.randomBytes(32).toString('base64url') : null;
+const CONTROL_TOKEN_HASH = CONTROL_TOKEN
+  ? crypto.createHash('sha256').update(CONTROL_TOKEN).digest()
+  : null;
+const control = ALLOW_CONTROL
+  ? new ControlManager({ configPath: CONTROL_FILE, auditPath: CONTROL_AUDIT_FILE })
+  : null;
+
 const SOURCE_DEFS = [
   { key: 'dsh', label: 'dsh', description: 'DeepSeek Harness session logs' },
   { key: 'claude', label: 'Claude Code', description: '~/.claude/projects transcripts (with subagents)' },
@@ -72,6 +86,11 @@ const SOURCE_DEFS = [
 ];
 
 let sourceCache = { at: 0, data: null };
+
+/** Desktop sessions use `session-<uuid>`; ACP-created sessions use a bare uuid. */
+function isSessionId(id) {
+  return /^(?:session-)?[0-9a-fA-F-]{8,64}$/.test(String(id || ''));
+}
 
 async function sourcesPayload() {
   if (sourceCache.data && Date.now() - sourceCache.at < 10_000) return sourceCache.data;
@@ -288,7 +307,7 @@ async function listSessions() {
       continue;
     }
     for (const sd of sessionDirs) {
-      if (!sd.isDirectory() || !sd.name.startsWith('session-')) continue;
+      if (!sd.isDirectory() || !isSessionId(sd.name)) continue;
       const dir = path.join(wsPath, sd.name);
       const logPath = path.join(dir, 'session.v4.jsonl.zstd');
       let st;
@@ -331,6 +350,12 @@ async function listSessions() {
       steps: analysis ? analysis.steps : null,
       tokens: analysis ? analysis.tokens : null,
       cost: analysis ? analysis.cost : null,
+      model: analysis ? analysis.model : null,
+      provider: analysis ? analysis.provider : null,
+      preset: analysis ? analysis.preset : null,
+      policy: analysis ? analysis.policy : null,
+      sandbox: analysis ? analysis.sandbox : null,
+      owned: !!(ALLOW_CONTROL && control && control.has(rec.id)),
       live: state === 'live',
     };
   }));
@@ -340,7 +365,7 @@ async function listSessions() {
 }
 
 async function findSessionById(id) {
-  if (!/^session-[0-9a-fA-F-]{8,64}$/.test(id || '')) return null;
+  if (!isSessionId(id)) return null;
   const sessions = await listSessions();
   const hit = sessions.find((s) => s.id === id);
   if (!hit) return null;
@@ -922,6 +947,24 @@ function projectEvent(ev) {
     case 'approval/decided':
       return { ...base, t: 'approvalDone', outcome: d.outcome };
 
+    case 'approval/policy':
+      return { ...base, t: 'policy', policy: d.policy || null };
+
+    case 'permission/preset':
+      return { ...base, t: 'preset', preset: d.preset || null };
+
+    case 'sandbox/mode':
+      return { ...base, t: 'sandbox', mode: d.mode || null };
+
+    case 'request/context':
+      return {
+        ...base,
+        t: 'route',
+        provider: d.provider || null,
+        model: d.model || null,
+        contextWindow: Number.isFinite(d.contextWindow) ? d.contextWindow : null,
+      };
+
     case 'turn/start':
       return { ...base, t: 'turn', turn: d.turn };
 
@@ -954,6 +997,7 @@ function statusFor(stream) {
           label: redactor.text(j.label),
           startedAt: j.startedAt,
           kind: j.kind,
+          callId: j.callId || null,
         }))
       : [],
   };
@@ -985,7 +1029,7 @@ async function findSession(source, id) {
   const key = source || 'dsh';
   if (!id) return null;
   if (key === 'dsh') {
-    if (!/^session-[0-9a-fA-F-]{8,64}$/.test(id)) return null;
+    if (!isSessionId(id)) return null;
   } else if (!/^[A-Za-z0-9._-]{3,128}$/.test(id)) {
     return null;
   }
@@ -1000,6 +1044,66 @@ function sseWrite(res, event, data) {
   } catch {
     /* client vanished */
   }
+}
+
+/** Capability snapshot for the browser; never contains the token. */
+function controlDescriptor(record) {
+  if (!ALLOW_CONTROL || !control) return null;
+  const base = {
+    enabled: true,
+    locked: STREAM_MODE,
+    source: record.source,
+    presets: PRESETS,
+    defaultPreset: DEFAULT_PRESET,
+  };
+  if (record.source !== 'dsh') return { ...base, owned: false, viewOnly: true, reason: 'source' };
+  const session = control.sessions.get(record.id);
+  if (!session) return { ...base, owned: false, viewOnly: true, reason: 'external' };
+  return { ...base, ...session.statePayload() };
+}
+
+function safeApproval(approval) {
+  if (!approval) return approval;
+  const diff = approval.diff
+    ? {
+        path: approval.diff.path ? redactor.text(approval.diff.path) : null,
+        oldText: redactor.text(approval.diff.oldText || ''),
+        newText: redactor.text(approval.diff.newText || ''),
+      }
+    : null;
+  const raw = approval.rawInput && typeof approval.rawInput === 'object'
+    ? Object.fromEntries(Object.entries(approval.rawInput).map(([key, value]) => [
+        key,
+        typeof value === 'string' ? redactor.text(value) : value,
+      ]))
+    : null;
+  return {
+    ...approval,
+    title: redactor.text(approval.title),
+    command: redactor.text(approval.command),
+    content: redactor.text(approval.content),
+    diff,
+    rawInput: raw,
+  };
+}
+
+function authorizedControl(req) {
+  const header = String(req.headers.authorization || '');
+  const match = /^Bearer\s+([A-Za-z0-9_-]{20,})$/.exec(header);
+  if (!match || !CONTROL_TOKEN_HASH) return false;
+  const digest = crypto.createHash('sha256').update(match[1]).digest();
+  return digest.length === CONTROL_TOKEN_HASH.length
+    && crypto.timingSafeEqual(digest, CONTROL_TOKEN_HASH);
+}
+
+async function waitForSessionRecord(id, timeoutMs = 8000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const record = await findSessionById(id);
+    if (record) return record;
+    await new Promise((resolve) => setTimeout(resolve, 120));
+  }
+  return null;
 }
 
 async function serveStream(req, res, record, options = {}) {
@@ -1026,6 +1130,10 @@ async function serveStream(req, res, record, options = {}) {
     : { state: stream.live ? 'live' : 'finished', stateDetail: '' };
   stream.live = initialState.state === 'live';
 
+  const controlSession = ALLOW_CONTROL && control && record.source === 'dsh'
+    ? control.sessions.get(record.id)
+    : null;
+
   sseWrite(res, 'meta', {
     session: {
       id: record.id,
@@ -1038,12 +1146,25 @@ async function serveStream(req, res, record, options = {}) {
       mtimeMs: record.mtimeMs,
       state: initialState.state,
       stateDetail: redactor.text(initialState.stateDetail),
+      model: record.model || null,
+      provider: record.provider || null,
+      preset: record.preset || null,
+      policy: record.policy || null,
+      sandbox: record.sandbox || null,
+      owned: record.owned === true,
     },
     streamSafe: redactor.enabled,
     prices: record.source === 'dsh' ? PRICES : null,
     pollMs: POLL_MS,
     historyCount: stream.events.length,
+    control: controlDescriptor(record),
   });
+
+  // Live control side channel: approvals and run state only. Commands,
+  // messages and results are still rendered from the dsh log.
+  if (controlSession) {
+    for (const approval of controlSession.pendingApprovals()) sseWrite(res, 'approval', safeApproval(approval));
+  }
 
   sseWrite(res, 'tree', await treePayload(record, stream, { showHidden: options.showHidden === true }));
 
@@ -1064,9 +1185,21 @@ async function serveStream(req, res, record, options = {}) {
   const onReset = () => {
     sseWrite(res, 'reset', { at: Date.now() });
   };
+  const onControl = (state) => sseWrite(res, 'control', state);
+  const onApproval = (approval) => sseWrite(res, 'approval', safeApproval(approval));
+  const onApprovalUpdate = (approval) => sseWrite(res, 'approval', safeApproval(approval));
+  const onApprovalDone = (done) => sseWrite(res, 'approvalDone', done);
+  const onControlError = (err) => sseWrite(res, 'controlError', { message: redactor.text(String(err.message || err)) });
   stream.addEventListener('event', onEvent);
   stream.addEventListener('status', onStatus);
   stream.addEventListener('reset', onReset);
+  if (controlSession) {
+    controlSession.on('state', onControl);
+    controlSession.on('approval', onApproval);
+    controlSession.on('approval-update', onApprovalUpdate);
+    controlSession.on('approval-done', onApprovalDone);
+    controlSession.on('error', onControlError);
+  }
   sysMonitor.start(onSys);
 
   const heartbeat = setInterval(() => {
@@ -1079,6 +1212,13 @@ async function serveStream(req, res, record, options = {}) {
     stream.removeEventListener('event', onEvent);
     stream.removeEventListener('status', onStatus);
     stream.removeEventListener('reset', onReset);
+    if (controlSession) {
+      controlSession.removeListener('state', onControl);
+      controlSession.removeListener('approval', onApproval);
+      controlSession.removeListener('approval-update', onApprovalUpdate);
+      controlSession.removeListener('approval-done', onApprovalDone);
+      controlSession.removeListener('error', onControlError);
+    }
     stream.refs = Math.max(0, stream.refs - 1);
     if (stream.refs === 0) {
       clearTimeout(stream.idleTimer);
@@ -1194,6 +1334,98 @@ const CSP = [
   "form-action 'none'",
 ].join('; ');
 
+async function handleControlOptions(res) {
+  if (STREAM_MODE) {
+    sendJson(res, 403, { error: 'control disabled in stream mode' });
+    return;
+  }
+  const config = await control.config.load();
+  sendJson(res, 200, {
+    workspaces: config.workspaces.map((workspace) => ({
+      path: workspace.path,
+      label: workspace.label,
+    })),
+    presets: PRESETS,
+    defaultPreset: DEFAULT_PRESET,
+    dshProfile: config.dshProfile,
+  });
+}
+
+async function handleControlPost(req, res, p) {
+  if (STREAM_MODE) {
+    sendJson(res, 403, { error: 'control disabled in stream mode' });
+    return;
+  }
+  if (!authorizedControl(req)) {
+    res.setHeader('WWW-Authenticate', 'Bearer');
+    sendJson(res, 401, { error: 'missing or invalid control token' });
+    return;
+  }
+  let body;
+  try {
+    body = await readJsonBody(req, 64 * 1024);
+  } catch (err) {
+    sendJson(res, 400, { error: String(err.message || err) });
+    return;
+  }
+  try {
+    if (p === '/api/control/session/begin') {
+      const result = await control.begin({
+        cwd: body.cwd,
+        preset: body.preset,
+        confirmDanger: body.confirmDanger === true,
+      });
+      sendJson(res, 200, result);
+      return;
+    }
+    if (p === '/api/control/session/start') {
+      const id = String(body.id || '');
+      const message = String(body.message ?? '');
+      if (!message.trim()) {
+        sendJson(res, 400, { error: 'first message is required' });
+        return;
+      }
+      if (message.length > MAX_MESSAGE) {
+        sendJson(res, 413, { error: 'message is too large' });
+        return;
+      }
+      const result = await control.startFirst(id, { model: body.model, message });
+      sendJson(res, 200, result);
+      return;
+    }
+    if (p === '/api/control/message') {
+      const result = await control.message(String(body.id || ''), String(body.text ?? ''));
+      sendJson(res, 200, result);
+      return;
+    }
+    if (p === '/api/control/approval') {
+      const decision = String(body.decision || '');
+      const reason = body.reason === undefined || body.reason === null ? '' : String(body.reason).slice(0, 500);
+      const result = await control.approval(
+        String(body.id || ''),
+        String(body.approvalId || ''),
+        decision,
+        reason,
+      );
+      sendJson(res, 200, result);
+      return;
+    }
+    if (p === '/api/control/stop') {
+      const result = await control.stop(String(body.id || ''));
+      sendJson(res, 200, result);
+      return;
+    }
+    if (p === '/api/control/close') {
+      const result = await control.close(String(body.id || ''));
+      sendJson(res, 200, result);
+      return;
+    }
+    sendJson(res, 404, { error: 'not found' });
+  } catch (err) {
+    sendJson(res, err.status || 500, { error: String(err.message || err) });
+  }
+}
+
 async function serveIndex(res) {
   let html;
   try {
@@ -1253,6 +1485,14 @@ const server = http.createServer(async (req, res) => {
     sendJson(res, 403, { error: 'forbidden host' });
     return;
   }
+  const url = new URL(req.url, `http://${req.headers.host || HOST}`);
+  const p = url.pathname;
+
+  if (!ALLOW_CONTROL && p.startsWith('/api/control/')) {
+    sendJson(res, 404, { error: 'not found' });
+    return;
+  }
+
   if (req.method === 'POST') {
     const origin = String(req.headers.origin || '').toLowerCase();
     const type = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
@@ -1261,8 +1501,22 @@ const server = http.createServer(async (req, res) => {
       return;
     }
   }
-  const url = new URL(req.url, `http://${req.headers.host || HOST}`);
-  const p = url.pathname;
+
+  if (req.method === 'GET' && p === '/api/control/status') {
+    sendJson(res, 200, {
+      enabled: true,
+      streamMode: STREAM_MODE,
+      locked: STREAM_MODE,
+      presets: PRESETS,
+      defaultPreset: DEFAULT_PRESET,
+    });
+    return;
+  }
+
+  if (req.method === 'POST' && p.startsWith('/api/control/')) {
+    await handleControlPost(req, res, p);
+    return;
+  }
 
   if (req.method === 'POST' && p === '/api/nickname') {
     try {
@@ -1283,6 +1537,20 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     sendJson(res, 405, { error: 'read-only' });
+    return;
+  }
+
+  if (p === '/api/control/options') {
+    if (STREAM_MODE) {
+      sendJson(res, 403, { error: 'control disabled in stream mode' });
+      return;
+    }
+    if (!authorizedControl(req)) {
+      res.setHeader('WWW-Authenticate', 'Bearer');
+      sendJson(res, 401, { error: 'missing or invalid control token' });
+      return;
+    }
+    await handleControlOptions(res);
     return;
   }
 
@@ -1344,6 +1612,12 @@ const server = http.createServer(async (req, res) => {
             steps: s.steps ?? null,
             tokens: s.tokens ?? null,
             cost: s.cost ?? null,
+            model: s.model ?? null,
+            provider: s.provider ?? null,
+            preset: s.preset ?? null,
+            policy: s.policy ?? null,
+            sandbox: s.sandbox ?? null,
+            owned: s.owned === true,
             subagents: s.subagents ?? null,
             createdAt: s.createdAt,
             size: s.size,
@@ -1358,7 +1632,10 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/stream') {
       const source = url.searchParams.get('source') || 'dsh';
       const id = url.searchParams.get('id');
-      const record = id ? await findSession(source, id) : (await sessionsFor(source))[0];
+      let record = id ? await findSession(source, id) : (await sessionsFor(source))[0];
+      if (!record && id && source === 'dsh' && ALLOW_CONTROL && control && control.has(id)) {
+        record = await waitForSessionRecord(id, 8000);
+      }
       if (!record) {
         sendJson(res, 404, { error: 'session not found' });
         return;
@@ -1442,18 +1719,34 @@ function openBrowser(url) {
 }
 
 server.listen(PORT, HOST, () => {
-  const url = `http://${HOST}:${PORT}`;
-  console.log(`agenttail 0.1.0  ${url}`);
+  const baseUrl = `http://${HOST}:${PORT}`;
+  let openUrl = baseUrl;
+  console.log(`agenttail 0.2.0  ${baseUrl}`);
   console.log(`sessions         ${SESSIONS_ROOT}`);
+  if (ALLOW_CONTROL) {
+    if (STREAM_MODE) {
+      console.log('control          disabled in stream mode');
+    } else {
+      openUrl = `${baseUrl}/#token=${CONTROL_TOKEN}`;
+      console.log('control          enabled (token in the URL below)');
+      console.log(`open             ${openUrl}`);
+    }
+  } else {
+    console.log('control          off (start with --allow-control to enable)');
+  }
   console.log('press Ctrl+C to stop');
-  if (OPEN_BROWSER) setTimeout(() => openBrowser(url), 250).unref();
+  if (OPEN_BROWSER) setTimeout(() => openBrowser(openUrl), 250).unref();
 });
 
-function shutdown() {
+let shuttingDown = false;
+async function shutdown() {
+  if (shuttingDown) return;
+  shuttingDown = true;
   for (const s of streams.values()) s.stop();
   sysMonitor.dispose();
+  try { await control?.dispose(); } catch { /* best effort */ }
   server.close(() => process.exit(0));
-  setTimeout(() => process.exit(0), 500).unref();
+  setTimeout(() => process.exit(0), 3000).unref();
 }
-process.on('SIGINT', shutdown);
-process.on('SIGTERM', shutdown);
+process.on('SIGINT', () => { shutdown(); });
+process.on('SIGTERM', () => { shutdown(); });

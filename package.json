@@ -1,7 +1,7 @@
 {
   "name": "agenttail",
-  "version": "0.1.0",
-  "description": "A local, read-only live viewer for AI coding agent sessions (DeepSeek Harness, Claude Code, Antigravity CLI).",
+  "version": "0.2.0",
+  "description": "A local live viewer for AI coding agent sessions, with opt-in control for DeepSeek Harness (Claude Code and Antigravity CLI stay read-only).",
   "keywords": [
     "ai-agents",
     "claude-code",
@@ -24,6 +24,7 @@
     "public/",
     "roots.example.json",
     "redact.example.json",
+    "control.example.json",
     "README.md",
     "LICENSE",
     "SECURITY.md",
@@ -35,11 +36,12 @@
     "docs/logo.svg",
     "docs/logo-light.svg",
     "docs/wordmark.svg",
-    "docs/loading.png"
+    "docs/loading.png",
+    "docs/dev/input-design.md"
   ],
   "scripts": {
     "start": "node server.js",
-    "test": "node test/smoke.test.mjs && node test/roots.test.mjs && node test/redact.test.mjs && node test/sources.test.mjs && node test/ui.test.mjs",
+    "test": "node test/smoke.test.mjs && node test/roots.test.mjs && node test/redact.test.mjs && node test/sources.test.mjs && node test/control.test.mjs && node test/ui.test.mjs",
     "demo": "node scripts/demo-session.mjs",
     "capture": "node scripts/capture.mjs",
     "build:sea": "node scripts/build-sea.mjs"
