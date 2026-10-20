@@ -176,7 +176,7 @@ try {
   check(await waitFor(`!!window.__agents.data && window.__agents.data.groups.flatMap((g) => g.agents).some((a) => a.owned && a.approvals === 1)`, 6000), 'the agents overview shows the owned session waiting on an approval');
   check(await waitFor(`/^\\(1\\) ⚠ /.test(document.title) && document.getElementById('favicon').href.startsWith('data:image/png')`, 4000), 'the tab title and favicon show the waiting approval', await evalExpr(`document.title`));
   check(await evalExpr(`!!document.getElementById('notifyBox')`), 'desktop notifications can be turned on in Settings');
-  check(await evalExpr(`${text('sessionButton')}.includes('✎')`), 'the picker marks the session as owned', await evalExpr(text('sessionButton')));
+  check(await evalExpr(`${text('sessionButton')}.includes('◈')`), 'the picker marks the session as owned', await evalExpr(text('sessionButton')));
   check(await evalExpr(`document.getElementById('composerStop').disabled === false`), 'Stop is enabled while the turn runs');
   await evalExpr(`document.getElementById('approvalApprove').click(); true`);
   check(await waitFor(hidden('approvalPanel'), 8000), 'approving hides the card');

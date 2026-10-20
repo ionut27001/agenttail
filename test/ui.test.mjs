@@ -315,8 +315,8 @@ try {
   check(/\d+ st/.test(optText) && /tok/.test(optText) && /\$/.test(optText), 'session picker shows steps, tokens and cost', optText);
   check(await evalExpr(`document.getElementById('liveDot').classList.contains('finished')`), 'finished sessions use the finished dot class');
   check(await evalExpr(`document.getElementById('liveDot').title.length > 0`), 'the state dot has a tooltip');
-  check(await evalExpr(`document.getElementById('mSession').textContent === '${short}'`), 'the header shows the short id rather than repeating the title',
-    await evalExpr(`document.getElementById('mSession').textContent`));
+  check(await evalExpr(`document.getElementById('sessionIdText').textContent === '${short}'`), 'the header shows the short id rather than repeating the title',
+    await evalExpr(`document.getElementById('sessionIdText').textContent`));
   check(await evalExpr(`[...document.getElementById('sessionSelect').options].some(o => /show empty \\(1\\)/.test(o.textContent))`), 'empty sessions are hidden behind a show-empty option',
     await evalExpr(`[...document.getElementById('sessionSelect').options].map(o => o.value + ':' + o.textContent).join('|')`));
   await evalExpr(`(() => { const s = document.getElementById('sessionSelect'); s.value = '__show_empty__'; s.dispatchEvent(new Event('change')); return true; })()`);
@@ -336,7 +336,7 @@ try {
   check(costGeom.mw > 0 && costGeom.mr <= costGeom.cr + 1, 'cost value is not clipped in the wide header', JSON.stringify(costGeom));
   await evalExpr(`document.getElementById('fxBtn').click(); true`);
   check(await evalExpr(`!document.getElementById('fxPanel').classList.contains('hidden')`), 'the menu opens from the top bar');
-  check(await evalExpr(`!!document.getElementById('speed') && !!document.getElementById('fxIntensity') && !!document.getElementById('replayBtn') && !!document.querySelector('[data-fx="sys"]')`), 'the menu holds speed, intensity, replay and show system');
+  check(await evalExpr(`!!document.getElementById('speed') && !document.getElementById('fxIntensity') && !!document.getElementById('replayBtn') && !!document.querySelector('[data-fx="sys"]') && !!document.querySelector('#fxPanel details.fx-more [data-fx="crt"]') && !document.querySelector('#fxPanel .menu-stats')`), 'Settings holds speed, replay and view options, with rare effects folded away');
   check(await evalExpr(`!document.getElementById('fxBackdrop').classList.contains('hidden') && getComputedStyle(document.getElementById('fxPanel')).position === 'fixed'`), 'settings open as a modal with a backdrop');
   check(await evalExpr(`!!document.querySelector('#fxBtn svg')`), 'the settings button is a gear icon');
   await evalExpr(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); true`);
@@ -536,7 +536,7 @@ try {
   console.log('\nvisual effects');
   await sleep(500);
   check(await waitFor(`document.body.classList.contains('boot-done')`, 6000), 'boot sequence completes');
-  check(await evalExpr(`document.getElementById('mRon').textContent.startsWith('$')`), 'cost odometer is shown in dollars by default', await evalExpr(`document.getElementById('mRon').textContent`));
+  check(await evalExpr(`document.getElementById('mCost').textContent.startsWith('$') && !/≈/.test(document.getElementById('mCost').title)`), 'cost is shown in dollars with no conversion by default', await evalExpr(`document.getElementById('mCost').title`));
   check(await evalExpr(`!!document.getElementById('spark')`), 'tokens/sec sparkline canvas exists');
   check(await evalExpr(`window.__fx.state.matrix === false && window.__fx.matrixRunning() === false`), 'matrix rain is off by default in stream mode');
   check(await evalExpr(`window.__fx.state.intensity === 40`), 'effect intensity defaults to 40%');
@@ -564,10 +564,7 @@ try {
   await sleep(420);
   check(await evalExpr(`parseFloat(window.__fx.matrixOpacity()) < 0.02`), 'matrix fades out within 300 ms of activity');
 
-  await evalExpr(`(() => { const s = document.getElementById('fxIntensity'); s.value = '70'; s.dispatchEvent(new Event('input')); return true; })()`);
-  check(await evalExpr(`parseFloat(document.documentElement.style.getPropertyValue('--fx')) === 0.7`), 'intensity slider applies live');
-  check(await evalExpr(`document.getElementById('fxIntensityVal').textContent === '70%'`), 'intensity slider shows its value');
-  await evalExpr(`(() => { const s = document.getElementById('fxIntensity'); s.value = '40'; s.dispatchEvent(new Event('input')); return true; })()`);
+  check(await evalExpr(`parseFloat(document.documentElement.style.getPropertyValue('--fx')) === 0.4`), 'effects keep their default intensity without a slider');
 
   await evalExpr(`(() => { const b = document.querySelector('[data-fx="crt"]'); b.checked = false; b.dispatchEvent(new Event('change')); return true; })()`);
   check(!(await evalExpr(`document.body.classList.contains('fx-crt')`)), 'CRT overlay toggles off');
@@ -627,7 +624,7 @@ try {
 
   const counts = await evalExpr(`Object.fromEntries([...document.querySelectorAll('.tree-row.touched')].map(e => [e.dataset.path, parseInt(e.querySelector('.cnt')?.textContent || '0', 10)]))`);
   check(counts['src/app.js'] === 1 && counts['notes.md'] === 1, 'replay counts each edit exactly once', JSON.stringify(counts));
-  check(await evalExpr(`document.getElementById('nickBtn').textContent.includes('\\u270e')`), 'page text keeps its UTF-8 glyphs');
+  check(await evalExpr(`document.getElementById('nickBtn').textContent.includes('\\u{1F3F7}')`), 'page text keeps its UTF-8 glyphs');
 
   const deleted = await evalExpr(`[...document.querySelectorAll('.tree-row.deleted')].map(e => e.dataset.path)`);
   check(deleted.includes('gone.txt'), 'deleted files are struck through in the tree', JSON.stringify(deleted));
