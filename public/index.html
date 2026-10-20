@@ -1035,6 +1035,7 @@
   .ag-title { color: var(--text); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .ag-meta { color: var(--muted); font-size: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
   .ag-meta .br { color: var(--cyan); }
+  .ag-meta .ag-wait { color: var(--amber); font-weight: 700; }
   .ag-act { font-size: 11px; color: var(--green-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .ag-act .k { color: var(--c); margin-right: 5px; }
   .ag-files { display: flex; flex-wrap: wrap; gap: 4px; }
@@ -5995,6 +5996,7 @@ termObserver.observe($('term'));
         if (agent.repo && agent.repo.branch) meta.appendChild(el('span', 'br', `⎇ ${agent.repo.branch}${agent.repo.worktree ? ' (worktree)' : ''}`));
         if (agent.model) meta.appendChild(el('span', '', agent.model));
         if (agent.owned) meta.appendChild(el('span', '', '✎ owned'));
+        if (agent.approvals) meta.appendChild(el('span', 'ag-wait', `⚠ ${agent.approvals} approval${agent.approvals === 1 ? '' : 's'} waiting`));
         meta.appendChild(el('span', '', ago(agent.lastEventAt)));
         card.appendChild(meta);
         const act = el('div', 'ag-act');

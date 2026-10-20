@@ -99,10 +99,18 @@ async function agentsPayload() {
       }
     } catch { /* a source that cannot be read is skipped */ }
   }
-  return buildAgents(all, {
+  const data = await buildAgents(all, {
     text: (value) => redactor.text(String(value ?? '')),
     labelFor: (key) => SOURCE_DEFS.find((d) => d.key === key)?.label || key,
   });
+  // Owned sessions can be blocked on the user: say how many approvals wait.
+  for (const group of data.groups) {
+    for (const agent of group.agents) {
+      const owned = agent.source === 'dsh' && ALLOW_CONTROL && control ? control.sessions.get(agent.id) : null;
+      agent.approvals = owned ? owned.approvals.size : 0;
+    }
+  }
+  return data;
 }
 
 /** Desktop sessions use `session-<uuid>`; ACP-created sessions use a bare uuid. */

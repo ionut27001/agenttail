@@ -172,6 +172,8 @@ try {
   check(await waitFor(`!${hidden('approvalPanel')}`, 10000), 'the approval card appears');
   check(await evalExpr(`${text('approvalDetail')}.includes('$ echo fake-ok')`), 'the card shows the exact command', await evalExpr(text('approvalDetail')));
   check(await evalExpr(`!${hidden('approvalBadge')}`), 'the activity bar shows an approval badge');
+  await evalExpr(`window.__agents.refresh(); true`);
+  check(await waitFor(`!!window.__agents.data && window.__agents.data.groups.flatMap((g) => g.agents).some((a) => a.owned && a.approvals === 1)`, 6000), 'the agents overview shows the owned session waiting on an approval');
   check(await evalExpr(`${text('sessionButton')}.includes('✎')`), 'the picker marks the session as owned', await evalExpr(text('sessionButton')));
   check(await evalExpr(`document.getElementById('composerStop').disabled === false`), 'Stop is enabled while the turn runs');
   await evalExpr(`document.getElementById('approvalApprove').click(); true`);
