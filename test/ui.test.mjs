@@ -303,12 +303,19 @@ try {
     return { h: t.getBoundingClientRect().height, sw: document.documentElement.scrollWidth, w: innerWidth, wrap: getComputedStyle(t).flexWrap };
   })()`);
   check(wide.sw <= wide.w && wide.h <= 54 && wide.wrap === 'nowrap', 'wide header is one row without overflow', JSON.stringify(wide));
-  const costGeom = await evalExpr(`(() => { const m = document.getElementById('mCost').getBoundingClientRect(); const c = document.querySelector('.metrics').getBoundingClientRect(); const s = document.getElementById('sessionSelect').getBoundingClientRect(); return { mw: m.width, mr: m.right, cr: c.right, sw: s.width, metrics: c.width }; })()`);
+  const costGeom = await evalExpr(`(() => { const m = document.getElementById('mCost').getBoundingClientRect(); const c = document.querySelector('.metrics').getBoundingClientRect(); const s = document.getElementById('sessionSelect').getBoundingClientRect(); const w = (q) => Math.round(document.querySelector(q).getBoundingClientRect().width); return { mw: m.width, mr: m.right, cr: c.right, sw: s.width, metrics: c.width, left: w('.hleft'), middle: w('.hmiddle'), right: w('.hright'), brand: w('.brand'), fx: w('#fxBtn'), session: w('#sessionPicker') }; })()`);
   check(costGeom.mw > 0 && costGeom.mr <= costGeom.cr + 1, 'cost value is not clipped in the wide header', JSON.stringify(costGeom));
   await evalExpr(`document.getElementById('fxBtn').click(); true`);
   check(await evalExpr(`!document.getElementById('fxPanel').classList.contains('hidden')`), 'the menu opens from the top bar');
   check(await evalExpr(`!!document.getElementById('speed') && !!document.getElementById('fxIntensity') && !!document.getElementById('replayBtn') && !!document.querySelector('[data-fx="sys"]')`), 'the menu holds speed, intensity, replay and show system');
-  await evalExpr(`document.getElementById('fxBtn').click(); true`);
+  check(await evalExpr(`!document.getElementById('fxBackdrop').classList.contains('hidden') && getComputedStyle(document.getElementById('fxPanel')).position === 'fixed'`), 'settings open as a modal with a backdrop');
+  check(await evalExpr(`!!document.querySelector('#fxBtn svg')`), 'the settings button is a gear icon');
+  await evalExpr(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); true`);
+  check(await evalExpr(`document.getElementById('fxPanel').classList.contains('hidden') && document.getElementById('fxBackdrop').classList.contains('hidden')`), 'Esc closes the settings modal');
+  await evalExpr(`document.getElementById('fxBtn').click(); document.getElementById('fxBackdrop').click(); true`);
+  check(await evalExpr(`document.getElementById('fxPanel').classList.contains('hidden')`), 'clicking the backdrop closes the settings modal');
+  check(await evalExpr(`(() => { const r = document.querySelector('.brand .brand-full').getBoundingClientRect(); return r.width > 60 && r.height > 10; })()`), 'the header shows the agenttail wordmark');
+  check(await evalExpr(`/AGENT NOW/.test(document.getElementById('activityLabel').textContent)`), 'the activity bar is labelled as the agent status');
 
   console.log('\nsystem meters');
   const sysReady = await waitFor(`['sysCpu', 'sysRam'].every((id) => document.getElementById(id).querySelector('.v').textContent !== '—')`, 12000);
@@ -538,7 +545,7 @@ try {
 
   const counts = await evalExpr(`Object.fromEntries([...document.querySelectorAll('.tree-row.touched')].map(e => [e.dataset.path, parseInt(e.querySelector('.cnt')?.textContent || '0', 10)]))`);
   check(counts['src/app.js'] === 1 && counts['notes.md'] === 1, 'replay counts each edit exactly once', JSON.stringify(counts));
-  check(await evalExpr(`document.querySelector('.brand').textContent.includes('\\u25c6')`), 'page text keeps its UTF-8 glyphs');
+  check(await evalExpr(`document.getElementById('nickBtn').textContent.includes('\\u270e')`), 'page text keeps its UTF-8 glyphs');
 
   const deleted = await evalExpr(`[...document.querySelectorAll('.tree-row.deleted')].map(e => e.dataset.path)`);
   check(deleted.includes('gone.txt'), 'deleted files are struck through in the tree', JSON.stringify(deleted));
@@ -925,11 +932,24 @@ try {
   failures.push(String(err && err.stack || err));
 } finally {
   try { if (targetId) await send('Target.closeTarget', { targetId }); } catch {}
-  // Killing the launcher alone can leave headless Edge running and holding
-  // the profile folder, so ask the browser to exit first.
+  // msedge.exe hands off to another process, so the pid we spawned is not
+  // the browser. Ask the browser for its own pid, close it over CDP, and end
+  // its process tree if it is still running.
+  let browserPid = null;
+  try {
+    const info = await Promise.race([send('SystemInfo.getProcessInfo'), sleep(2000)]);
+    browserPid = info?.processInfo?.find((p) => p.type === 'browser')?.id ?? null;
+  } catch {}
   try { if (browser) await Promise.race([send('Browser.close'), sleep(2000)]); } catch {}
   try { browser?.close(); } catch {}
-  try { edge?.kill(); } catch {}
+  await sleep(500);
+  if (process.platform === 'win32') {
+    for (const pid of [browserPid, edge?.pid].filter(Boolean)) {
+      try { spawn('taskkill', ['/pid', String(pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true }); } catch {}
+    }
+  } else {
+    try { edge?.kill(); } catch {}
+  }
   server.kill();
   await sleep(800);
   try { fs.rmSync(tmp, { recursive: true, force: true }); } catch {}

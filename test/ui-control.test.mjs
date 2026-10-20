@@ -203,11 +203,24 @@ try {
   failures.push(String(err && err.stack || err));
 } finally {
   try { if (targetId) await send('Target.closeTarget', { targetId }); } catch {}
-  // Killing the launcher alone can leave headless Edge running and holding
-  // the profile folder, so ask the browser to exit first.
+  // msedge.exe hands off to another process, so the pid we spawned is not
+  // the browser. Ask the browser for its own pid, close it over CDP, and end
+  // its process tree if it is still running.
+  let browserPid = null;
+  try {
+    const info = await Promise.race([send('SystemInfo.getProcessInfo'), sleep(2000)]);
+    browserPid = info?.processInfo?.find((p) => p.type === 'browser')?.id ?? null;
+  } catch {}
   try { if (browser) await Promise.race([send('Browser.close'), sleep(2000)]); } catch {}
   try { browser?.close(); } catch {}
-  try { edge?.kill(); } catch {}
+  await sleep(500);
+  if (process.platform === 'win32') {
+    for (const pid of [browserPid, edge?.pid].filter(Boolean)) {
+      try { spawn('taskkill', ['/pid', String(pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true }); } catch {}
+    }
+  } else {
+    try { edge?.kill(); } catch {}
+  }
   for (const proc of servers) { try { proc.kill(); } catch {} }
   await sleep(800);
   try { fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }); } catch {}
