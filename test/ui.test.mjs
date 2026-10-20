@@ -353,6 +353,22 @@ try {
   await sleep(200);
   check(await evalExpr(`getComputedStyle(document.body).backgroundColor`) === matrixBg, 'switching back restores the matrix colours');
 
+  console.log('\nsession search');
+  await evalExpr(`window.__picker.open(); true`);
+  check(await waitFor(`!document.getElementById('sessionMenu').classList.contains('hidden') && document.activeElement === document.getElementById('sessionSearch')`, 3000), 'opening the picker focuses the search box');
+  const allIds = await evalExpr(`window.__picker.visibleIds()`);
+  await evalExpr(`window.__picker.filter('patch answer'); true`);
+  const patched = await evalExpr(`window.__picker.visibleIds()`);
+  check(patched.length === 1 && patched[0] === fixture.finishedId, 'all search words must match', JSON.stringify(patched));
+  await evalExpr(`window.__picker.filter('no-such-session-xyz'); true`);
+  check(await evalExpr(`window.__picker.visibleIds().length === 0 && /no matching sessions/.test(document.getElementById('sessionMenu').textContent)`), 'a search with no hits says so');
+  await evalExpr(`window.__picker.filter(''); true`);
+  check((await evalExpr(`window.__picker.visibleIds()`)).length === allIds.length, 'clearing the search shows every session again');
+  await evalExpr(`document.getElementById('sessionSearch').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })); true`);
+  check(await evalExpr(`document.querySelectorAll('#sessionMenu .kbd-active').length === 1`), 'arrow keys move a highlighted row');
+  await evalExpr(`document.getElementById('sessionSearch').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); true`);
+  check(await evalExpr(`document.getElementById('sessionMenu').classList.contains('hidden')`), 'Esc closes the picker');
+
   console.log('\nshortcuts and export');
   await evalExpr(`document.body.focus(); document.dispatchEvent(new KeyboardEvent('keydown', { key: '?', bubbles: true })); true`);
   check(await waitFor(`!document.getElementById('helpPanel').classList.contains('hidden')`, 3000), '? opens the keyboard shortcuts');
