@@ -7269,10 +7269,10 @@ termObserver.observe($('term'));
         f.dkConsole.classList.toggle('ok', !bad);
         f.dkConsoleText.textContent = `${f.dkConsoleText.textContent.replace(/ [✓✗].*$/, '')} ${bad ? '✗' : '✓'}`;
       } else if (ev.t === 'job') {
-        pane.jobs += 1;
+        pane.jobs.add(ev.jobId || ev.callId || ev.seq);
         next = 'console';
       } else if (ev.t === 'jobEnd') {
-        pane.jobs = Math.max(0, pane.jobs - 1);
+        pane.jobs.delete(ev.jobId || ev.callId || ev.seq);
       } else if (ev.t === 'say' && (ev.thinking || ev.text)) {
         next = 'think';
         f.thinkTitle.textContent = ev.text ? 'REPLYING' : 'THINKING';
@@ -7281,7 +7281,8 @@ termObserver.observe($('term'));
         f.thinkReply.textContent = ev.text ? lastLines(ev.text, 10) : '';
         f.dkThinkText.textContent = ev.text ? 'replied' : 'thinking';
       }
-      f.dkJob.classList.toggle('hidden', pane.jobs === 0);
+      f.dkJob.classList.toggle('hidden', pane.jobs.size === 0);
+      f.dkJob.textContent = pane.jobs.size > 1 ? `▶ ${pane.jobs.size} jobs` : '▶ job';
       if (next) {
         pane.lastView = next;
         if (!pane.history) {
@@ -7445,7 +7446,7 @@ termObserver.observe($('term'));
       const pane = {
         agent, root, act, feed, filesEl, stateEl, calls: new Map(), files: [], stick: true, history: true, action: null,
         dormantText, lastActiveAt: 0, state: agent.state, pinned: false,
-        view: 'editor', pinnedView: null, jobs: 0, lastView: 'editor',
+        view: 'editor', pinnedView: null, jobs: new Set(), lastView: 'editor',
         focus: { thinkTitle, thinkReason, thinkReply, dkEditor, dkConsole, dkConsoleText, dkJob, dkThink, dkThinkText },
         slots: { editor: editorSlot, console: consoleSlot },
         widgets: [],
