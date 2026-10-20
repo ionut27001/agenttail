@@ -731,6 +731,13 @@ try {
   ]));
   check(await waitFor(`(() => { const p = document.querySelector('#wallGrid .wall-pane[data-key="dsh:${fixture.liveId}"]'); const t = p ? (window.__wallConsoleText(p) || '') : ''; return t.includes('✦ Inline reply from the agent') && t.includes('Checking the console view'); })()`, 8000), 'messages and replies print in the pane console', JSON.stringify(String(await evalExpr(`window.__wallConsoleText(document.querySelector('#wallGrid .wall-pane[data-key="dsh:${fixture.liveId}"]'))`)).slice(-300)));
   check(await waitFor(`(() => { const p = document.querySelector('#wallGrid .wall-pane[data-key="dsh:${fixture.liveId}"]'); return window.__wall.views()['dsh:${fixture.liveId}'] === 'think' && p.classList.contains('show-think') && /Inline reply from the agent/.test(p.querySelector('.wp-think').textContent); })()`, 5000), 'focus: reasoning and replies show on the thinking card', JSON.stringify(await evalExpr(`window.__wall.views()`)));
+  // Context: the window comes from dsh, the use from the latest reply.
+  fs.appendFileSync(fixture.liveLog, frame([
+    ev('request/context', 35, { provider: 'deepseek-official', model: 'deepseek-v4-flash', contextWindow: 1000 }),
+    ev('assistant/message', 36, { turn: 1, step: 2, message: { role: 'assistant', content: [{ type: 'text', text: 'Context check.' }] }, usage: { inputTokens: 400, outputTokens: 20, cacheReadTokens: 100, cacheWriteTokens: 0 } }),
+  ]));
+  check(await waitFor(`(() => { const c = window.__wallContext(document.querySelector('#wallGrid .wall-pane[data-key="dsh:${fixture.liveId}"]')); return !!c && c.used === 500 && c.window === 1000 && Math.round(c.percent) === 50; })()`, 8000), 'each wall pane shows used and available context', JSON.stringify(await evalExpr(`window.__wallContext(document.querySelector('#wallGrid .wall-pane[data-key="dsh:${fixture.liveId}"]'))`)));
+  check(await waitFor(`(() => { const c = window.__context.get(); return !!c && c.used === 500 && c.window === 1000 && !document.getElementById('ctxMeter').classList.contains('hidden'); })()`, 8000), 'the activity bar shows the context meter for the viewed session', JSON.stringify(await evalExpr(`window.__context.get()`)));
   await evalExpr(`document.getElementById('wallLayoutMode').click(); true`);
   check(await evalExpr(`!document.getElementById('wall').classList.contains('focus') && /SPLIT/.test(document.getElementById('wallLayoutMode').textContent)`), 'the layout can switch to split');
   await evalExpr(`document.getElementById('wallLayoutMode').click(); true`);
