@@ -608,6 +608,28 @@ try {
   check(/step|job/.test(await evalExpr(`document.getElementById('liveDot').title || ''`)), 'live tooltip explains the state', await evalExpr(`document.getElementById('liveDot').title`));
   check(await evalExpr(`document.getElementById('replayBtn').disabled === true`), 'replay disabled while live');
 
+  console.log('\nmultiple agents');
+  await evalExpr(`window.__agents.refresh().then(() => true)`, true);
+  check(await waitFor(`!document.getElementById('coAgents').classList.contains('hidden') && /OTHER AGENT/.test(document.getElementById('coAgents').textContent)`, 8000), 'the activity bar names the other agents on this workspace', await evalExpr(`document.getElementById('coAgents').textContent`));
+  check(await evalExpr(`document.querySelectorAll('#coAgents .ag-dot').length > 0`), 'the chip shows each other agent as a coloured dot');
+  check(await evalExpr(`/var\\(--agent-\\d\\)/.test(document.getElementById('app').style.getPropertyValue('--agent-color'))`), 'the working-pane highlight uses this agent colour', await evalExpr(`document.getElementById('app').style.getPropertyValue('--agent-color')`));
+  await evalExpr(`document.getElementById('coAgents').click(); true`);
+  check(await waitFor(`!document.getElementById('agentsPanel').classList.contains('hidden') && document.querySelectorAll('#agentsPanel .ag-card').length >= 2`, 5000), 'the chip opens the agents overview with a card per agent', await evalExpr(`document.querySelectorAll('#agentsPanel .ag-card').length`));
+  const cards = await evalExpr(`[...document.querySelectorAll('#agentsPanel .ag-card')].map((c) => ({ key: c.dataset.key, current: c.classList.contains('current'), color: c.style.getPropertyValue('--c') }))`);
+  check(cards.filter((c) => c.current).length === 1 && cards.find((c) => c.current)?.key === `dsh:${fixture.liveId}`, 'the viewed session is marked in the overview', JSON.stringify(cards));
+  check(new Set(cards.map((c) => c.color)).size === cards.length, 'every agent card has its own colour', JSON.stringify(cards));
+  await evalExpr(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); true`);
+  check(await evalExpr(`document.getElementById('agentsPanel').classList.contains('hidden')`), 'Esc closes the agents overview');
+
+  console.log('\nrepeated actions');
+  await evalExpr(`(() => { for (let i = 0; i < 5; i++) termNote('✎ edit   repeated/same-file.js', C.greenDim); return true; })()`);
+  await sleep(250);
+  const spinning = await evalExpr(`(() => { const b = window.__agenttailTerm.buffer.active; for (let i = b.length - 1; i >= 0; i--) { const t = b.getLine(i).translateToString(true); if (t.includes('same-file.js')) return t; } return ''; })()`);
+  check(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/.test(spinning) && /×5/.test(spinning), 'a repeated action animates on one line with a counter', spinning);
+  await sleep(1900);
+  const settled = await evalExpr(`(() => { const b = window.__agenttailTerm.buffer.active; const hits = []; for (let i = 0; i < b.length; i++) { const t = b.getLine(i).translateToString(true); if (t.includes('same-file.js')) hits.push(t); } return hits; })()`);
+  check(settled.length === 1 && /×5/.test(settled[0]) && !/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/.test(settled[0]), 'it settles to one plain line once the repeats stop', JSON.stringify(settled));
+
   // Append an edit + result while the page is open: it must be typed live.
   const liveEdit = [
     ev('tool/call', 40, {

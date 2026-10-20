@@ -22,6 +22,7 @@ const { Roots } = require('./lib/roots');
 const { Redactor, safeRedact } = require('./lib/redact');
 const { keyFor, relativeInside, isInside } = require('./lib/util');
 const { ControlManager, PRESETS, DEFAULT_PRESET, MAX_MESSAGE } = require('./lib/control');
+const { buildAgents } = require('./lib/agents');
 const claude = require('./lib/claude');
 const antigravity = require('./lib/antigravity');
 const { deletionsFromCommand } = require('./lib/deletes');
@@ -86,6 +87,23 @@ const SOURCE_DEFS = [
 ];
 
 let sourceCache = { at: 0, data: null };
+
+/** Every recent agent across sources, grouped by repository (see lib/agents.js). */
+async function agentsPayload() {
+  const all = [];
+  for (const def of SOURCE_DEFS) {
+    try {
+      for (const s of await sessionsFor(def.key)) {
+        const nickname = nicknames.get(`${def.key}:${s.id}`);
+        all.push({ ...s, source: s.source || def.key, nickname: nickname || null });
+      }
+    } catch { /* a source that cannot be read is skipped */ }
+  }
+  return buildAgents(all, {
+    text: (value) => redactor.text(String(value ?? '')),
+    labelFor: (key) => SOURCE_DEFS.find((d) => d.key === key)?.label || key,
+  });
+}
 
 /** Desktop sessions use `session-<uuid>`; ACP-created sessions use a bare uuid. */
 function isSessionId(id) {
@@ -355,6 +373,8 @@ async function listSessions() {
       preset: analysis ? analysis.preset : null,
       policy: analysis ? analysis.policy : null,
       sandbox: analysis ? analysis.sandbox : null,
+      lastTool: analysis ? analysis.lastTool : null,
+      touched: analysis ? analysis.touched : [],
       owned: !!(ALLOW_CONTROL && control && control.has(rec.id)),
       live: state === 'live',
     };
@@ -1585,6 +1605,10 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (p === '/api/agents') {
+      sendJson(res, 200, await agentsPayload());
+      return;
+    }
     if (p === '/api/sessions') {
       const source = url.searchParams.get('source') || 'dsh';
       try {

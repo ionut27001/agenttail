@@ -532,8 +532,66 @@
   }
   .pane-tag.hidden { display: none; }
   #editorWrap.active, #terminalPane.active, #chatPane.active {
-    box-shadow: inset 0 0 0 1px var(--green), 0 0 16px rgba(55, 242, 138, .18);
+    box-shadow: inset 0 0 0 1px var(--agent-color, var(--green)), 0 0 16px color-mix(in srgb, var(--agent-color, var(--green)) 22%, transparent);
   }
+  .pane-tag { color: var(--agent-color, var(--green)); border-color: color-mix(in srgb, var(--agent-color, var(--green)) 55%, transparent); }
+
+  /* ---------- multi-agent overview ---------- */
+  :root {
+    --agent-0: #37f28a; --agent-1: #5ce1e6; --agent-2: #ffd166; --agent-3: #ff6bd6;
+    --agent-4: #a78bfa; --agent-5: #ff9f43; --agent-6: #5aa9ff; --agent-7: #ff8a8a;
+  }
+  #coAgents {
+    display: inline-flex; align-items: center; gap: 6px; flex: none;
+    padding: 1px 8px; border: 1px solid var(--line); border-radius: 3px; background: #0b1a13;
+    color: var(--green-soft); font-size: 10px; letter-spacing: .1em; cursor: pointer;
+  }
+  #coAgents:hover { border-color: var(--green-dim); color: var(--green); }
+  #coAgents.hidden { display: none; }
+  #coAgents.warn { border-color: #6b5420; color: var(--amber); }
+  .ag-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--c, var(--green)); flex: none; }
+  .ag-dot.live { box-shadow: 0 0 0 2px color-mix(in srgb, var(--c) 30%, transparent); animation: tdot 1.6s ease-in-out infinite; }
+  #agentsBackdrop { position: fixed; inset: 0; z-index: 190; background: rgba(0,0,0,.62); }
+  #agentsBackdrop.hidden, #agentsPanel.hidden { display: none; }
+  #agentsPanel {
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 200;
+    width: min(1040px, calc(100vw - 32px)); max-height: calc(100vh - 48px); overflow: auto;
+    background: rgba(6, 16, 12, .99); border: 1px solid var(--line); border-radius: 6px;
+    box-shadow: 0 16px 48px rgba(0,0,0,.7); padding: 0 16px 16px;
+  }
+  #agentsPanel .ag-head { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 10px; margin: 0 -16px 10px; padding: 10px 16px; background: rgba(6, 16, 12, .99); border-bottom: 1px solid var(--line); color: var(--green); font-size: 12px; letter-spacing: .14em; }
+  #agentsPanel .ag-head .dim { color: var(--muted); letter-spacing: .04em; font-size: 11px; }
+  #agentsPanel .ag-head button { margin-left: auto; padding: 2px 8px; font-size: 13px; line-height: 1; }
+  .ag-group { margin: 6px 0 16px; }
+  .ag-group-head { display: flex; align-items: baseline; gap: 8px; color: var(--green-soft); font-size: 12px; letter-spacing: .06em; margin-bottom: 7px; }
+  .ag-group-head b { color: var(--text); font-size: 13px; }
+  .ag-group-head .dim { color: var(--muted); font-size: 10px; }
+  .ag-overlaps { border: 1px solid #6b5420; background: #1a1405; border-radius: 4px; padding: 6px 9px; margin-bottom: 8px; color: var(--amber); font-size: 11px; display: grid; gap: 3px; }
+  .ag-overlaps .row { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .ag-overlaps .p { color: #ffe3a3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ag-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 8px; }
+  .ag-card {
+    --c: var(--green); display: grid; gap: 5px; text-align: left; min-width: 0;
+    padding: 8px 10px 8px 12px; border: 1px solid var(--line); border-left: 3px solid var(--c);
+    border-radius: 4px; background: #07130d; color: var(--green-soft); font-family: var(--mono); cursor: pointer;
+  }
+  .ag-card:hover { border-color: var(--c); }
+  .ag-card.current { box-shadow: inset 0 0 0 1px var(--c); }
+  .ag-card.finished { opacity: .6; }
+  .ag-top { display: flex; align-items: center; gap: 7px; min-width: 0; }
+  .ag-src { color: var(--c); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; flex: none; }
+  .ag-here { margin-left: auto; color: var(--c); font-size: 9px; letter-spacing: .12em; flex: none; }
+  .ag-title { color: var(--text); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ag-meta { color: var(--muted); font-size: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .ag-meta .br { color: var(--cyan); }
+  .ag-act { font-size: 11px; color: var(--green-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ag-act .k { color: var(--c); margin-right: 5px; }
+  .ag-files { display: flex; flex-wrap: wrap; gap: 4px; }
+  .ag-file { font-size: 10px; color: var(--muted); border: 1px solid #12301f; border-radius: 3px; padding: 0 5px; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ag-file.overlap { color: var(--amber); border-color: #6b5420; }
+  .ag-empty { color: var(--muted); font-size: 11px; padding: 18px 0; text-align: center; }
+  .tree-row .agent-mark { display: inline-flex; gap: 2px; margin-left: 6px; vertical-align: middle; }
+  .tree-row .agent-mark .ag-dot { width: 6px; height: 6px; }
   .editor-tag { position: absolute; top: 5px; left: 8px; z-index: 7; background: #06110c; }
   .chat-views { display: flex; gap: 2px; margin-left: 4px; }
   .chat-views button { font-size: 11px; padding: 1px 6px; border: 1px solid var(--line); background: transparent; color: var(--muted); }
@@ -778,6 +836,7 @@
     <span id="activityIcon">·</span>
     <span id="activityText">CONNECTING</span>
     <span class="activity-spacer"></span>
+    <button id="coAgents" class="hidden" type="button" title="Agents working right now"></button>
     <span id="followState" class="hidden">FOLLOW PAUSED</span>
     <button id="activityJobs" class="hidden" type="button" title="Running jobs"></button>
     <button id="approvalBadge" class="hidden" type="button" title="Approval needed">⚠ APPROVAL</button>
@@ -874,6 +933,12 @@
     </aside>
   </section>
   <div id="bottomRail"><button id="bottomExpand" type="button">▴ CONSOLE · AGENT</button></div>
+</div>
+
+<div id="agentsBackdrop" class="hidden"></div>
+<div id="agentsPanel" class="hidden" role="dialog" aria-modal="true" aria-label="Agents">
+  <div class="ag-head"><span>AGENTS</span><span class="dim" id="agentsSummary"></span><button id="agentsClose" type="button" title="Close (Esc)">✕</button></div>
+  <div id="agentsBody"></div>
 </div>
 
 <dialog id="newSessionDialog">
@@ -1728,8 +1793,88 @@ function termUser(text, agent) {
   term.write(`\r\n${C.magenta}${agent ? '↳ ' : ''}» user: ${esc(cut)}${C.reset}\r\n`);
 }
 
+/*
+ * The same note many times in a row (an agent editing one file over and over)
+ * becomes one line with a counter. While repeats keep arriving live, the line
+ * shows a spinner; it settles to the plain note once they stop or anything
+ * else is written below it.
+ */
+const SPIN = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏';
+const repeatNote = { text: null, color: '', count: 0, rows: 1, writes: -1, frame: 0, lastAt: 0, timer: null };
+let termWrites = 0;
+const termWriteRaw = term.write.bind(term);
+term.write = (data, cb) => {
+  if (repeatNote.timer && repeatNote.writes === termWrites) settleRepeat();
+  termWrites++;
+  return termWriteRaw(data, cb);
+};
+for (const method of ['reset', 'clear']) {
+  const original = term[method].bind(term);
+  term[method] = (...args) => {
+    if (repeatNote.timer) { clearInterval(repeatNote.timer); repeatNote.timer = null; }
+    repeatNote.text = null;
+    termWrites++;
+    return original(...args);
+  };
+}
+
+function repeatLine(spinning) {
+  const r = repeatNote;
+  const lead = spinning ? `${SPIN[r.frame % SPIN.length]} ` : '';
+  return { text: `${lead}${r.text}`, suffix: r.count > 1 ? `  ×${r.count}` : '' };
+}
+
+function drawRepeat(spinning) {
+  const r = repeatNote;
+  const { text, suffix } = repeatLine(spinning);
+  let clear = '';
+  for (let i = 0; i < r.rows; i++) clear += '\x1b[1A\r\x1b[2K';
+  r.rows = Math.max(1, Math.ceil((text.length + suffix.length) / Math.max(1, term.cols)));
+  termWriteRaw(`${clear}${r.color || C.grey}${esc(text)}${C.reset}${C.grey}${suffix}${C.reset}\r\n`);
+}
+
+function settleRepeat() {
+  const r = repeatNote;
+  if (r.timer) { clearInterval(r.timer); r.timer = null; }
+  if (r.writes === termWrites && r.count > 1) drawRepeat(false);
+}
+
 function termNote(text, color) {
+  const r = repeatNote;
+  const live = state.historyDone && !state.replaying;
+  if (r.text === text && r.color === (color || '') && r.writes === termWrites) {
+    r.count++;
+    r.lastAt = Date.now();
+    if (live && !reducedMotion()) {
+      r.frame++;
+      drawRepeat(true);
+      if (!r.timer) {
+        r.timer = setInterval(() => {
+          if (r.writes !== termWrites || Date.now() - r.lastAt > 1500) { settleRepeat(); return; }
+          r.frame++;
+          drawRepeat(true);
+        }, 110);
+      }
+    } else {
+      drawRepeat(false);
+    }
+    return;
+  }
+  if (r.timer) settleRepeat();
   term.write(`${color || C.grey}${esc(text)}${C.reset}\r\n`);
+  Object.assign(r, {
+    text,
+    color: color || '',
+    count: 1,
+    rows: Math.max(1, Math.ceil(text.length / Math.max(1, term.cols))),
+    writes: termWrites,
+    frame: 0,
+    lastAt: Date.now(),
+  });
+}
+
+function reducedMotion() {
+  try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
 }
 
 function fmtClock(ms) {
@@ -4821,6 +4966,246 @@ termObserver.observe($('term'));
   window.__control = { state: control, status: controlStatus, drawTurnSpark };
   controlStatus().then(() => updateControlChrome());
   drawTurnSpark();
+})();
+</script>
+<script>
+/* ---------- multi-agent overview ---------- */
+(() => {
+  const agents = { data: null, open: false, busy: false };
+  const $a = (id) => document.getElementById(id);
+  const colorOf = (agent) => `var(--agent-${(agent && Number.isInteger(agent.color) ? agent.color : 0) % 8})`;
+  const KIND = { command: '$', edit: '✎', read: '👁', search: '⌕', agent: '⇢', tool: '⚙' };
+
+  function ago(ms) {
+    if (!ms) return '';
+    const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
+    if (s < 60) return `${s}s ago`;
+    if (s < 3600) return `${Math.round(s / 60)} min ago`;
+    return `${Math.round(s / 3600)} h ago`;
+  }
+
+  function hashFor(agent) {
+    return agent.source === 'dsh' ? agent.id : `${agent.source}:${agent.id}`;
+  }
+
+  function findMe() {
+    if (!agents.data || !state.sessionId) return { group: null, me: null };
+    for (const group of agents.data.groups) {
+      const me = group.agents.find((a) => a.id === state.sessionId && a.source === state.source);
+      if (me) return { group, me };
+    }
+    return { group: null, me: null };
+  }
+
+  function el(tag, cls, text) {
+    const node = document.createElement(tag);
+    if (cls) node.className = cls;
+    if (text !== undefined) node.textContent = text;
+    return node;
+  }
+
+  function dot(agent) {
+    const d = el('span', `ag-dot${agent.state === 'live' ? ' live' : ''}`);
+    d.style.setProperty('--c', colorOf(agent));
+    return d;
+  }
+
+  function agentName(agent) {
+    return `${agent.sourceLabel}${agent.repo && agent.repo.branch ? ' · ' + agent.repo.branch : ''}`;
+  }
+
+  function activityText(agent) {
+    if (!agent.activity) return agent.stateDetail || agent.state;
+    const verb = { command: 'running', edit: 'editing', read: 'reading', search: 'searching', agent: 'delegating', tool: agent.activity.name }[agent.activity.kind] || agent.activity.name;
+    return `${verb} ${agent.activity.label || ''}`.trim();
+  }
+
+  function renderChip() {
+    const chip = $a('coAgents');
+    if (!chip) return;
+    const data = agents.data;
+    chip.textContent = '';
+    if (!data || !data.total) { chip.classList.add('hidden'); return; }
+    const { group, me } = findMe();
+    const others = group ? group.agents.filter((a) => a !== me && a.state !== 'finished') : [];
+    const overlaps = group ? group.overlaps.filter((o) => me && o.agents.includes(me.key)) : [];
+    for (const a of (others.length ? others : data.groups.flatMap((g) => g.agents).filter((a) => a.state === 'live')).slice(0, 5)) chip.appendChild(dot(a));
+    let label;
+    if (others.length) {
+      label = `${others.length} OTHER AGENT${others.length === 1 ? '' : 'S'} ON THIS REPO`;
+      const busy = others.find((a) => a.state === 'live' && a.activity);
+      if (busy) label += ` · ${busy.sourceLabel} ${activityText(busy)}`.slice(0, 120);
+    } else {
+      label = `${data.live} LIVE AGENT${data.live === 1 ? '' : 'S'}`;
+    }
+    if (overlaps.length) label += ` · ⚠ ${overlaps.length} SHARED FILE${overlaps.length === 1 ? '' : 'S'}`;
+    chip.appendChild(document.createTextNode(label));
+    chip.classList.toggle('warn', overlaps.length > 0);
+    chip.title = others.length
+      ? others.map((a) => `${agentName(a)}: ${activityText(a)}`).join('\n')
+      : 'Agents working right now (click for the overview)';
+    chip.classList.remove('hidden');
+  }
+
+  function applyColor() {
+    const { me } = findMe();
+    const app = $a('app');
+    if (!app) return;
+    if (me) app.style.setProperty('--agent-color', colorOf(me));
+    else app.style.removeProperty('--agent-color');
+  }
+
+  /** Mark tree files that other agents on the same repo edited, in their colours. */
+  function markTree() {
+    const tree = $a('tree');
+    if (!tree) return;
+    for (const old of tree.querySelectorAll('.agent-mark')) old.remove();
+    const { group, me } = findMe();
+    if (!group) return;
+    const byPath = new Map();
+    for (const agent of group.agents) {
+      if (agent === me || agent.state === 'finished') continue;
+      for (const t of agent.touched) {
+        if (!byPath.has(t.path)) byPath.set(t.path, []);
+        byPath.get(t.path).push(agent);
+      }
+    }
+    if (!byPath.size) return;
+    for (const row of tree.querySelectorAll('.tree-row')) {
+      const who = byPath.get(row.dataset.path);
+      if (!who) continue;
+      const mark = el('span', 'agent-mark');
+      for (const agent of who) mark.appendChild(dot(agent));
+      mark.title = `also edited by ${who.map(agentName).join(', ')}`;
+      row.appendChild(mark);
+    }
+  }
+
+  function renderPanel() {
+    const body = $a('agentsBody');
+    if (!body || !agents.open) return;
+    const data = agents.data;
+    body.textContent = '';
+    if (!data || !data.total) {
+      body.appendChild(el('div', 'ag-empty', 'No agent has been active in the last 30 minutes.'));
+      $a('agentsSummary').textContent = '';
+      return;
+    }
+    $a('agentsSummary').textContent = `${data.live} live · ${data.total} recent · ${data.groups.length} workspace${data.groups.length === 1 ? '' : 's'}`;
+    const byKey = new Map(data.groups.flatMap((g) => g.agents).map((a) => [a.key, a]));
+    for (const group of data.groups) {
+      const section = el('section', 'ag-group');
+      const head = el('div', 'ag-group-head');
+      head.appendChild(el('b', '', group.name));
+      head.appendChild(el('span', 'dim', `${group.git ? 'git repo' : 'folder'} · ${group.agents.length} agent${group.agents.length === 1 ? '' : 's'} · ${group.live} live`));
+      section.appendChild(head);
+      if (group.overlaps.length) {
+        const box = el('div', 'ag-overlaps');
+        box.appendChild(el('div', '', `⚠ ${group.overlaps.length} file${group.overlaps.length === 1 ? '' : 's'} edited by more than one agent in the last 30 minutes`));
+        for (const overlap of group.overlaps.slice(0, 8)) {
+          const row = el('div', 'row');
+          for (const key of overlap.agents) { const a = byKey.get(key); if (a) row.appendChild(dot(a)); }
+          row.appendChild(el('span', 'p', overlap.path));
+          row.title = overlap.agents.map((k) => (byKey.get(k) ? agentName(byKey.get(k)) : k)).join(' + ');
+          box.appendChild(row);
+        }
+        section.appendChild(box);
+      }
+      const grid = el('div', 'ag-grid');
+      const shared = new Set(group.overlaps.map((o) => o.path));
+      for (const agent of group.agents) {
+        const card = el('button', `ag-card ${agent.state}`);
+        card.type = 'button';
+        card.style.setProperty('--c', colorOf(agent));
+        card.dataset.key = agent.key;
+        const isMe = agent.id === state.sessionId && agent.source === state.source;
+        if (isMe) card.classList.add('current');
+        const top = el('div', 'ag-top');
+        top.appendChild(dot(agent));
+        top.appendChild(el('span', 'ag-src', agent.sourceLabel));
+        top.appendChild(el('span', 'ag-meta', agent.state));
+        if (isMe) top.appendChild(el('span', 'ag-here', 'VIEWING'));
+        card.appendChild(top);
+        card.appendChild(el('div', 'ag-title', agent.title));
+        const meta = el('div', 'ag-meta');
+        if (agent.repo && agent.repo.branch) meta.appendChild(el('span', 'br', `⎇ ${agent.repo.branch}${agent.repo.worktree ? ' (worktree)' : ''}`));
+        if (agent.model) meta.appendChild(el('span', '', agent.model));
+        if (agent.owned) meta.appendChild(el('span', '', '✎ owned'));
+        meta.appendChild(el('span', '', ago(agent.lastEventAt)));
+        card.appendChild(meta);
+        const act = el('div', 'ag-act');
+        act.appendChild(el('span', 'k', agent.activity ? (KIND[agent.activity.kind] || '⚙') : '·'));
+        act.appendChild(document.createTextNode(activityText(agent)));
+        act.title = activityText(agent);
+        card.appendChild(act);
+        if (agent.touched.length) {
+          const files = el('div', 'ag-files');
+          for (const t of agent.touched.slice(0, 6)) {
+            const chip = el('span', `ag-file${shared.has(t.path) ? ' overlap' : ''}`, t.path.split('/').pop());
+            chip.title = `${t.path} · ${ago(t.at)}`;
+            files.appendChild(chip);
+          }
+          card.appendChild(files);
+        }
+        card.addEventListener('click', () => {
+          setOpen(false);
+          location.hash = hashFor(agent);
+        });
+        grid.appendChild(card);
+      }
+      section.appendChild(grid);
+      body.appendChild(section);
+    }
+  }
+
+  async function refresh() {
+    if (agents.busy) return;
+    agents.busy = true;
+    try {
+      const res = await fetch('/api/agents');
+      if (res.ok) agents.data = await res.json();
+    } catch { /* keep the last snapshot */ }
+    agents.busy = false;
+    renderChip();
+    applyColor();
+    markTree();
+    renderPanel();
+  }
+
+  function setOpen(open) {
+    agents.open = open;
+    $a('agentsPanel').classList.toggle('hidden', !open);
+    $a('agentsBackdrop').classList.toggle('hidden', !open);
+    if (open) {
+      renderPanel();
+      refresh();
+      $a('agentsClose').focus({ preventScroll: true });
+    }
+  }
+
+  $a('coAgents').addEventListener('click', () => setOpen(true));
+  $a('agentsClose').addEventListener('click', () => setOpen(false));
+  $a('agentsBackdrop').addEventListener('click', () => setOpen(false));
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && agents.open) setOpen(false);
+    if (e.ctrlKey && e.shiftKey && !e.altKey && (e.key === 'A' || e.key === 'a')) {
+      e.preventDefault();
+      setOpen(!agents.open);
+    }
+  });
+  window.addEventListener('hashchange', () => setTimeout(refresh, 400));
+  // The tree re-renders as files change; put the marks back afterwards.
+  let markTimer = null;
+  const ownMark = (n) => n.nodeType === 1 && n.classList.contains('agent-mark');
+  new MutationObserver((list) => {
+    // Ignore the marks this script adds or removes itself.
+    if (list.every((m) => [...m.addedNodes, ...m.removedNodes].every(ownMark))) return;
+    if (markTimer) return;
+    markTimer = setTimeout(() => { markTimer = null; markTree(); }, 150);
+  }).observe($a('tree'), { childList: true, subtree: true });
+  setInterval(() => { if (!document.hidden) refresh(); }, 5000);
+  setTimeout(refresh, 800);
+  window.__agents = { refresh, open: setOpen, get data() { return agents.data; } };
 })();
 </script>
 
