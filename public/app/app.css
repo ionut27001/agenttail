@@ -659,7 +659,7 @@
   .period { color: var(--muted); font-size: 11px; letter-spacing: .06em; margin-left: 4px; }
   .period.peak { color: var(--amber); }
 
-  .live { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 11px; letter-spacing: .1em; white-space: nowrap; }
+  .live-badge { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 11px; letter-spacing: .1em; white-space: nowrap; }
   .stream { display: flex; align-items: center; gap: 5px; color: var(--green); font-size: 11px; letter-spacing: .08em; border: 1px solid color-mix(in srgb, var(--green) 35%, transparent); border-radius: 3px; padding: 2px 6px; white-space: nowrap; }
   .stream.off { color: var(--red); border-color: color-mix(in srgb, var(--red) 45%, transparent); animation: pulse 1.6s infinite; }
   .sdot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; box-shadow: 0 0 7px currentColor; }
@@ -1134,13 +1134,17 @@
   #wall.focus .wall-pane.show-console .wp-editor,
   #wall.focus .wall-pane.show-think .wp-editor { filter: brightness(.55) saturate(.7); }
   .wp-caption { display: none; }
-  #wall.focus .wp-caption {
+  .wp-main { position: relative; }
+  #wall .wp-caption {
     display: flex; gap: 8px; align-items: baseline; position: absolute; left: 12px; right: 12px; bottom: 40px; z-index: 5;
     padding: 6px 12px; border-radius: 6px; pointer-events: none; opacity: 0; transform: translateY(6px);
     background: color-mix(in srgb, var(--bg-2) 90%, transparent); border: 1px solid color-mix(in srgb, var(--c) 35%, transparent);
     color: var(--muted); font-size: 11.5px; line-height: 1.45; transition: opacity .35s, transform .35s;
   }
-  #wall.focus .wall-pane.captioning:not(.show-think) .wp-caption { opacity: 1; transform: none; }
+  #wall .wall-pane.captioning:not(.show-think) .wp-caption { opacity: 1; transform: none; }
+  #wall:not(.focus) .wp-caption { bottom: 8px; }
+  /* In the console mode the replies are printed there already. */
+  #wall.chat-console .wp-caption { display: none; }
   .wp-caption b { flex: none; color: var(--c); font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase; font-weight: 600; }
   .wp-caption span { font-style: italic; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
   .wp-caption.reply span { font-style: normal; color: var(--text); }
@@ -1151,14 +1155,22 @@
   .wf-group > summary .wf-group-last { color: var(--muted); }
   .wf-group[open] > summary { color: var(--green-soft); }
   .wf-group-list { display: flex; flex-direction: column; gap: 3px; margin: 4px 0 2px 10px; padding-left: 8px; border-left: 1px solid var(--line-soft); }
-  @media (prefers-reduced-motion: reduce) { #wall.focus .wp-caption { transition: none; } }
+  @media (prefers-reduced-motion: reduce) { #wall .wp-caption { transition: none; } }
   .wp-think .th-head { display: flex; align-items: center; gap: 8px; padding: 7px 12px; border-bottom: 1px solid var(--line-soft); color: var(--c); font-size: 10px; letter-spacing: .14em; }
   .wp-think .th-head .dots i { display: inline-block; width: 4px; height: 4px; margin-right: 3px; border-radius: 50%; background: var(--c); animation: tdot 1.2s infinite; }
   .wp-think .th-head .dots i:nth-child(2) { animation-delay: .2s; }
   .wp-think .th-head .dots i:nth-child(3) { animation-delay: .4s; }
   .wp-think .th-body { flex: 1; min-height: 0; overflow: hidden; padding: 10px 14px; display: flex; flex-direction: column; justify-content: flex-start; gap: 6px; font-size: 12px; line-height: 1.55; }
-  .wp-think .th-reason { color: var(--muted); font-style: italic; white-space: pre-wrap; }
-  .wp-think .th-reply { color: var(--text); white-space: pre-wrap; }
+  .wp-think .th-reason { flex: none; color: var(--muted); font-style: italic; white-space: pre-wrap; }
+  .wp-think .th-reason:empty { display: none; }
+  /* The conversation drawer opens tall; the list scrolls, newest at the bottom. */
+  #wall.focus .wall-pane.show-think .wp-think { top: 6%; max-height: none; }
+  .wp-think .th-list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 9px; padding-right: 4px; }
+  .wp-think .th-msg { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 8px; }
+  .wp-think .th-who { color: var(--c); font-size: 10.5px; padding-top: 1px; }
+  .wp-think .th-msg.user .th-text { color: var(--text); white-space: pre-wrap; border-left: 2px solid var(--c); padding-left: 7px; }
+  .wp-think .th-msg.agent .th-text { color: var(--text); }
+  .wp-think .th-list:empty::before { content: 'no messages yet'; color: var(--muted); font-style: italic; }
   #wall.focus .wp-dock { display: flex; position: absolute; left: 0; right: 0; bottom: 0; height: 30px; z-index: 6; gap: 6px; align-items: center; padding: 0 8px; border-top: 1px solid var(--line-soft); background: var(--panel); }
   .wp-dock button { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 40%; padding: 2px 9px; border: 1px solid var(--line); border-radius: 4px; background: var(--bg-2); color: var(--muted); font-size: 10.5px; }
   .wp-dock button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

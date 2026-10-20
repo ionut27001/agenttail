@@ -741,9 +741,12 @@ try {
   await evalExpr(`document.getElementById('wallDormantMode').click(); true`);
   check(await evalExpr(`window.__wall.dormant.length === 0 && /KEEP/.test(document.getElementById('wallDormantMode').textContent)`), 'quiet agents can be kept full size');
   await evalExpr(`document.getElementById('wallDormantMode').click(); true`);
-  // Chat in the console: the side feed goes away and replies print in the console.
+  // Chat modes: CAPTION (default, no feed column) → SIDE → IN CONSOLE → CAPTION.
+  check(await evalExpr(`/CAPTION/.test(document.getElementById('wallChatMode').textContent) && getComputedStyle(document.querySelector('#wallGrid .wp-side')).display === 'none'`), 'by default replies are captions and the feed column is hidden');
   await evalExpr(`document.getElementById('wallChatMode').click(); true`);
-  check(await waitFor(`document.getElementById('wall').classList.contains('chat-inline') && window.__wall.panes >= 1 && getComputedStyle(document.querySelector('#wallGrid .wp-side')).display === 'none'`, 5000), 'the chat can move into the console');
+  check(await waitFor(`/SIDE/.test(document.getElementById('wallChatMode').textContent) && getComputedStyle(document.querySelector('#wallGrid .wp-side')).display !== 'none'`, 3000), 'the feed column can be shown beside the editor');
+  await evalExpr(`document.getElementById('wallChatMode').click(); true`);
+  check(await waitFor(`/IN CONSOLE/.test(document.getElementById('wallChatMode').textContent) && document.getElementById('wall').classList.contains('chat-inline') && window.__wall.panes >= 1 && getComputedStyle(document.querySelector('#wallGrid .wp-side')).display === 'none'`, 5000), 'the chat can move into the console');
   await sleep(800);
   fs.appendFileSync(fixture.liveLog, frame([
     ev('assistant/message', 34, { turn: 1, step: 2, message: { role: 'assistant', content: [{ type: 'reasoning', text: 'Checking the console view.' }, { type: 'text', text: 'Inline reply from the agent.' }] } }),
@@ -760,8 +763,12 @@ try {
   await evalExpr(`document.getElementById('wallLayoutMode').click(); true`);
   check(await evalExpr(`!document.getElementById('wall').classList.contains('focus') && /SPLIT/.test(document.getElementById('wallLayoutMode').textContent)`), 'the layout can switch to split');
   await evalExpr(`document.getElementById('wallLayoutMode').click(); true`);
+  check(await evalExpr(`/Inline reply from the agent/.test(document.querySelector('#wallGrid .wall-pane[data-key="dsh:${fixture.liveId}"] .wp-think .th-list').textContent)`), 'the conversation drawer keeps the replies');
+  await evalExpr(`document.querySelector('#wallGrid .wall-pane[data-key="dsh:${fixture.liveId}"] .dk-think').click(); true`);
+  check(await evalExpr(`document.querySelector('#wallGrid .wall-pane[data-key="dsh:${fixture.liveId}"]').classList.contains('show-think')`), 'the dock opens the conversation drawer');
+  await evalExpr(`document.querySelector('#wallGrid .wall-pane[data-key="dsh:${fixture.liveId}"] .dk-think').click(); true`);
   await evalExpr(`document.getElementById('wallChatMode').click(); true`);
-  check(await waitFor(`!document.getElementById('wall').classList.contains('chat-inline') && /SIDE/.test(document.getElementById('wallChatMode').textContent)`, 5000), 'and back beside the editor');
+  check(await waitFor(`/CAPTION/.test(document.getElementById('wallChatMode').textContent)`, 5000), 'and back to captions');
   await evalExpr(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); true`);
   check(await evalExpr(`!window.__wall.open_ && window.__wall.panes === 0`), 'Esc closes the wall and its streams');
 

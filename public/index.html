@@ -71,7 +71,7 @@
         <span class="smeter" id="sysGpu"><span class="k">GPU</span><span class="bar"><i></i></span><span class="v">—</span></span>
       </span>
       <span id="sysChip" title="System usage">SYS</span>
-      <span class="live"><span id="liveDot" class="dot"></span><span id="liveText">CONNECTING</span></span>
+      <span class="live live-badge"><span id="liveDot" class="dot"></span><span id="liveText">CONNECTING</span></span>
       <span class="stream" id="streamBadge" title="Server-side stream mode"><span class="sdot"></span><span id="streamText">SAFE</span></span>
       <button id="helpBtn" type="button" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts" aria-haspopup="dialog" aria-controls="helpPanel">?</button>
       <button id="fxBtn" type="button" title="Settings: speed, effects, replay, show system" aria-label="Settings" aria-haspopup="dialog">
@@ -246,7 +246,7 @@
 <div id="wall" class="hidden" role="dialog" aria-label="Agents side by side">
   <div class="wall-head"><span>◫ WATCHING</span><span class="dim" id="wallSummary"></span>
     <button id="wallLayoutMode" class="wall-toggle" type="button" title="FOCUS shows what the agent is doing right now (editor, console or thoughts); SPLIT shows editor and console together">LAYOUT: FOCUS</button>
-    <button id="wallChatMode" class="wall-toggle" type="button" title="Show the agent chat and reasoning beside the editor, or inside the console">CHAT: SIDE</button>
+    <button id="wallChatMode" class="wall-toggle" type="button" title="Where replies go: a caption over the editor (with the conversation in the dock), a side column, or the console">CHAT: CAPTION</button>
     <button id="wallDormantMode" class="wall-toggle" type="button" title="Shrink agents that are waiting or quiet, so working agents get the space">QUIET AGENTS: SHRINK</button>
     <button id="wallClose" type="button" title="Close (Esc)">✕</button></div>
   <div id="wallBody">

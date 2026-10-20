@@ -264,10 +264,19 @@
   // Panes open before the strip; their events (history tail first) arrive after.
   window.__wallStripHooks = window.__wallStripHooks || [];
   const WALL_PREFS_KEY = 'agenttail-wall';
-  const wallPrefs = { chatInline: false, shrinkQuiet: true, focus: true, strip: 'auto' };
-  try { Object.assign(wallPrefs, JSON.parse(localStorage.getItem(WALL_PREFS_KEY) || '{}')); } catch { /* ignore */ }
+  // chat: 'caption' (replies as a caption, conversation in the dock drawer),
+  // 'side' (a feed column beside the editor) or 'console' (printed in it).
+  const CHAT_MODES = ['caption', 'side', 'console'];
+  const wallPrefs = { chat: 'caption', shrinkQuiet: true, focus: true, strip: 'auto' };
+  try {
+    const saved = JSON.parse(localStorage.getItem(WALL_PREFS_KEY) || '{}');
+    Object.assign(wallPrefs, saved);
+    if (saved.chat === undefined && saved.chatInline) wallPrefs.chat = 'console';
+  } catch { /* ignore */ }
+  if (!CHAT_MODES.includes(wallPrefs.chat)) wallPrefs.chat = 'caption';
+  delete wallPrefs.chatInline;
   // The console widget asks this to decide whether chat lines go to the console.
-  window.__wallChatInline = () => !!wallPrefs.chatInline;
+  window.__wallChatInline = () => wallPrefs.chat === 'console';
   const DORMANT_MS = 60_000;
   const CONSOLE_LINGER_MS = 3000; // a finished command keeps the console up this long
   const CAPTION_MS = 9000;        // reasoning captions fade after this
@@ -322,6 +331,20 @@
       }
     }
 
+    /** One message in a pane's conversation drawer (kept to the last 120). */
+    function addConversation(pane, who, text) {
+      const list = pane.focus.thinkReply;
+      const item = el('div', `th-msg ${who}`);
+      item.appendChild(el('span', 'th-who', who === 'user' ? '▸ you' : '✦'));
+      const body = el('div', 'th-text');
+      if (who === 'user') body.textContent = String(text).slice(0, 1200);
+      else renderMarkdown(body, String(text).slice(0, 6000));
+      item.appendChild(body);
+      list.appendChild(item);
+      while (list.childElementCount > 120) list.firstElementChild.remove();
+      list.scrollTop = list.scrollHeight;
+    }
+
     /** What the agent is doing decides the stage: console, editor or thoughts. */
     function followView(pane, ev) {
       const f = pane.focus;
@@ -370,11 +393,12 @@
           clearTimeout(pane.captionTimer);
           pane.captionTimer = setTimeout(() => pane.root.classList.remove('captioning'), CAPTION_MS);
         }
-        f.thinkTitle.textContent = ev.text ? 'REPLYING' : 'THINKING';
         const lastLines = (text, n) => mdToText(text).split('\n').filter((l) => l.trim()).slice(-n).join('\n');
-        f.thinkReason.textContent = ev.thinking ? lastLines(ev.thinking, 8) : '';
-        f.thinkReply.textContent = ev.text ? lastLines(ev.text, 10) : '';
+        f.thinkReason.textContent = ev.thinking && !ev.text ? `… ${lastLines(ev.thinking, 4)}` : '';
+        if (ev.text) addConversation(pane, 'agent', ev.text);
         f.dkThinkText.textContent = ev.text ? 'replied' : 'thinking';
+      } else if (ev.t === 'user' && !ev.system && ev.text) {
+        addConversation(pane, 'user', ev.text);
       }
       f.dkJob.classList.toggle('hidden', pane.jobs.size === 0);
       f.dkJob.textContent = pane.jobs.size > 1 ? `▶ ${pane.jobs.size} jobs` : '▶ job';
@@ -540,12 +564,14 @@
       const thinkHead = el('div', 'th-head');
       const dots = el('span', 'dots');
       dots.append(el('i'), el('i'), el('i'));
-      const thinkTitle = el('span', '', 'THINKING');
+      const thinkTitle = el('span', '', 'CONVERSATION');
       thinkHead.append(dots, thinkTitle);
+      // The conversation drawer: your messages and the agent's replies in order
+      // (actions live in the console, editor and timeline), latest reasoning last.
       const thinkBody = el('div', 'th-body');
+      const thinkReply = el('div', 'th-list');
       const thinkReason = el('div', 'th-reason');
-      const thinkReply = el('div', 'th-reply');
-      thinkBody.append(thinkReason, thinkReply);
+      thinkBody.append(thinkReply, thinkReason);
       think.append(thinkHead, thinkBody);
       main.appendChild(think);
       // Reasoning and replies run as a caption over the stage, not a card.
@@ -557,16 +583,19 @@
       const dock = el('div', 'wp-dock');
       const dkEditor = el('button', 'dk-editor');
       dkEditor.type = 'button';
+      dkEditor.title = 'Show the editor: the file this agent is working on';
       dkEditor.append(el('b', '', '✎'), el('span', '', 'editor'));
       const dkConsole = el('button', 'dk-console');
       dkConsole.type = 'button';
       const dkConsoleText = el('span', '', 'console');
       const dkJob = el('em', 'dk-job hidden', '▶ job');
+      dkConsole.title = 'Show the console: the commands this agent ran';
       dkConsole.append(el('b', '', '$'), dkConsoleText, dkJob);
       const dkThink = el('button', 'dk-think');
       dkThink.type = 'button';
-      const dkThinkText = el('span', '', 'thoughts');
-      dkThink.append(el('b', '', '…'), dkThinkText);
+      const dkThinkText = el('span', '', 'conversation');
+      dkThink.title = 'Open the conversation: your messages and the agent replies';
+      dkThink.append(el('b', '', '💬'), dkThinkText);
       dock.append(dkEditor, dkConsole, dkThink);
       main.appendChild(dock);
       const side = el('div', 'wp-side');
@@ -682,9 +711,11 @@
     }
 
     function renderToggles() {
-      $a('wallChatMode').textContent = wallPrefs.chatInline ? 'CHAT: IN CONSOLE' : 'CHAT: SIDE';
+      $a('wallChatMode').textContent = `CHAT: ${{ caption: 'CAPTION', side: 'SIDE', console: 'IN CONSOLE' }[wallPrefs.chat]}`;
       $a('wallDormantMode').textContent = wallPrefs.shrinkQuiet ? 'QUIET AGENTS: SHRINK' : 'QUIET AGENTS: KEEP';
-      $a('wall').classList.toggle('chat-inline', wallPrefs.chatInline);
+      // Only SIDE keeps the feed column; the others give editor and console the width.
+      $a('wall').classList.toggle('chat-inline', wallPrefs.chat !== 'side');
+      $a('wall').classList.toggle('chat-console', wallPrefs.chat === 'console');
       $a('wall').classList.toggle('focus', wallPrefs.focus);
       $a('wallLayoutMode').textContent = wallPrefs.focus ? 'LAYOUT: FOCUS' : 'LAYOUT: SPLIT';
       applyStrip();
@@ -695,12 +726,15 @@
     }
 
     $a('wallChatMode').addEventListener('click', () => {
-      wallPrefs.chatInline = !wallPrefs.chatInline;
+      const before = wallPrefs.chat;
+      wallPrefs.chat = CHAT_MODES[(CHAT_MODES.indexOf(before) + 1) % CHAT_MODES.length];
       savePrefs();
       renderToggles();
-      // Replay the panes so the consoles pick up (or drop) the chat lines.
-      const agentsNow = panes.map((p) => p.agent);
-      if (agentsNow.length) open(agentsNow);
+      // Replay the panes when the consoles must pick up (or drop) the chat lines.
+      if (before === 'console' || wallPrefs.chat === 'console') {
+        const agentsNow = panes.map((p) => p.agent);
+        if (agentsNow.length) open(agentsNow);
+      }
     });
     /** 'auto' is compact on short windows; a click picks full or compact for good. */
     function applyStrip() {
