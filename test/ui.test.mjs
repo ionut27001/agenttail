@@ -717,15 +717,18 @@ try {
   check(await evalExpr(`window.__wall.views()['dsh:${fixture.liveId}'] === 'editor'`), 'and clicking again follows the agent');
   const score = await evalExpr(`[...${livePane}.querySelectorAll('.wp-score .sc b')].map((b) => Number(b.textContent))`);
   check(score.length === 5 && score[0] >= 1 && score[1] >= 1 && score[2] >= 1, 'the pane scoreboard counts edits, commands and green runs', JSON.stringify(score));
-  check(await waitFor(`window.__wallMap().tiles.some((t) => t.path === 'notes.md') && window.__wallMap().cursors >= 1`, 5000), 'the repo map shows the file with the agent cursor on it', JSON.stringify(await evalExpr(`window.__wallMap()`)));
-  // A second agent of this workspace edits the same file: the map flags it.
+  check(await waitFor(`window.__wallTree().files.some((f) => f.path === 'notes.md' && f.edits >= 1) && window.__wallTree().cursors['dsh:${fixture.liveId}'] === 'notes.md'`, 5000), 'the team tree lists the edited file with the agent cursor on it', JSON.stringify(await evalExpr(`window.__wallTree()`)));
+  check(await evalExpr(`(() => { const s = document.getElementById('wallSide'); const r = s.querySelector('.wt-file[data-path="notes.md"]'); return s.getBoundingClientRect().width > 150 && !!r && !!r.querySelector('.wt-cursor') && !!r.querySelector('.wt-dot'); })()`), 'the tree sits in the left column with a cursor and an agent dot on the row');
+  await evalExpr(`document.querySelector('#wallSide .wt-file[data-path="notes.md"]').click(); true`);
+  check(await waitFor(`/notes\.md/.test(window.__wallEditor(${livePane}).label) && window.__wall.views()['dsh:${fixture.liveId}'] === 'editor'`, 4000), 'clicking a file in the tree opens it in that agent editor', JSON.stringify(await evalExpr(`window.__wallEditor(${livePane})`)));
+  // A second agent of this workspace edits the same file: the tree flags it.
   const otherKey = await evalExpr(`[...document.querySelectorAll('#wallGrid .wall-pane')].map((p) => p.dataset.key).find((k) => k.startsWith('dsh:') && k !== 'dsh:${fixture.liveId}') || ''`);
   if (otherKey) {
     const otherId = otherKey.slice(4);
     fs.appendFileSync(path.join(fixture.sessionsRoot, '--tmp-fixture-workspace--', otherId, 'session.v4.jsonl.zstd'), frame([
       ev('tool/call', 900, { turn: 9, step: 1, callId: 'call_wall_clash', name: 'edit', arguments: JSON.stringify({ file_path: path.join(fixture.workspace, 'notes.md'), old_string: 'First line', new_string: 'First line' }) }),
     ]));
-    check(await waitFor(`window.__wallMap().tiles.some((t) => t.path === 'notes.md' && t.clash) && /⚡/.test(window.__wallMap().clash)`, 8000), 'two agents on the same file make it flash on the map', JSON.stringify(await evalExpr(`window.__wallMap()`)));
+    check(await waitFor(`window.__wallTree().files.some((f) => f.path === 'notes.md' && f.clash) && /⚡ notes\.md/.test(document.querySelector('#wallSide .wt-clash-line').textContent)`, 8000), 'two agents on the same file make it flash in the tree', JSON.stringify(await evalExpr(`window.__wallTree()`)));
   }
   const marks = await evalExpr(`window.__wallTimeline.marks()`);
   check(Array.isArray(marks) && marks.some((m) => m.key === `dsh:${fixture.liveId}`) && new Set(marks.map((m) => m.key)).size >= 2, 'the timeline has a track of marks per agent', JSON.stringify((marks || []).slice(-6)));

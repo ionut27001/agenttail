@@ -259,7 +259,7 @@
   // pane: { agent, slots: { editor, console }, history (true while replaying
   // the tail), root }. Widgets live in their own <script> blocks.
   window.__wallHooks = window.__wallHooks || [];
-  // Strip widgets: { create({ slots: { map, timeline, tree }, panes }) -> { onPaneEvent(pane, ev), dispose() } }.
+  // Strip widgets: { create({ slots: { timeline, tree }, panes }) -> { onPaneEvent(pane, ev), dispose() } }.
   // pane.showFile(path, key) opens a file in that pane's editor.
   // Panes open before the strip; their events (history tail first) arrive after.
   window.__wallStripHooks = window.__wallStripHooks || [];
@@ -764,7 +764,6 @@
     const strip = { widgets: [] };
     function openStrip() {
       const slots = {
-        map: document.querySelector('#wallStrip .ws-map'),
         timeline: document.querySelector('#wallStrip .ws-timeline'),
         tree: document.getElementById('wallSide'),
       };

@@ -1200,9 +1200,7 @@
   #wallStripToggle { position: absolute; top: 4px; right: 10px; z-index: 3; padding: 0 7px; font-size: 11px; line-height: 1.4; }
   /* Compact: one row of file tiles, no timeline — the panes get the height. */
   #wallStrip.compact .ws-timeline { display: none; }
-  #wallStrip.compact .wm-board { max-height: 30px; }
-  #wallStrip.compact .wm-legend { display: none; }
-  #wallStrip .ws-map { border-bottom: 1px solid var(--line-soft); }
+  #wallStrip.compact { min-height: 22px; }
   .wall-pane { --c: var(--green); display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: var(--bg); border-top: 3px solid var(--c); }
   .wall-pane.live { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 35%, transparent); }
   .wp-head { flex: none; display: flex; align-items: center; gap: 8px; min-width: 0; padding: 7px 10px; border-bottom: 1px solid var(--line-soft); }
@@ -1243,42 +1241,7 @@
   .wp-score .sc-ok, .wp-score .sc-bad.zero, .wp-score .sc-streak:not(.hot) { display: none; }
   .wp-score .sc.pop b { animation: sc-pop .45s ease-out; }
   @keyframes sc-pop { 0% { transform: scale(1.7); color: var(--c); } 100% { transform: scale(1); } }
-  /* wall: repo map with agent cursors */
-  #wallStrip .ws-map { padding: 5px 12px 8px; }
-  .wm-head { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; font-size: 10px; letter-spacing: .1em; }
-  .wm-title { color: var(--green); }
-  .wm-legend { display: flex; gap: 12px; color: var(--muted); letter-spacing: .04em; }
-  .wm-who { display: inline-flex; align-items: center; gap: 5px; }
-  .wm-who i { width: 8px; height: 8px; border-radius: 50%; background: var(--c); display: inline-block; }
-  .wm-clash { margin-left: auto; color: var(--amber); font-weight: 700; letter-spacing: .06em; animation: tdot 1.4s ease-in-out infinite; }
-  .wm-clash.hidden { display: none; }
-  .wm-board { position: relative; display: flex; flex-wrap: wrap; gap: 6px; max-height: 86px; overflow: hidden; padding-top: 8px; }
-  .wm-empty { color: var(--muted); font-size: 11px; padding: 4px 0; }
-  .wm-tile {
-    --heat: 0; position: relative; display: inline-flex; align-items: baseline; gap: 5px; max-width: 220px;
-    padding: 3px 8px 3px 7px; border: 1px solid var(--line); border-radius: 4px; font-size: 11px; color: var(--green-soft);
-    background: color-mix(in srgb, var(--amber) calc(var(--heat) * 28%), var(--bg-2));
-    transition: background .4s, border-color .3s;
-  }
-  .wm-tile .wm-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
-  .wm-tile .wm-dir { color: var(--muted); font-size: 9.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 90px; }
-  .wm-tile .wm-dots { display: inline-flex; gap: 2px; }
-  .wm-tile .wm-dots i { width: 5px; height: 5px; border-radius: 50%; display: inline-block; }
-  .wm-tile.ping { animation: wm-ping .9s ease-out; }
-  @keyframes wm-ping { 0% { box-shadow: 0 0 0 0 var(--ping); border-color: var(--ping); } 100% { box-shadow: 0 0 0 10px transparent; } }
-  .wm-tile.clash { border-color: var(--amber); animation: wm-clash 1.2s ease-in-out infinite; }
-  @keyframes wm-clash { 50% { box-shadow: 0 0 12px color-mix(in srgb, var(--amber) 60%, transparent); } }
-  .wm-cursor {
-    position: absolute; left: 0; top: 0; width: 0; height: 0; opacity: 0; z-index: 2; pointer-events: none;
-    border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 9px solid var(--c);
-    filter: drop-shadow(0 0 4px var(--c)); transition: transform .55s cubic-bezier(.2, .8, .2, 1), opacity .3s;
-  }
-  .wm-cursor.editing { animation: wm-bob 1s ease-in-out infinite; }
-  @keyframes wm-bob { 50% { margin-top: -3px; } }
-  @media (prefers-reduced-motion: reduce) {
-    .wm-cursor, .wm-tile { transition: none; }
-    .wm-cursor.editing, .wm-tile.clash, .wm-clash, .wm-tile.ping, .wp-score .sc.pop b { animation: none; }
-  }
+  @media (prefers-reduced-motion: reduce) { .wp-score .sc.pop b { animation: none; } }
   .wp-slot-label { position: absolute; top: 3px; right: 8px; z-index: 3; color: var(--muted); font-size: 9px; letter-spacing: .12em; pointer-events: none; }
   .wp-feed { flex: 1; min-height: 0; min-width: 0; width: 100%; overflow-x: hidden; overflow-y: auto; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; font-size: 12px; line-height: 1.5; }
   .wp-feed > * { flex: none; min-width: 0; max-width: 100%; }
