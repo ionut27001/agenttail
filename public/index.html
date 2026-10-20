@@ -1106,6 +1106,43 @@
   .wall-pane.dormant .wp-head { flex-wrap: wrap; }
   .wall-pane.dormant .wp-title { flex-basis: 100%; white-space: normal; }
   .wall-pane.dormant .wp-act { white-space: normal; }
+  /* focus layout: one stage, the rest minimised into a dock */
+  .wp-think, .wp-dock { display: none; }
+  #wall.focus .wp-main { display: block; position: relative; }
+  #wall.focus .wp-editor { position: absolute; inset: 0 0 30px 0; transition: filter .35s; }
+  #wall.focus .wp-console, #wall.focus .wp-think {
+    position: absolute; left: 5%; right: 5%; top: 8%; bottom: 42px; z-index: 4;
+    border: 1px solid var(--c); border-radius: 7px; box-shadow: 0 14px 42px rgba(0,0,0,.65);
+    transition: transform .38s cubic-bezier(.2, .8, .2, 1), opacity .3s;
+  }
+  #wall.focus .wp-console { transform-origin: 50% 100%; }
+  #wall.focus .wp-think { transform-origin: 84% 100%; display: flex; flex-direction: column; background: var(--bg-2); overflow: hidden; }
+  #wall.focus .wall-pane:not(.show-console) .wp-console,
+  #wall.focus .wall-pane:not(.show-think) .wp-think { transform: translateY(46%) scale(.06); opacity: 0; pointer-events: none; }
+  #wall.focus .wall-pane.show-console .wp-editor,
+  #wall.focus .wall-pane.show-think .wp-editor { filter: brightness(.55) saturate(.7); }
+  .wp-think .th-head { display: flex; align-items: center; gap: 8px; padding: 7px 12px; border-bottom: 1px solid var(--line-soft); color: var(--c); font-size: 10px; letter-spacing: .14em; }
+  .wp-think .th-head .dots i { display: inline-block; width: 4px; height: 4px; margin-right: 3px; border-radius: 50%; background: var(--c); animation: tdot 1.2s infinite; }
+  .wp-think .th-head .dots i:nth-child(2) { animation-delay: .2s; }
+  .wp-think .th-head .dots i:nth-child(3) { animation-delay: .4s; }
+  .wp-think .th-body { flex: 1; min-height: 0; overflow: hidden; padding: 10px 14px; display: flex; flex-direction: column; justify-content: flex-end; gap: 6px; font-size: 12px; line-height: 1.55; }
+  .wp-think .th-reason { color: var(--muted); font-style: italic; white-space: pre-wrap; }
+  .wp-think .th-reply { color: var(--text); white-space: pre-wrap; }
+  #wall.focus .wp-dock { display: flex; position: absolute; left: 0; right: 0; bottom: 0; height: 30px; z-index: 6; gap: 6px; align-items: center; padding: 0 8px; border-top: 1px solid var(--line-soft); background: var(--panel); }
+  .wp-dock button { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 40%; padding: 2px 9px; border: 1px solid var(--line); border-radius: 4px; background: var(--bg-2); color: var(--muted); font-size: 10.5px; }
+  .wp-dock button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .wp-dock button.on { color: var(--text); border-color: var(--c); box-shadow: inset 0 -2px 0 var(--c); }
+  .wp-dock button.pinned::after { content: '📌'; font-size: 9px; }
+  .wp-dock .dk-console { margin: 0 auto; }
+  .wp-dock .dk-console.ok b { color: var(--green); } .wp-dock .dk-console.bad b { color: var(--red); }
+  .wp-dock .dk-job { color: var(--amber); font-size: 10px; }
+  .wp-dock .dk-job.hidden { display: none; }
+  .wp-dock button.bump { animation: dk-bump .5s ease-out; }
+  @keyframes dk-bump { 0% { transform: scale(1.25); border-color: var(--c); } 100% { transform: none; } }
+  @media (prefers-reduced-motion: reduce) {
+    #wall.focus .wp-console, #wall.focus .wp-think, #wall.focus .wp-editor { transition: none; }
+    .wp-dock button.bump, .wp-think .th-head .dots i { animation: none; }
+  }
   #wall.chat-inline .wp-body { grid-template-columns: minmax(0, 1fr); }
   #wall.chat-inline .wp-side { display: none; }
   #wall.chat-inline .wp-main { border-right: none; grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); }
@@ -1653,6 +1690,7 @@
 
 <div id="wall" class="hidden" role="dialog" aria-label="Agents side by side">
   <div class="wall-head"><span>◫ WATCHING</span><span class="dim" id="wallSummary"></span>
+    <button id="wallLayoutMode" class="wall-toggle" type="button" title="FOCUS shows what the agent is doing right now (editor, console or thoughts); SPLIT shows editor and console together">LAYOUT: FOCUS</button>
     <button id="wallChatMode" class="wall-toggle" type="button" title="Show the agent chat and reasoning beside the editor, or inside the console">CHAT: SIDE</button>
     <button id="wallDormantMode" class="wall-toggle" type="button" title="Shrink agents that are waiting or quiet, so working agents get the space">QUIET AGENTS: SHRINK</button>
     <button id="wallClose" type="button" title="Close (Esc)">✕</button></div>
@@ -7156,7 +7194,7 @@ termObserver.observe($('term'));
   // Panes open before the strip; their events (history tail first) arrive after.
   window.__wallStripHooks = window.__wallStripHooks || [];
   const WALL_PREFS_KEY = 'agenttail-wall';
-  const wallPrefs = { chatInline: false, shrinkQuiet: true };
+  const wallPrefs = { chatInline: false, shrinkQuiet: true, focus: true };
   try { Object.assign(wallPrefs, JSON.parse(localStorage.getItem(WALL_PREFS_KEY) || '{}')); } catch { /* ignore */ }
   // The console widget asks this to decide whether chat lines go to the console.
   window.__wallChatInline = () => !!wallPrefs.chatInline;
@@ -7210,7 +7248,75 @@ termObserver.observe($('term'));
       }
     }
 
+    /** What the agent is doing decides the stage: console, editor or thoughts. */
+    function followView(pane, ev) {
+      const f = pane.focus;
+      let next = null;
+      if (ev.t === 'call') {
+        if (ev.name === 'pwsh') {
+          next = 'console';
+          const cmd = String((ev.args && ev.args.command) || '').replace(/\s+/g, ' ');
+          f.dkConsoleText.textContent = cmd.slice(0, 60) || 'command';
+          f.dkConsole.classList.remove('ok', 'bad');
+          pane.lastShell = ev.callId;
+        } else if (EDIT_TOOLS.has(ev.name) || ev.name === 'read') {
+          next = 'editor';
+        }
+      } else if (ev.t === 'result' && ev.callId && ev.callId === pane.lastShell) {
+        const exit = /\[exit code:\s*(-?\d+)\]/i.exec(ev.text || '');
+        const bad = ev.isError || (exit && exit[1] !== '0');
+        f.dkConsole.classList.toggle('bad', !!bad);
+        f.dkConsole.classList.toggle('ok', !bad);
+        f.dkConsoleText.textContent = `${f.dkConsoleText.textContent.replace(/ [✓✗].*$/, '')} ${bad ? '✗' : '✓'}`;
+      } else if (ev.t === 'job') {
+        pane.jobs += 1;
+        next = 'console';
+      } else if (ev.t === 'jobEnd') {
+        pane.jobs = Math.max(0, pane.jobs - 1);
+      } else if (ev.t === 'say' && (ev.thinking || ev.text)) {
+        next = 'think';
+        f.thinkTitle.textContent = ev.text ? 'REPLYING' : 'THINKING';
+        const lastLines = (text, n) => mdToText(text).split('\n').filter((l) => l.trim()).slice(-n).join('\n');
+        f.thinkReason.textContent = ev.thinking ? lastLines(ev.thinking, 8) : '';
+        f.thinkReply.textContent = ev.text ? lastLines(ev.text, 10) : '';
+        f.dkThinkText.textContent = ev.text ? 'replied' : 'thinking';
+      }
+      f.dkJob.classList.toggle('hidden', pane.jobs === 0);
+      if (next) {
+        pane.lastView = next;
+        if (!pane.history) {
+          pane.view = next;
+          applyView(pane);
+        }
+      }
+    }
+
+    function applyView(pane) {
+      const view = pane.pinnedView || pane.view;
+      const f = pane.focus;
+      const was = pane.shownView;
+      pane.root.classList.toggle('show-console', view === 'console');
+      pane.root.classList.toggle('show-think', view === 'think');
+      for (const [name, button] of [['editor', f.dkEditor], ['console', f.dkConsole], ['think', f.dkThink]]) {
+        button.classList.toggle('on', name === view);
+        button.classList.toggle('pinned', name === pane.pinnedView);
+      }
+      // The view that just minimised bumps its dock icon.
+      if (was && was !== view && !reduced()) {
+        const button = { editor: f.dkEditor, console: f.dkConsole, think: f.dkThink }[was];
+        button.classList.remove('bump');
+        void button.offsetWidth;
+        button.classList.add('bump');
+      }
+      pane.shownView = view;
+    }
+
+    function reduced() {
+      try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
+    }
+
     function onEvent(pane, ev) {
+      followView(pane, ev);
       if (!pane.history && ['call', 'result', 'say', 'user', 'job', 'jobEnd', 'jobOutput'].includes(ev.t)) {
         pane.lastActiveAt = Date.now();
         updateDormant(pane);
@@ -7290,6 +7396,33 @@ termObserver.observe($('term'));
       const consoleSlot = el('div', 'wp-console');
       main.appendChild(editorSlot);
       main.appendChild(consoleSlot);
+      const think = el('div', 'wp-think');
+      const thinkHead = el('div', 'th-head');
+      const dots = el('span', 'dots');
+      dots.append(el('i'), el('i'), el('i'));
+      const thinkTitle = el('span', '', 'THINKING');
+      thinkHead.append(dots, thinkTitle);
+      const thinkBody = el('div', 'th-body');
+      const thinkReason = el('div', 'th-reason');
+      const thinkReply = el('div', 'th-reply');
+      thinkBody.append(thinkReason, thinkReply);
+      think.append(thinkHead, thinkBody);
+      main.appendChild(think);
+      const dock = el('div', 'wp-dock');
+      const dkEditor = el('button', 'dk-editor');
+      dkEditor.type = 'button';
+      dkEditor.append(el('b', '', '✎'), el('span', '', 'editor'));
+      const dkConsole = el('button', 'dk-console');
+      dkConsole.type = 'button';
+      const dkConsoleText = el('span', '', 'console');
+      const dkJob = el('em', 'dk-job hidden', '▶ job');
+      dkConsole.append(el('b', '', '$'), dkConsoleText, dkJob);
+      const dkThink = el('button', 'dk-think');
+      dkThink.type = 'button';
+      const dkThinkText = el('span', '', 'thoughts');
+      dkThink.append(el('b', '', '…'), dkThinkText);
+      dock.append(dkEditor, dkConsole, dkThink);
+      main.appendChild(dock);
       const side = el('div', 'wp-side');
       const feed = el('div', 'wp-feed');
       side.appendChild(feed);
@@ -7312,11 +7445,21 @@ termObserver.observe($('term'));
       const pane = {
         agent, root, act, feed, filesEl, stateEl, calls: new Map(), files: [], stick: true, history: true, action: null,
         dormantText, lastActiveAt: 0, state: agent.state, pinned: false,
+        view: 'editor', pinnedView: null, jobs: 0, lastView: 'editor',
+        focus: { thinkTitle, thinkReason, thinkReply, dkEditor, dkConsole, dkConsoleText, dkJob, dkThink, dkThinkText },
         slots: { editor: editorSlot, console: consoleSlot },
         widgets: [],
       };
       // Widgets (editor, console …) register in window.__wallHooks; each gets
       // the pane and then every event of its session.
+      for (const [view, button] of [['editor', pane.focus.dkEditor], ['console', pane.focus.dkConsole], ['think', pane.focus.dkThink]]) {
+        button.addEventListener('click', (e) => {
+          e.stopPropagation();
+          pane.pinnedView = pane.pinnedView === view ? null : view;
+          applyView(pane);
+        });
+      }
+      applyView(pane);
       for (const hook of window.__wallHooks || []) {
         try {
           const widget = hook.create(pane);
@@ -7333,6 +7476,8 @@ termObserver.observe($('term'));
       pane.es.addEventListener('ev', (e) => { try { onEvent(pane, JSON.parse(e.data)); } catch { /* ignore */ } });
       pane.es.addEventListener('historyEnd', () => {
         pane.history = false;
+        pane.view = pane.lastView;
+        applyView(pane);
         for (const widget of pane.widgets) {
           try { widget.onHistoryEnd && widget.onHistoryEnd(); } catch { /* ignore */ }
         }
@@ -7384,6 +7529,8 @@ termObserver.observe($('term'));
       $a('wallChatMode').textContent = wallPrefs.chatInline ? 'CHAT: IN CONSOLE' : 'CHAT: SIDE';
       $a('wallDormantMode').textContent = wallPrefs.shrinkQuiet ? 'QUIET AGENTS: SHRINK' : 'QUIET AGENTS: KEEP';
       $a('wall').classList.toggle('chat-inline', wallPrefs.chatInline);
+      $a('wall').classList.toggle('focus', wallPrefs.focus);
+      $a('wallLayoutMode').textContent = wallPrefs.focus ? 'LAYOUT: FOCUS' : 'LAYOUT: SPLIT';
     }
 
     function savePrefs() {
@@ -7397,6 +7544,11 @@ termObserver.observe($('term'));
       // Replay the panes so the consoles pick up (or drop) the chat lines.
       const agentsNow = panes.map((p) => p.agent);
       if (agentsNow.length) open(agentsNow);
+    });
+    $a('wallLayoutMode').addEventListener('click', () => {
+      wallPrefs.focus = !wallPrefs.focus;
+      savePrefs();
+      renderToggles();
     });
     $a('wallDormantMode').addEventListener('click', () => {
       wallPrefs.shrinkQuiet = !wallPrefs.shrinkQuiet;
@@ -7462,6 +7614,7 @@ termObserver.observe($('term'));
       get open_() { return !$a('wall').classList.contains('hidden'); },
       get panes() { return panes.length; },
       get dormant() { return panes.filter((p) => p.root.classList.contains('dormant')).map((p) => p.agent.key); },
+      views: () => Object.fromEntries(panes.map((p) => [p.agent.key, p.pinnedView || p.view])),
       prefs: wallPrefs,
     };
   })();
