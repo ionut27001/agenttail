@@ -168,7 +168,7 @@ Replacement is length-preserving (`▓`) where possible. If redaction throws, th
 Control is **off by default**. Start with `--allow-control` to let agenttail start and own DeepSeek Harness sessions through `dsh --profile acp`:
 
 ```bash
-npx agenttail --allow-control --no-stream-mode
+npx github:ionut27001/agenttail --allow-control --no-stream-mode
 ```
 
 The server prints a URL with a random 32-byte token in the fragment:
