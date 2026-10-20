@@ -83,7 +83,7 @@ Requirements: Node 24+, Windows, macOS or Linux. Windows is the tested platform;
 - ✍️ **Live editor typing** — follows the file the agent is editing and types edits in place with a short highlight sweep.
 - 🌡️ **Edit heat** — the tree tracks edits, failures and deleted files; hover reports `N edits · last … · M failed`. `.tmp`, `_*`, `node_modules`, `.git` and build directories are hidden unless **show hidden files** is enabled.
 - ⌨️ **Console and job progress** — running spinner, elapsed time, collapsible multi-line commands, `(+N lines)` outputs, a live job bar and a `[n/N]` mini progress bar. Failed commands flash red and show `✗ COMMAND FAILED` for three seconds.
-- 💬 **Chat and Log** — Chat groups tool calls and thinking for reading; Log is the full trajectory for auditing, with a summary per turn (model, tools by kind, files changed, failures, tokens, cost, duration). Agent replies render as markdown: headings, lists, tables, quotes, code and links.
+- 💬 **Chat and Log** — Chat groups tool calls and thinking for reading; Log is the full trajectory for auditing (the **MD** button exports it as Markdown), with a summary per turn (model, tools by kind, files changed, failures, tokens, cost, duration). Agent replies render as markdown: headings, lists, tables, quotes, code and links.
 - 👥 **Several agents at once** — an overview of every agent active in the last 30 minutes (dsh, Claude Code, Antigravity), grouped by git repository; worktrees of one repository count as the same repo. Each agent gets its own colour and shows its branch, model and current action; files edited by more than one agent are flagged. The activity bar names the other agents on the repo you are viewing, and the tree marks files they edited.
 - 🎨 **Themes** — matrix (default), amber, ice, dracula and a light paper theme, from Settings.
 - ◉ **One activity state** — RUNNING, EDITING, THINKING, REPLYING, IDLE or DONE, with a colour-coded stripe and dot; a settled job shows a checkmark briefly, then returns to the current state.
@@ -277,6 +277,7 @@ The session workspace is always allowed. Junctions/symlinks are followed only wh
 | `Ctrl+.` | collapse/expand the agent chat |
 | `Ctrl+Shift+.` | dock the agent pane to the right side (full height) or back under the editor |
 | `Ctrl+Shift+A` | open the agents overview |
+| `?` | list every keyboard shortcut |
 
 </details>
 

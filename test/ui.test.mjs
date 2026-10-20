@@ -353,6 +353,21 @@ try {
   await sleep(200);
   check(await evalExpr(`getComputedStyle(document.body).backgroundColor`) === matrixBg, 'switching back restores the matrix colours');
 
+  console.log('\nshortcuts and export');
+  await evalExpr(`document.body.focus(); document.dispatchEvent(new KeyboardEvent('keydown', { key: '?', bubbles: true })); true`);
+  check(await waitFor(`!document.getElementById('helpPanel').classList.contains('hidden')`, 3000), '? opens the keyboard shortcuts');
+  const helpText = await evalExpr(`document.getElementById('helpPanel').textContent`);
+  check(['Ctrl+Shift+A', 'Ctrl+Shift+.', 'Ctrl+B', 'Ctrl+J', 'Esc'].every((k) => helpText.replace(/\s+/g, '').includes(k.replace(/\s+/g, ''))), 'the overlay lists the layout, dock and agents shortcuts', helpText.slice(0, 300));
+  await evalExpr(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); true`);
+  check(await evalExpr(`document.getElementById('helpPanel').classList.contains('hidden')`), 'Esc closes the shortcuts overlay');
+  await evalExpr(`document.getElementById('helpBtn').click(); true`);
+  check(await evalExpr(`!document.getElementById('helpPanel').classList.contains('hidden')`), 'the header ? button opens it too');
+  await evalExpr(`window.__help.close(); true`);
+  const exported = await evalExpr(`window.__exportMarkdown()`);
+  check(typeof exported === 'string' && /^# /.test(exported) && exported.includes('- Source: dsh') && exported.includes('Patch the answer and run the tests.'), 'the session exports as Markdown with its header and messages', String(exported).slice(0, 300));
+  check(/^- \\$ /m.test(exported) || /^- ✎ /m.test(exported), 'tool calls are listed in the export', String(exported).slice(0, 600));
+  check(await evalExpr(`!!document.getElementById('chatExport')`), 'the agent pane has an export button');
+
   console.log('\nsystem meters');
   const sysReady = await waitFor(`['sysCpu', 'sysRam'].every((id) => document.getElementById(id).querySelector('.v').textContent !== '—')`, 12000);
   check(sysReady, 'CPU and RAM meters receive SSE samples');

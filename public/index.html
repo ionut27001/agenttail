@@ -603,6 +603,8 @@
   .stat { display: flex; align-items: baseline; gap: 6px; white-space: nowrap; }
   .stat.rate { align-items: center; }
   @media (max-width: 1800px) {
+    /* The ? key and Settings still open the shortcuts; the header has no room. */
+    #helpBtn { display: none; }
     .metrics { gap: 6px; padding: 0; }
     .stat { gap: 3px; }
     .session-picker { width: clamp(200px, calc(19vw / var(--ui-scale, 1)), 340px); }
@@ -861,7 +863,7 @@
   #fxPanel .fx-intensity { gap: 6px; color: var(--green); border-bottom: 1px solid var(--line-soft); padding-bottom: 6px; }
   #fxPanel .fx-speed { gap: 6px; color: var(--green); }
   #fxIntensityVal { width: 30px; text-align: right; color: var(--green-soft); }
-  #replayBtn { width: 100%; }
+  #replayBtn, #fxHelp { width: 100%; }
   #fxIntensityVal, #speedVal { text-align: right; }
 
   /* ---------- keyboard shortcuts ---------- */
@@ -1334,6 +1336,7 @@
         </div>
         <div class="fx-sep"></div>
         <button id="replayBtn" disabled title="Replay a finished session from the start">REPLAY</button>
+        <button id="fxHelp" type="button" title="Keyboard shortcuts (?)">KEYBOARD SHORTCUTS (?)</button>
         <div class="menu-stats"><span id="mElapsed">0:00:00</span> · <span id="mRon" class="odo">—</span></div>
         <div class="menu-session"><span id="mSession">—</span></div>
       </div>
@@ -4038,6 +4041,10 @@ $('helpBtn').addEventListener('click', (e) => {
   e.stopPropagation();
   setHelpOpen(true);
 });
+$('fxHelp').addEventListener('click', () => {
+  setSettingsOpen(false);
+  setHelpOpen(true);
+});
 $('helpClose').addEventListener('click', () => setHelpOpen(false));
 $('helpBackdrop').addEventListener('click', () => setHelpOpen(false));
 document.addEventListener('keydown', (e) => {
@@ -5504,6 +5511,12 @@ termObserver.observe($('term'));
     const signature = models.map((m) => m.value).join('|');
     if (select.dataset.signature !== signature) {
       select.textContent = '';
+      if (!models.length) {
+        const none = document.createElement('option');
+        none.value = '';
+        none.textContent = '—';
+        select.appendChild(none);
+      }
       const groups = new Map();
       for (const model of models) {
         const key = model.provider || 'other';
