@@ -1120,6 +1120,51 @@
   .wp-side { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
   .wp-editor-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 11px; letter-spacing: .1em; pointer-events: none; }
   .wp-editor .wp-slot-label { left: 46px; right: auto; max-width: calc(100% - 60px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: color-mix(in srgb, var(--c) 80%, var(--muted)); }
+  /* wall: pane scoreboard */
+  .wp-score { flex: none; display: inline-flex; gap: 8px; color: var(--muted); font-size: 10.5px; }
+  .wp-score .sc { display: inline-flex; gap: 3px; align-items: baseline; }
+  .wp-score .sc i { font-style: normal; color: var(--c); opacity: .8; }
+  .wp-score .sc b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .wp-score .sc-bad b { color: var(--red); }
+  .wp-score .sc-streak.hot b { color: var(--amber); }
+  .wp-score .sc.pop b { animation: sc-pop .45s ease-out; }
+  @keyframes sc-pop { 0% { transform: scale(1.7); color: var(--c); } 100% { transform: scale(1); } }
+  /* wall: repo map with agent cursors */
+  #wallStrip .ws-map { padding: 5px 12px 8px; }
+  .wm-head { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; font-size: 10px; letter-spacing: .1em; }
+  .wm-title { color: var(--green); }
+  .wm-legend { display: flex; gap: 12px; color: var(--muted); letter-spacing: .04em; }
+  .wm-who { display: inline-flex; align-items: center; gap: 5px; }
+  .wm-who i { width: 8px; height: 8px; border-radius: 50%; background: var(--c); display: inline-block; }
+  .wm-clash { margin-left: auto; color: var(--amber); font-weight: 700; letter-spacing: .06em; animation: tdot 1.4s ease-in-out infinite; }
+  .wm-clash.hidden { display: none; }
+  .wm-board { position: relative; display: flex; flex-wrap: wrap; gap: 6px; max-height: 86px; overflow: hidden; padding-top: 8px; }
+  .wm-empty { color: var(--muted); font-size: 11px; padding: 4px 0; }
+  .wm-tile {
+    --heat: 0; position: relative; display: inline-flex; align-items: baseline; gap: 5px; max-width: 220px;
+    padding: 3px 8px 3px 7px; border: 1px solid var(--line); border-radius: 4px; font-size: 11px; color: var(--green-soft);
+    background: color-mix(in srgb, var(--amber) calc(var(--heat) * 28%), var(--bg-2));
+    transition: background .4s, border-color .3s;
+  }
+  .wm-tile .wm-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+  .wm-tile .wm-dir { color: var(--muted); font-size: 9.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 90px; }
+  .wm-tile .wm-dots { display: inline-flex; gap: 2px; }
+  .wm-tile .wm-dots i { width: 5px; height: 5px; border-radius: 50%; display: inline-block; }
+  .wm-tile.ping { animation: wm-ping .9s ease-out; }
+  @keyframes wm-ping { 0% { box-shadow: 0 0 0 0 var(--ping); border-color: var(--ping); } 100% { box-shadow: 0 0 0 10px transparent; } }
+  .wm-tile.clash { border-color: var(--amber); animation: wm-clash 1.2s ease-in-out infinite; }
+  @keyframes wm-clash { 50% { box-shadow: 0 0 12px color-mix(in srgb, var(--amber) 60%, transparent); } }
+  .wm-cursor {
+    position: absolute; left: 0; top: 0; width: 0; height: 0; opacity: 0; z-index: 2; pointer-events: none;
+    border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 9px solid var(--c);
+    filter: drop-shadow(0 0 4px var(--c)); transition: transform .55s cubic-bezier(.2, .8, .2, 1), opacity .3s;
+  }
+  .wm-cursor.editing { animation: wm-bob 1s ease-in-out infinite; }
+  @keyframes wm-bob { 50% { margin-top: -3px; } }
+  @media (prefers-reduced-motion: reduce) {
+    .wm-cursor, .wm-tile { transition: none; }
+    .wm-cursor.editing, .wm-tile.clash, .wm-clash, .wm-tile.ping, .wp-score .sc.pop b { animation: none; }
+  }
   .wp-slot-label { position: absolute; top: 3px; right: 8px; z-index: 3; color: var(--muted); font-size: 9px; letter-spacing: .12em; pointer-events: none; }
   .wp-feed { flex: 1; min-height: 0; min-width: 0; width: 100%; overflow-x: hidden; overflow-y: auto; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; font-size: 12px; line-height: 1.5; }
   .wp-feed > * { flex: none; min-width: 0; max-width: 100%; }
@@ -6535,6 +6580,230 @@ termObserver.observe($('term'));
     const ed = paneElement && paneElement.querySelector('.wp-editor');
     return ed ? { label: ed.querySelector('.wp-slot-label')?.textContent || '', text: (ed.querySelector('.view-lines')?.innerText || '').replace(/ /g, ' ') } : null;
   };
+})();
+</script>
+<script>
+/* ---------- watch wall widgets: repo map with agent cursors, pane scoreboards ---------- */
+(() => {
+  const MAX_TILES = 36;
+
+  function reduced() {
+    try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
+  }
+
+  function node(tag, cls, text) {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text !== undefined) n.textContent = text;
+    return n;
+  }
+
+  /* ----- scoreboard in each pane header ----- */
+  window.__wallHooks = window.__wallHooks || [];
+  window.__wallHooks.push({
+    name: 'score',
+    create(pane) {
+      const head = pane.root.querySelector('.wp-head');
+      const box = node('span', 'wp-score');
+      const parts = {};
+      for (const [k, glyph, title] of [
+        ['edits', '✎', 'edits'],
+        ['commands', '$', 'commands'],
+        ['ok', '✓', 'commands that succeeded'],
+        ['bad', '✗', 'commands that failed'],
+        ['streak', '🔥', 'green runs in a row'],
+      ]) {
+        const part = node('span', `sc sc-${k}`);
+        part.title = title;
+        part.appendChild(node('i', '', glyph));
+        part.appendChild(node('b', '', '0'));
+        box.appendChild(part);
+        parts[k] = part;
+      }
+      const stateEl = head.querySelector('.wp-state');
+      head.insertBefore(box, stateEl);
+      const score = { edits: 0, commands: 0, ok: 0, bad: 0, streak: 0, best: 0 };
+      const shell = new Set();
+      const set = (k, pop) => {
+        parts[k].querySelector('b').textContent = String(score[k]);
+        if (pop && !pane.history && !reduced()) {
+          parts[k].classList.remove('pop');
+          void parts[k].offsetWidth;
+          parts[k].classList.add('pop');
+        }
+      };
+      return {
+        onEvent(ev) {
+          if (ev.t === 'call') {
+            if (EDIT_TOOLS.has(ev.name)) { score.edits += 1; set('edits', true); }
+            if (ev.name === 'pwsh') { score.commands += 1; shell.add(ev.callId); set('commands', true); }
+          } else if (ev.t === 'result' && shell.has(ev.callId)) {
+            shell.delete(ev.callId);
+            const exit = /\[exit code:\s*(-?\d+)\]/i.exec(ev.text || '');
+            const bad = ev.isError || (exit && exit[1] !== '0');
+            if (bad) {
+              score.bad += 1;
+              score.streak = 0;
+              set('bad', true);
+              set('streak', false);
+            } else {
+              score.ok += 1;
+              score.streak += 1;
+              set('ok', true);
+              set('streak', score.streak > score.best);
+              score.best = Math.max(score.best, score.streak);
+            }
+            parts.streak.classList.toggle('hot', score.streak >= 3);
+          }
+        },
+        dispose() { box.remove(); },
+        get score() { return { ...score }; },
+      };
+    },
+  });
+
+  /* ----- repo map in the team strip ----- */
+  window.__wallStripHooks = window.__wallStripHooks || [];
+  window.__wallStripHooks.push({
+    name: 'map',
+    create({ slots, panes }) {
+      const slot = slots.map;
+      const head = node('div', 'wm-head');
+      head.appendChild(node('span', 'wm-title', 'REPO MAP'));
+      const legend = node('span', 'wm-legend');
+      for (const pane of panes) {
+        const item = node('span', 'wm-who');
+        item.style.setProperty('--c', pane.root.style.getPropertyValue('--c'));
+        item.appendChild(node('i'));
+        item.appendChild(document.createTextNode(`${pane.agent.sourceLabel}${pane.agent.repo && pane.agent.repo.branch ? ' · ' + pane.agent.repo.branch : ''}`));
+        legend.appendChild(item);
+      }
+      head.appendChild(legend);
+      const clash = node('span', 'wm-clash hidden');
+      head.appendChild(clash);
+      slot.appendChild(head);
+      const board = node('div', 'wm-board');
+      slot.appendChild(board);
+      const empty = node('div', 'wm-empty', 'files appear here as the agents touch them');
+      board.appendChild(empty);
+
+      const tiles = new Map();   // path -> { el, edits, reads, last, who: Set<key> }
+      const cursors = new Map(); // pane key -> { el, path }
+      let raf = 0;
+
+      function colourOf(pane) { return pane.root.style.getPropertyValue('--c'); }
+
+      function tileFor(p) {
+        let tile = tiles.get(p);
+        if (tile) return tile;
+        const el = node('div', 'wm-tile');
+        const name = node('span', 'wm-name', p.split('/').pop());
+        el.appendChild(name);
+        const dir = p.includes('/') ? p.slice(0, p.lastIndexOf('/')) : '';
+        if (dir) el.appendChild(node('span', 'wm-dir', dir));
+        const dots = node('span', 'wm-dots');
+        el.appendChild(dots);
+        el.title = p;
+        tile = { el, dots, edits: 0, reads: 0, last: 0, who: new Map() };
+        tiles.set(p, tile);
+        empty.remove();
+        board.appendChild(el);
+        if (tiles.size > MAX_TILES) {
+          // Drop the tile nobody is on that was touched longest ago.
+          const onIt = new Set([...cursors.values()].map((c) => c.path));
+          const oldest = [...tiles.entries()].filter(([q]) => !onIt.has(q)).sort((a, b) => a[1].last - b[1].last)[0];
+          if (oldest) { oldest[1].el.remove(); tiles.delete(oldest[0]); }
+        }
+        return tile;
+      }
+
+      function paint(tile) {
+        const heat = Math.min(1, tile.edits / 8);
+        tile.el.style.setProperty('--heat', String(heat));
+        tile.dots.textContent = '';
+        for (const colour of tile.who.values()) {
+          const d = node('i');
+          d.style.background = colour;
+          tile.dots.appendChild(d);
+        }
+      }
+
+      function placeCursors() {
+        raf = 0;
+        const boardRect = board.getBoundingClientRect();
+        const byPath = new Map();
+        for (const [key, cur] of cursors) {
+          const tile = tiles.get(cur.path);
+          if (!tile) { cur.el.style.opacity = '0'; continue; }
+          const r = tile.el.getBoundingClientRect();
+          const stack = byPath.get(cur.path) || 0;
+          byPath.set(cur.path, stack + 1);
+          cur.el.style.opacity = '1';
+          cur.el.style.transform = `translate(${Math.round(r.left - boardRect.left + 6 + stack * 14)}px, ${Math.round(r.top - boardRect.top - 7)}px)`;
+        }
+        // Two or more agents on the same file: make it obvious.
+        const shared = [...byPath.entries()].filter(([, n]) => n > 1).map(([q]) => q);
+        for (const [q, tile] of tiles) tile.el.classList.toggle('clash', shared.includes(q));
+        if (shared.length) {
+          clash.textContent = `⚡ ${shared.length === 1 ? 'both agents on ' + shared[0].split('/').pop() : shared.length + ' files shared right now'}`;
+          clash.classList.remove('hidden');
+        } else {
+          clash.classList.add('hidden');
+        }
+      }
+
+      function schedule() {
+        if (!raf) raf = requestAnimationFrame(placeCursors);
+      }
+
+      function move(pane, p, kind) {
+        const tile = tileFor(p);
+        tile.last = Date.now();
+        if (kind === 'edit') tile.edits += 1; else tile.reads += 1;
+        tile.who.set(pane.agent.key, colourOf(pane));
+        paint(tile);
+        let cur = cursors.get(pane.agent.key);
+        if (!cur) {
+          const el = node('span', 'wm-cursor');
+          el.style.setProperty('--c', colourOf(pane));
+          el.title = pane.agent.sourceLabel;
+          board.appendChild(el);
+          cur = { el, path: p };
+          cursors.set(pane.agent.key, cur);
+        }
+        cur.path = p;
+        cur.el.classList.toggle('editing', kind === 'edit');
+        if (!pane.history && !reduced()) {
+          tile.el.classList.remove('ping');
+          void tile.el.offsetWidth;
+          tile.el.classList.add('ping');
+          tile.el.style.setProperty('--ping', colourOf(pane));
+        }
+        schedule();
+      }
+
+      const ro = new ResizeObserver(schedule);
+      ro.observe(board);
+
+      return {
+        onPaneEvent(pane, ev) {
+          if (ev.t !== 'call' || !ev.args || typeof ev.args.file_path !== 'string') return;
+          if (EDIT_TOOLS.has(ev.name)) move(pane, ev.args.file_path, 'edit');
+          else if (ev.name === 'read') move(pane, ev.args.file_path, 'read');
+        },
+        dispose() {
+          if (raf) cancelAnimationFrame(raf);
+          ro.disconnect();
+        },
+      };
+    },
+  });
+
+  window.__wallMap = () => ({
+    tiles: [...document.querySelectorAll('#wallStrip .wm-tile')].map((t) => ({ path: t.title, clash: t.classList.contains('clash') })),
+    cursors: document.querySelectorAll('#wallStrip .wm-cursor').length,
+    clash: document.querySelector('#wallStrip .wm-clash:not(.hidden)')?.textContent || '',
+  });
 })();
 </script>
 <script>

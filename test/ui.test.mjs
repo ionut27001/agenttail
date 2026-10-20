@@ -692,6 +692,18 @@ try {
     ev('tool/result', 33, { turn: 1, step: 2, message: { role: 'tool', toolCallId: 'call_wall_edit', content: [{ type: 'text', text: 'Edited notes.md' }], isError: false } }),
   ]));
   check(await waitFor(`(() => { const e = window.__wallEditor(${livePane}); return !!e && /editing notes\\.md/.test(e.label) && e.text.includes('edited while you watch'); })()`, 10000), 'the pane editor types a live edit into the file', JSON.stringify(await evalExpr(`window.__wallEditor(${livePane})`)));
+  const score = await evalExpr(`[...${livePane}.querySelectorAll('.wp-score .sc b')].map((b) => Number(b.textContent))`);
+  check(score.length === 5 && score[0] >= 1 && score[1] >= 1 && score[2] >= 1, 'the pane scoreboard counts edits, commands and green runs', JSON.stringify(score));
+  check(await waitFor(`window.__wallMap().tiles.some((t) => t.path === 'notes.md') && window.__wallMap().cursors >= 1`, 5000), 'the repo map shows the file with the agent cursor on it', JSON.stringify(await evalExpr(`window.__wallMap()`)));
+  // A second agent of this workspace edits the same file: the map flags it.
+  const otherKey = await evalExpr(`[...document.querySelectorAll('#wallGrid .wall-pane')].map((p) => p.dataset.key).find((k) => k.startsWith('dsh:') && k !== 'dsh:${fixture.liveId}') || ''`);
+  if (otherKey) {
+    const otherId = otherKey.slice(4);
+    fs.appendFileSync(path.join(fixture.sessionsRoot, '--tmp-fixture-workspace--', otherId, 'session.v4.jsonl.zstd'), frame([
+      ev('tool/call', 900, { turn: 9, step: 1, callId: 'call_wall_clash', name: 'edit', arguments: JSON.stringify({ file_path: path.join(fixture.workspace, 'notes.md'), old_string: 'First line', new_string: 'First line' }) }),
+    ]));
+    check(await waitFor(`window.__wallMap().tiles.some((t) => t.path === 'notes.md' && t.clash) && /⚡/.test(window.__wallMap().clash)`, 8000), 'two agents on the same file make it flash on the map', JSON.stringify(await evalExpr(`window.__wallMap()`)));
+  }
   await evalExpr(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); true`);
   check(await evalExpr(`!window.__wall.open_ && window.__wall.panes === 0`), 'Esc closes the wall and its streams');
 
