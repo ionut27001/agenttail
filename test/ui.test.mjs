@@ -529,7 +529,7 @@ try {
   console.log('\nvisual effects');
   await sleep(500);
   check(await waitFor(`document.body.classList.contains('boot-done')`, 6000), 'boot sequence completes');
-  check(await evalExpr(`document.getElementById('mRon').textContent.startsWith('RON')`), 'cost odometer is shown in lei', await evalExpr(`document.getElementById('mRon').textContent`));
+  check(await evalExpr(`document.getElementById('mRon').textContent.startsWith('$')`), 'cost odometer is shown in dollars by default', await evalExpr(`document.getElementById('mRon').textContent`));
   check(await evalExpr(`!!document.getElementById('spark')`), 'tokens/sec sparkline canvas exists');
   check(await evalExpr(`window.__fx.state.matrix === false && window.__fx.matrixRunning() === false`), 'matrix rain is off by default in stream mode');
   check(await evalExpr(`window.__fx.state.intensity === 40`), 'effect intensity defaults to 40%');
@@ -693,11 +693,13 @@ try {
   check(await evalExpr(`/running echo wall-check/.test(${livePane}.querySelector('.wp-act').textContent)`), 'the pane names the current action', await evalExpr(`${livePane}.querySelector('.wp-act').textContent`));
   check(await waitFor(`(() => { const t = (window.__wallConsoleText(${livePane}) || '').replace(/\\n {2,}/g, ''); return t.includes('echo wall-check') && t.includes('wall-check') && /exit 0/.test(t); })()`, 6000), 'the pane console shows the command, its output and exit status', JSON.stringify(String(await evalExpr(`window.__wallConsoleText(${livePane})`)).slice(-300)));
   check(await evalExpr(`window.__wall.views()['dsh:${fixture.liveId}'] === 'console' && ${livePane}.classList.contains('show-console')`), 'focus: a command brings the console up', JSON.stringify(await evalExpr(`window.__wall.views()`)));
+  check(await waitFor(`window.__wall.views()['dsh:${fixture.liveId}'] === 'editor'`, 6000), 'focus: once the command is done the console makes way for the editor', JSON.stringify(await evalExpr(`window.__wall.views()`)));
   fs.appendFileSync(fixture.liveLog, frame([
     ev('tool/call', 32, { turn: 1, step: 2, callId: 'call_wall_edit', name: 'edit', arguments: JSON.stringify({ file_path: path.join(fixture.workspace, 'notes.md'), old_string: 'First line.', new_string: 'First line, edited while you watch.' }) }),
     ev('tool/result', 33, { turn: 1, step: 2, message: { role: 'tool', toolCallId: 'call_wall_edit', content: [{ type: 'text', text: 'Edited notes.md' }], isError: false } }),
   ]));
   check(await waitFor(`(() => { const e = window.__wallEditor(${livePane}); return !!e && /editing notes\\.md/.test(e.label) && e.text.includes('edited while you watch'); })()`, 10000), 'the pane editor types a live edit into the file', JSON.stringify(await evalExpr(`window.__wallEditor(${livePane})`)));
+  check(await evalExpr(`(() => { const g = ${livePane}.querySelector('.wp-feed .wf-group'); return !!g && /2 actions/.test(g.querySelector('summary').textContent) && !g.open; })()`), 'consecutive actions fold into one row in the feed', await evalExpr(`${livePane}.querySelector('.wp-feed').lastElementChild?.textContent.slice(0, 160) || ''`));
   check(await evalExpr(`window.__wall.views()['dsh:${fixture.liveId}'] === 'editor' && !${livePane}.classList.contains('show-console')`), 'focus: an edit puts the console away and shows the editor', JSON.stringify(await evalExpr(`window.__wall.views()`)));
   check(await evalExpr(`/✓/.test(${livePane}.querySelector('.dk-console').textContent)`), 'the minimised console keeps the last command and its result in the dock', await evalExpr(`${livePane}.querySelector('.dk-console').textContent`));
   await evalExpr(`${livePane}.querySelector('.dk-console').click(); true`);
@@ -738,7 +740,7 @@ try {
     ev('assistant/message', 34, { turn: 1, step: 2, message: { role: 'assistant', content: [{ type: 'reasoning', text: 'Checking the console view.' }, { type: 'text', text: 'Inline reply from the agent.' }] } }),
   ]));
   check(await waitFor(`(() => { const p = document.querySelector('#wallGrid .wall-pane[data-key="dsh:${fixture.liveId}"]'); const t = p ? (window.__wallConsoleText(p) || '') : ''; return t.includes('✦ Inline reply from the agent') && t.includes('Checking the console view'); })()`, 8000), 'messages and replies print in the pane console', JSON.stringify(String(await evalExpr(`window.__wallConsoleText(document.querySelector('#wallGrid .wall-pane[data-key="dsh:${fixture.liveId}"]'))`)).slice(-300)));
-  check(await waitFor(`(() => { const p = document.querySelector('#wallGrid .wall-pane[data-key="dsh:${fixture.liveId}"]'); return window.__wall.views()['dsh:${fixture.liveId}'] === 'think' && p.classList.contains('show-think') && /Inline reply from the agent/.test(p.querySelector('.wp-think').textContent); })()`, 5000), 'focus: reasoning and replies show on the thinking card', JSON.stringify(await evalExpr(`window.__wall.views()`)));
+  check(await waitFor(`(() => { const p = document.querySelector('#wallGrid .wall-pane[data-key="dsh:${fixture.liveId}"]'); return window.__wall.views()['dsh:${fixture.liveId}'] !== 'think' && p.classList.contains('captioning') && /Inline reply from the agent/.test(p.querySelector('.wp-caption').textContent); })()`, 5000), 'focus: replies run as a caption without taking the stage', JSON.stringify(await evalExpr(`window.__wall.views()`)));
   // Context: the window comes from dsh, the use from the latest reply.
   fs.appendFileSync(fixture.liveLog, frame([
     ev('request/context', 35, { provider: 'deepseek-official', model: 'deepseek-v4-flash', contextWindow: 1000 }),

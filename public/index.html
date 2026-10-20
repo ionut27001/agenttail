@@ -1148,6 +1148,25 @@
   #wall.focus .wall-pane:not(.show-think) .wp-think { transform: translateY(46%) scale(.06); opacity: 0; pointer-events: none; }
   #wall.focus .wall-pane.show-console .wp-editor,
   #wall.focus .wall-pane.show-think .wp-editor { filter: brightness(.55) saturate(.7); }
+  .wp-caption { display: none; }
+  #wall.focus .wp-caption {
+    display: flex; gap: 8px; align-items: baseline; position: absolute; left: 12px; right: 12px; bottom: 40px; z-index: 5;
+    padding: 6px 12px; border-radius: 6px; pointer-events: none; opacity: 0; transform: translateY(6px);
+    background: color-mix(in srgb, var(--bg-2) 90%, transparent); border: 1px solid color-mix(in srgb, var(--c) 35%, transparent);
+    color: var(--muted); font-size: 11.5px; line-height: 1.45; transition: opacity .35s, transform .35s;
+  }
+  #wall.focus .wall-pane.captioning:not(.show-think) .wp-caption { opacity: 1; transform: none; }
+  .wp-caption b { flex: none; color: var(--c); font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase; font-weight: 600; }
+  .wp-caption span { font-style: italic; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .wp-caption.reply span { font-style: normal; color: var(--text); }
+  .wf-group { font-size: 11px; }
+  .wf-group > summary { cursor: pointer; list-style: none; color: var(--cyan); font-family: var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .wf-group > summary::-webkit-details-marker { display: none; }
+  .wf-group > summary .bad { color: var(--red); }
+  .wf-group > summary .wf-group-last { color: var(--muted); }
+  .wf-group[open] > summary { color: var(--green-soft); }
+  .wf-group-list { display: flex; flex-direction: column; gap: 3px; margin: 4px 0 2px 10px; padding-left: 8px; border-left: 1px solid var(--line-soft); }
+  @media (prefers-reduced-motion: reduce) { #wall.focus .wp-caption { transition: none; } }
   .wp-think .th-head { display: flex; align-items: center; gap: 8px; padding: 7px 12px; border-bottom: 1px solid var(--line-soft); color: var(--c); font-size: 10px; letter-spacing: .14em; }
   .wp-think .th-head .dots i { display: inline-block; width: 4px; height: 4px; margin-right: 3px; border-radius: 50%; background: var(--c); animation: tdot 1.2s infinite; }
   .wp-think .th-head .dots i:nth-child(2) { animation-delay: .2s; }
@@ -2653,8 +2672,8 @@ function renderStats() {
     $('mCost').innerHTML = '—<span class="period" id="mPeriod">TOKENS ONLY</span>';
     $('mCost').title = 'No cost estimate for this source; token counts only.';
   } else {
-    $('mCost').innerHTML = `$${s.cost < 0.0001 && s.cost > 0 ? s.cost.toFixed(6) : s.cost.toFixed(4)}<span class="period" id="mPeriod">${s.peak ? 'peak' : 'off-peak'}</span>`;
-    $('mCost').title = `${state.prices.model} · $${s.cost.toFixed(4)} estimated · cache hit $${state.prices.offPeak.cacheHit}/M, cache miss $${state.prices.offPeak.cacheMiss}/M, output $${state.prices.offPeak.output}/M off-peak. DeepSeek charges 2× during peak hours; this estimate uses the band of each reply.`;
+    $('mCost').innerHTML = `$${s.cost < 0.0001 && s.cost > 0 ? s.cost.toFixed(6) : s.cost.toFixed(4)}<span class="period" id="mPeriod">${s.peak ? 'peak' : 'low'}</span>`;
+    $('mCost').title = `${state.prices.model} · $${s.cost.toFixed(4)} estimated · cache hit $${state.prices.offPeak.cacheHit}/M, cache miss $${state.prices.offPeak.cacheMiss}/M, output $${state.prices.offPeak.output}/M off-peak. DeepSeek charges 2× during peak hours; this estimate uses the band of each reply ("low" = off-peak).`;
   }
   const ronEl = $('mRon');
   if (ronEl) {
@@ -7376,6 +7395,8 @@ termObserver.observe($('term'));
   // The console widget asks this to decide whether chat lines go to the console.
   window.__wallChatInline = () => !!wallPrefs.chatInline;
   const DORMANT_MS = 60_000;
+  const CONSOLE_LINGER_MS = 3000; // a finished command keeps the console up this long
+  const CAPTION_MS = 9000;        // reasoning captions fade after this
   const wall = (() => {
     const panes = [];
     const MAX_PANES = 4;
@@ -7385,6 +7406,8 @@ termObserver.observe($('term'));
       for (const pane of panes.splice(0)) {
         try { pane.es.close(); } catch { /* ignore */ }
         clearInterval(pane.timer);
+        clearTimeout(pane.consoleTimer);
+        clearTimeout(pane.captionTimer);
         for (const widget of pane.widgets) {
           try { widget.dispose && widget.dispose(); } catch { /* ignore */ }
         }
@@ -7432,6 +7455,7 @@ termObserver.observe($('term'));
       if (ev.t === 'call') {
         if (ev.name === 'pwsh') {
           next = 'console';
+          clearTimeout(pane.consoleTimer);
           const cmd = String((ev.args && ev.args.command) || '').replace(/\s+/g, ' ');
           f.dkConsoleText.textContent = cmd.slice(0, 60) || 'command';
           f.dkConsole.classList.remove('ok', 'bad');
@@ -7445,13 +7469,33 @@ termObserver.observe($('term'));
         f.dkConsole.classList.toggle('bad', !!bad);
         f.dkConsole.classList.toggle('ok', !bad);
         f.dkConsoleText.textContent = `${f.dkConsoleText.textContent.replace(/ [✓✗].*$/, '')} ${bad ? '✗' : '✓'}`;
+        // The command is done: back to the editor shortly, unless another one starts.
+        if (!pane.history) {
+          clearTimeout(pane.consoleTimer);
+          pane.consoleTimer = setTimeout(() => {
+            if (pane.view === 'console' && pane.jobs.size === 0) {
+              pane.view = 'editor';
+              applyView(pane);
+            }
+          }, CONSOLE_LINGER_MS);
+        }
       } else if (ev.t === 'job') {
         pane.jobs.add(ev.jobId || ev.callId || ev.seq);
         next = 'console';
       } else if (ev.t === 'jobEnd') {
         pane.jobs.delete(ev.jobId || ev.callId || ev.seq);
       } else if (ev.t === 'say' && (ev.thinking || ev.text)) {
-        next = 'think';
+        // Reasoning does not take the stage; it runs as a caption.
+        const said = ev.text ? mdToText(ev.text) : mdToText(ev.thinking);
+        const tail = said.split('\n').filter((l) => l.trim()).slice(-2).join(' ').replace(/\s+/g, ' ');
+        f.captionKind.textContent = ev.text ? 'replying' : 'thinking';
+        f.captionText.textContent = tail.length > 220 ? `…${tail.slice(-220)}` : tail;
+        f.caption.classList.toggle('reply', !!ev.text);
+        if (!pane.history) {
+          pane.root.classList.add('captioning');
+          clearTimeout(pane.captionTimer);
+          pane.captionTimer = setTimeout(() => pane.root.classList.remove('captioning'), CAPTION_MS);
+        }
         f.thinkTitle.textContent = ev.text ? 'REPLYING' : 'THINKING';
         const lastLines = (text, n) => mdToText(text).split('\n').filter((l) => l.trim()).slice(-n).join('\n');
         f.thinkReason.textContent = ev.thinking ? lastLines(ev.thinking, 8) : '';
@@ -7493,6 +7537,46 @@ termObserver.observe($('term'));
       try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
     }
 
+    /**
+     * Commands and edits are already on the console, the editor and the
+     * timeline; in the feed consecutive actions fold into one row that opens
+     * on click, so the feed reads as the conversation.
+     */
+    function addAction(feed, row) {
+      const last = feed.lastElementChild;
+      if (last && last.classList.contains('wf-group')) {
+        last.querySelector('.wf-group-list').appendChild(row);
+        summarizeGroup(last);
+        return;
+      }
+      if (last && last.classList.contains('wf-call')) {
+        const group = document.createElement('details');
+        group.className = 'wf-group';
+        const summary = el('summary', 'wf-group-sum');
+        const list = el('div', 'wf-group-list');
+        group.append(summary, list);
+        feed.replaceChild(group, last);
+        list.append(last, row);
+        summarizeGroup(group);
+        return;
+      }
+      feed.appendChild(row);
+    }
+
+    function summarizeGroup(group) {
+      const rows = [...group.querySelectorAll('.wf-call')];
+      const count = (k) => rows.filter((r) => r.dataset.kind === k).length;
+      const parts = [['cmd', '$'], ['edit', '✎'], ['read', '👁'], ['tool', '⚙']]
+        .map(([k, g]) => (count(k) ? `${g} ${count(k)}` : ''))
+        .filter(Boolean);
+      const failed = rows.filter((r) => r.dataset.bad).length;
+      const sum = group.querySelector('.wf-group-sum');
+      sum.textContent = `⚙ ${rows.length} actions · ${parts.join('  ')}`;
+      if (failed) sum.appendChild(el('span', 'bad', `  ✗ ${failed}`));
+      const lastRow = rows[rows.length - 1];
+      if (lastRow) sum.appendChild(el('span', 'wf-group-last', `  — ${lastRow.textContent.replace(/[✓✗].*$/, '').trim().slice(0, 60)}`));
+    }
+
     function onEvent(pane, ev) {
       followView(pane, ev);
       if (!pane.history && ['call', 'result', 'say', 'user', 'job', 'jobEnd', 'jobOutput'].includes(ev.t)) {
@@ -7526,7 +7610,8 @@ termObserver.observe($('term'));
         const glyph = ev.name === 'pwsh' ? '$' : isEdit ? '✎' : ev.name === 'read' ? '👁' : '⚙';
         const row = el('div', 'wf-call', `${glyph} ${String(label).replace(/\s+/g, ' ')}`);
         row.title = String(label);
-        feed.appendChild(row);
+        row.dataset.kind = ev.name === 'pwsh' ? 'cmd' : isEdit ? 'edit' : ev.name === 'read' ? 'read' : 'tool';
+        addAction(feed, row);
         if (ev.callId) pane.calls.set(ev.callId, row);
         if (isEdit) addFile(pane, args.file_path);
         setAction(pane, glyph, `${ev.name === 'pwsh' ? 'running' : isEdit ? 'editing' : ev.name} ${String(label).replace(/\s+/g, ' ').slice(0, 120)}`);
@@ -7536,6 +7621,9 @@ termObserver.observe($('term'));
           const exit = /\[exit code:\s*(-?\d+)\]/i.exec(ev.text || '');
           const bad = ev.isError || (exit && exit[1] !== '0');
           row.appendChild(el('span', bad ? 'bad' : 'ok', bad ? `✗${exit ? ' exit ' + exit[1] : ''}` : `✓${exit ? ' exit ' + exit[1] : ''}`));
+          if (bad) row.dataset.bad = '1';
+          const group = row.closest('.wf-group');
+          if (group) summarizeGroup(group);
           pane.calls.delete(ev.callId);
         }
       } else if (ev.t === 'job') {
@@ -7586,6 +7674,12 @@ termObserver.observe($('term'));
       thinkBody.append(thinkReason, thinkReply);
       think.append(thinkHead, thinkBody);
       main.appendChild(think);
+      // Reasoning and replies run as a caption over the stage, not a card.
+      const caption = el('div', 'wp-caption');
+      const captionKind = el('b', '', 'thinking');
+      const captionText = el('span', '');
+      caption.append(captionKind, captionText);
+      main.appendChild(caption);
       const dock = el('div', 'wp-dock');
       const dkEditor = el('button', 'dk-editor');
       dkEditor.type = 'button';
@@ -7624,7 +7718,8 @@ termObserver.observe($('term'));
         agent, root, act, feed, filesEl, stateEl, calls: new Map(), files: [], stick: true, history: true, action: null,
         dormantText, lastActiveAt: 0, state: agent.state, pinned: false,
         view: 'editor', pinnedView: null, jobs: new Set(), lastView: 'editor',
-        focus: { thinkTitle, thinkReason, thinkReply, dkEditor, dkConsole, dkConsoleText, dkJob, dkThink, dkThinkText },
+        focus: { thinkTitle, thinkReason, thinkReply, dkEditor, dkConsole, dkConsoleText, dkJob, dkThink, dkThinkText, caption, captionKind, captionText },
+        consoleTimer: null, captionTimer: null,
         slots: { editor: editorSlot, console: consoleSlot },
         widgets: [],
       };
@@ -7654,7 +7749,7 @@ termObserver.observe($('term'));
       pane.es.addEventListener('ev', (e) => { try { onEvent(pane, JSON.parse(e.data)); } catch { /* ignore */ } });
       pane.es.addEventListener('historyEnd', () => {
         pane.history = false;
-        pane.view = pane.lastView;
+        pane.view = pane.lastView === 'think' ? 'editor' : pane.lastView;
         applyView(pane);
         for (const widget of pane.widgets) {
           try { widget.onHistoryEnd && widget.onHistoryEnd(); } catch { /* ignore */ }
