@@ -317,6 +317,11 @@ try {
 
   const aTree = await getJson(`/api/tree?source=antigravity&id=${encodeURIComponent(agyConv)}`);
   check(aTree.body.tree?.children?.length > 0, 'Antigravity tree is built from the derived cwd');
+
+  const agents = await getJson('/api/agents');
+  const agyAgent = (agents.body.groups || []).flatMap((g) => g.agents).find((a) => a.source === 'antigravity' && a.id === agyConv);
+  check(!!agyAgent && ['live', 'idle'].includes(agyAgent.state), 'Antigravity conversations appear in the agents overview', JSON.stringify(agyAgent));
+  check(!!agyAgent && agyAgent.touched.some((t) => t.path.endsWith('notes.md')) && !!agyAgent.activity, 'Antigravity reports its last action and written files', JSON.stringify(agyAgent));
 } catch (err) {
   console.error(err);
   failures.push(String(err && err.stack || err));
