@@ -8996,21 +8996,25 @@ termObserver.observe($('term'));
 
   // dsh names the real window on every request. Claude Code does not, so fall
   // back to the window that its model family ships with.
-  function resolveWindow(model, contextWindow) {
+  function resolveWindow(model, contextWindow, used, sessionSource) {
     if (Number.isFinite(contextWindow) && contextWindow > 0) {
       return { window: contextWindow, source: 'from dsh' };
     }
     const name = String(model || '');
-    if (!name) return { window: null, source: 'unknown' };
     if (/\[1m\]/i.test(name) || /-1m\b/i.test(name)) {
-      return { window: BIG_WINDOW, source: 'Claude default' };
+      return { window: BIG_WINDOW, source: 'Claude 1M model' };
     }
-    if (CLAUDE_RE.test(name)) return { window: CLAUDE_WINDOW, source: 'Claude default' };
+    // Claude Code transcripts often carry no model name; the source says enough.
+    if (CLAUDE_RE.test(name) || sessionSource === 'claude') {
+      // More than 200k in use can only happen on a 1M-context model.
+      if (Number.isFinite(used) && used > CLAUDE_WINDOW) return { window: BIG_WINDOW, source: 'Claude 1M (inferred from use)' };
+      return { window: CLAUDE_WINDOW, source: 'Claude default' };
+    }
     return { window: null, source: 'unknown' };
   }
 
   function summarize(data) {
-    const win = resolveWindow(data.model, data.contextWindow);
+    const win = resolveWindow(data.model, data.contextWindow, data.used, data.source);
     const used = data.used;
     const percent = used !== null && win.window ? Math.round((used / win.window) * 100) : null;
     return { used, window: win.window, percent, source: win.source, output: data.output || 0 };
@@ -9051,6 +9055,7 @@ termObserver.observe($('term'));
 
   function mainSnapshot() {
     return summarize({
+      source: state.source,
       model: main.model,
       contextWindow: main.contextWindow,
       used: main.used,
@@ -9127,8 +9132,9 @@ termObserver.observe($('term'));
 
   function paintWall(box, fill, track, label, data) {
     const s = summarize({
+      source: data.source,
       model: data.model || data.fallbackModel,
-      contextWindow: data.contextWindow,
+      contextWindow: data.contextWindow || data.fallbackWindow,
       used: data.used,
       output: data.output,
     });
@@ -9172,6 +9178,9 @@ termObserver.observe($('term'));
         used: null,
         output: 0,
         fallbackModel: (pane.agent && pane.agent.model) ? String(pane.agent.model) : null,
+        // The wall replays only a tail; the window logged earlier comes from /api/agents.
+        fallbackWindow: pane.agent && Number.isFinite(pane.agent.contextWindow) ? pane.agent.contextWindow : null,
+        source: pane.agent ? pane.agent.source : null,
       };
       wallData.set(root, data);
       paintWall(box, fill, track, label, data);
@@ -9201,8 +9210,9 @@ termObserver.observe($('term'));
     const data = paneElement ? wallData.get(paneElement) : null;
     if (!data) return { used: null, window: null, percent: null, source: 'unknown' };
     const s = summarize({
+      source: data.source,
       model: data.model || data.fallbackModel,
-      contextWindow: data.contextWindow,
+      contextWindow: data.contextWindow || data.fallbackWindow,
       used: data.used,
       output: data.output,
     });

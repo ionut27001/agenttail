@@ -381,6 +381,7 @@ async function listSessions() {
       preset: analysis ? analysis.preset : null,
       policy: analysis ? analysis.policy : null,
       sandbox: analysis ? analysis.sandbox : null,
+      contextWindow: analysis ? analysis.contextWindow : null,
       lastTool: analysis ? analysis.lastTool : null,
       touched: analysis ? analysis.touched : [],
       owned: !!(ALLOW_CONTROL && control && control.has(rec.id)),
