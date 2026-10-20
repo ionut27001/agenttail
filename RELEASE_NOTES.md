@@ -91,7 +91,7 @@ Stream mode is on by default and redacts secrets, identity, network addresses an
 
 ## Artifacts
 
-- `agenttail-0.1.0.tgz` — npm package.
+- `agenttail-0.1.0.tgz` — npm package. agenttail is not on the npm registry yet: run it with `npx github:ionut27001/agenttail` or `npx ./agenttail-0.1.0.tgz`; `npx agenttail` comes later.
 - `agenttail-0.1.0-portable.zip` — source plus `start.cmd` / `start.sh`, for Node 24+.
 - `agenttail-0.1.0-win-x64.exe` — standalone Windows x64 build (unsigned).
 
