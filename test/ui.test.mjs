@@ -686,6 +686,7 @@ try {
   const livePane = `document.querySelector('#wallGrid .wall-pane[data-key="dsh:${fixture.liveId}"]')`;
   check(await waitFor(`!!${livePane} && [...${livePane}.querySelectorAll('.wf-call')].some((r) => r.textContent.includes('echo wall-check') && /✓ exit 0/.test(r.textContent))`, 8000), 'a live command appears in its pane with its result', await evalExpr(`${livePane}?.querySelector('.wp-feed')?.textContent.slice(-200) || 'no pane'`));
   check(await evalExpr(`/running echo wall-check/.test(${livePane}.querySelector('.wp-act').textContent)`), 'the pane names the current action', await evalExpr(`${livePane}.querySelector('.wp-act').textContent`));
+  check(await waitFor(`(() => { const t = window.__wallConsoleText(${livePane}) || ''; return t.includes('echo wall-check') && t.includes('wall-check') && /exit 0/.test(t); })()`, 6000), 'the pane console shows the command, its output and exit status', JSON.stringify(String(await evalExpr(`window.__wallConsoleText(${livePane})`)).slice(-300)));
   fs.appendFileSync(fixture.liveLog, frame([
     ev('tool/call', 32, { turn: 1, step: 2, callId: 'call_wall_edit', name: 'edit', arguments: JSON.stringify({ file_path: path.join(fixture.workspace, 'notes.md'), old_string: 'First line.', new_string: 'First line, edited while you watch.' }) }),
     ev('tool/result', 33, { turn: 1, step: 2, message: { role: 'tool', toolCallId: 'call_wall_edit', content: [{ type: 'text', text: 'Edited notes.md' }], isError: false } }),

@@ -1087,6 +1087,10 @@
   #wall .wall-head button { margin-left: auto; padding: 2px 8px; font-size: 13px; line-height: 1; }
   #wallGrid { flex: 1; min-height: 0; display: grid; gap: 1px; background: var(--line); grid-template-columns: repeat(var(--wall-cols, 2), minmax(0, 1fr)); grid-auto-rows: minmax(0, 1fr); }
   #wallGrid.odd .wall-pane:last-child { grid-column: 1 / -1; }
+  #wallStrip { flex: none; display: grid; grid-template-rows: auto auto; border-top: 1px solid var(--line); background: var(--panel); }
+  #wallStrip .ws-slot { position: relative; min-width: 0; overflow: hidden; }
+  #wallStrip .ws-slot:empty { display: none; }
+  #wallStrip .ws-map { border-bottom: 1px solid var(--line-soft); }
   .wall-pane { --c: var(--green); display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: var(--bg); border-top: 3px solid var(--c); }
   .wall-pane.live { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 35%, transparent); }
   .wp-head { flex: none; display: flex; align-items: center; gap: 8px; min-width: 0; padding: 7px 10px; border-bottom: 1px solid var(--line-soft); }
@@ -1526,6 +1530,10 @@
 <div id="wall" class="hidden" role="dialog" aria-label="Agents side by side">
   <div class="wall-head"><span>◫ WATCHING</span><span class="dim" id="wallSummary"></span><button id="wallClose" type="button" title="Close (Esc)">✕</button></div>
   <div id="wallGrid"></div>
+  <div id="wallStrip">
+    <div class="ws-slot ws-map"></div>
+    <div class="ws-slot ws-timeline"></div>
+  </div>
 </div>
 <div id="agentsBackdrop" class="hidden"></div>
 <div id="agentsPanel" class="hidden" role="dialog" aria-modal="true" aria-label="Agents">
@@ -6789,6 +6797,9 @@ termObserver.observe($('term'));
   // pane: { agent, slots: { editor, console }, history (true while replaying
   // the tail), root }. Widgets live in their own <script> blocks.
   window.__wallHooks = window.__wallHooks || [];
+  // Strip widgets: { create({ slots: { map, timeline }, panes }) -> { onPaneEvent(pane, ev), dispose() } }.
+  // Panes open before the strip; their events (history tail first) arrive after.
+  window.__wallStripHooks = window.__wallStripHooks || [];
   const wall = (() => {
     const panes = [];
     const MAX_PANES = 4;
@@ -6803,6 +6814,7 @@ termObserver.observe($('term'));
         }
       }
       $a('wallGrid').textContent = '';
+      closeStrip();
       $a('wall').classList.add('hidden');
     }
 
@@ -6841,6 +6853,7 @@ termObserver.observe($('term'));
       for (const widget of pane.widgets) {
         try { widget.onEvent && widget.onEvent(ev); } catch (err) { console.error('wall widget event failed', err); }
       }
+      stripEvent(pane, ev);
       const feed = pane.feed;
       if (ev.t === 'user' && !ev.system && ev.text) {
         feed.appendChild(el('div', 'wf-user', String(ev.text).slice(0, 600)));
@@ -6961,6 +6974,28 @@ termObserver.observe($('term'));
       return pane;
     }
 
+    const strip = { widgets: [] };
+    function openStrip() {
+      const slots = { map: document.querySelector('#wallStrip .ws-map'), timeline: document.querySelector('#wallStrip .ws-timeline') };
+      for (const hook of window.__wallStripHooks || []) {
+        try {
+          const widget = hook.create({ slots, panes: panes.slice() });
+          if (widget) strip.widgets.push(widget);
+        } catch (err) { console.error('wall strip widget failed', err); }
+      }
+    }
+    function closeStrip() {
+      for (const widget of strip.widgets.splice(0)) {
+        try { widget.dispose && widget.dispose(); } catch { /* ignore */ }
+      }
+      for (const slot of document.querySelectorAll('#wallStrip .ws-slot')) slot.textContent = '';
+    }
+    function stripEvent(pane, ev) {
+      for (const widget of strip.widgets) {
+        try { widget.onPaneEvent && widget.onPaneEvent(pane, ev); } catch (err) { console.error('wall strip event failed', err); }
+      }
+    }
+
     function open(list) {
       const chosen = (list || []).slice(0, MAX_PANES);
       if (!chosen.length) return;
@@ -6977,6 +7012,7 @@ termObserver.observe($('term'));
       }
       $a('wallSummary').textContent = chosen.map((a) => `${a.sourceLabel}${a.repo && a.repo.branch ? ' · ' + a.repo.branch : ''}`).join('  +  ');
       $a('wall').classList.remove('hidden');
+      openStrip();
     }
 
     /** Live agents of the repo being viewed, else the live agents anywhere. */
@@ -7359,8 +7395,12 @@ termObserver.observe($('term'));
         }
         terms.delete(slot);
         if (pane.root) terms.delete(pane.root);
-        try { term.dispose(); } catch { /* ignore */ }
-        try { label.remove(); host.remove(); } catch { /* ignore */ }
+        // xterm may still have a viewport refresh queued for the next frame;
+        // disposing under it throws, so let that frame run first.
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          try { term.dispose(); } catch { /* ignore */ }
+          try { label.remove(); host.remove(); } catch { /* ignore */ }
+        }));
       }
 
       terms.set(slot, term);
