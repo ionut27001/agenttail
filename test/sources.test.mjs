@@ -41,6 +41,10 @@ const claudeLines = [
   { type: 'custom-title', customTitle: 'Fix the widget', sessionId: claudeId },
   { type: 'user', message: { role: 'user', content: 'Fix the widget please.' }, cwd: workspace, sessionId: claudeId, timestamp: iso(1), uuid: 'u1' },
   {
+    type: 'user', cwd: workspace, sessionId: claudeId, timestamp: iso(1.5), uuid: 'u-skill',
+    message: { role: 'user', content: `Base directory for this skill: ${path.join(workspace, '.claude', 'skills', 'demo')}\n\n# Demo skill\n\nUse this skill when testing.` },
+  },
+  {
     type: 'assistant', cwd: workspace, sessionId: claudeId, timestamp: iso(2), uuid: 'a1',
     message: {
       role: 'assistant',
@@ -255,6 +259,8 @@ try {
   check(cMeta?.data.session.source === 'claude', 'meta reports the source');
   check(!JSON.stringify(claudeEvs).includes(SECRET), 'redaction applies to Claude events');
   check(claudeEvs.some((e) => e.t === 'user' && e.text.includes('Fix the widget')), 'user message normalized');
+  check(claudeEvs.some((e) => e.t === 'user' && e.system === true && e.systemLabel === '⌘ skill' && e.text.includes('Base directory for this skill:')), 'a loaded skill is marked as an injected system message', JSON.stringify(claudeEvs.filter((e) => e.t === 'user').map((e) => [e.system, e.systemLabel, e.text.slice(0, 40)])));
+  check(claudeEvs.some((e) => e.t === 'user' && e.text.includes('Fix the widget') && e.system === false), 'a normal user message is not marked system');
   check(claudeEvs.filter((e) => e.t === 'step').length === 5, 'assistant turns (including subagent) become steps', String(claudeEvs.filter((e) => e.t === 'step').length));
   check(claudeEvs.some((e) => e.t === 'say' && (e.thinking || '').includes('Deliberating')), 'Claude thinking blocks are projected', JSON.stringify(claudeEvs.filter((e) => e.thinking).slice(0, 1)));
   const cCalls = claudeEvs.filter((e) => e.t === 'call');

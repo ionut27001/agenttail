@@ -697,7 +697,7 @@
   input[type=range] { width: 92px; accent-color: var(--green); height: 14px; }
   #speedVal { color: var(--green-soft); width: 34px; display: inline-block; font-variant-numeric: tabular-nums; }
   .fx-scale { display: flex; align-items: center; gap: 6px; color: var(--green); font-size: 11px; padding-bottom: 5px; border-bottom: 1px solid var(--line-soft); }
-  #uiScale, #themeSelect { background: var(--bg-3); color: var(--green-soft); border: 1px solid var(--line); font-family: var(--mono); font-size: 11px; padding: 1px 4px; }
+  #uiScale, #themeSelect, #currencySelect { background: var(--bg-3); color: var(--green-soft); border: 1px solid var(--line); font-family: var(--mono); font-size: 11px; padding: 1px 4px; }
   .fx-sep { height: 1px; background: var(--line-soft); margin: 3px 0; }
   .menu-stats, .menu-session { color: var(--muted); font-size: 9px; letter-spacing: .04em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #mSession { color: var(--green-soft); }
@@ -1585,6 +1585,7 @@
         <label class="fx-intensity">intensity <input id="fxIntensity" type="range" min="0" max="100" step="5" value="40" /><span id="fxIntensityVal">40%</span></label>
         <label class="fx-scale">UI <select id="uiScale"><option value="0.9">90%</option><option value="1">100%</option><option value="1.15">115%</option><option value="1.3">130%</option></select></label>
         <label class="fx-scale">THEME <select id="themeSelect" title="Colour theme"><option value="matrix">matrix</option><option value="amber">amber</option><option value="ice">ice</option><option value="dracula">dracula</option><option value="paper">paper</option></select></label>
+        <label class="fx-scale">COST CURRENCY <select id="currencySelect" title="Cost display currency (approx. rates; estimates stay in USD)"><option value="USD">USD</option><option value="EUR">EUR</option><option value="GBP">GBP</option><option value="RON">RON</option></select></label>
         <div class="fx-section">VIEW</div>
         <div class="fx-grid">
         <label><input type="checkbox" data-fx="follow" checked /> follow mode</label>
@@ -2527,6 +2528,37 @@ const speedVal = $('speedVal');
 const speedCps = () => Number(speedInput.value) || 220;
 speedInput.addEventListener('input', () => { speedVal.textContent = speedInput.value; });
 
+/* ---------- cost display currency (approximate rates) ---------- */
+const CURRENCY_KEY = 'agenttail-currency';
+const CURRENCIES = ['USD', 'EUR', 'GBP', 'RON'];
+const CURRENCY_RATES = { EUR: 0.92, GBP: 0.79, RON: 4.6 };
+let currency = 'USD';
+try {
+  const savedCurrency = localStorage.getItem(CURRENCY_KEY);
+  if (CURRENCIES.includes(savedCurrency)) currency = savedCurrency;
+} catch { /* localStorage may be unavailable */ }
+function perUsd() {
+  if (currency === 'RON') return state.prices?.ronPerUsd || CURRENCY_RATES.RON;
+  return CURRENCY_RATES[currency] || 1;
+}
+function fmtCost(usd) {
+  const value = usd * perUsd();
+  return currency === 'USD' ? `$${value.toFixed(2)}` : `${currency} ${value.toFixed(2)}`;
+}
+function costTitle(usd) {
+  const exact = `$${usd.toFixed(4)} estimated`;
+  return currency === 'USD' ? exact : `${exact} · approx. ${perUsd()} ${currency} per USD`;
+}
+const currencySelect = $('currencySelect');
+if (currencySelect) {
+  currencySelect.value = currency;
+  currencySelect.addEventListener('change', () => {
+    currency = CURRENCIES.includes(currencySelect.value) ? currencySelect.value : 'USD';
+    try { localStorage.setItem(CURRENCY_KEY, currency); } catch { /* ignore */ }
+    renderStats();
+  });
+}
+
 /* ---------- pricing (USD per 1M tokens, V4.1 Flash) ---------- */
 function isPeak(ts) {
   const d = new Date(ts);
@@ -2606,19 +2638,19 @@ function renderStats() {
     $('mCost').innerHTML = '—<span class="period" id="mPeriod">TOKENS ONLY</span>';
     $('mCost').title = 'No cost estimate for this source; token counts only.';
   } else {
-    $('mCost').innerHTML = `$${s.cost < 0.0001 && s.cost > 0 ? s.cost.toFixed(6) : s.cost.toFixed(4)}<span class="period${s.peak ? ' peak' : ''}" id="mPeriod">${s.peak ? 'PEAK' : 'OFF'}</span>`;
-    $('mCost').title = `${state.prices.model} · $${s.cost.toFixed(4)} estimated · cache hit $${state.prices.offPeak.cacheHit}/M, cache miss $${state.prices.offPeak.cacheMiss}/M, output $${state.prices.offPeak.output}/M off-peak (peak is 2×).`;
+    $('mCost').innerHTML = `$${s.cost < 0.0001 && s.cost > 0 ? s.cost.toFixed(6) : s.cost.toFixed(4)}<span class="period" id="mPeriod">${s.peak ? 'peak' : 'off-peak'}</span>`;
+    $('mCost').title = `${state.prices.model} · $${s.cost.toFixed(4)} estimated · cache hit $${state.prices.offPeak.cacheHit}/M, cache miss $${state.prices.offPeak.cacheMiss}/M, output $${state.prices.offPeak.output}/M off-peak. DeepSeek charges 2× during peak hours; this estimate uses the band of each reply.`;
   }
   const ronEl = $('mRon');
   if (ronEl) {
-    const rate = state.prices?.ronPerUsd || 4.6;
-    const text = state.prices ? `RON ${(s.cost * rate).toFixed(2)}` : '—';
+    const text = state.prices ? fmtCost(s.cost) : '—';
     if (ronEl.textContent !== text) {
       ronEl.textContent = text;
       ronEl.classList.remove('roll');
       void ronEl.offsetWidth;
       ronEl.classList.add('roll');
     }
+    ronEl.title = state.prices ? costTitle(s.cost) : 'no cost estimate for this source';
   }
   $('mSession').textContent = shortId(state.sessionId) || '—';
   $('mSession').title = [state.sessionId, state.session?.title, state.session?.cwd].filter(Boolean).join('\n') || '';
@@ -2669,9 +2701,9 @@ function renderSys(s) {
 function updateStatsChip() {  const chip = $('statsChip');
   if (!chip) return;
   const s = state.stats;
-  const ron = state.prices ? `RON ${(s.cost * (state.prices.ronPerUsd || 4.6)).toFixed(2)}` : 'RON —';
+  const cost = state.prices ? `${fmtCost(s.cost)} ($${s.cost.toFixed(4)})` : 'no cost estimate';
   const elapsed = $('mElapsed') ? $('mElapsed').textContent : '';
-  chip.title = `${s.steps} steps · ${(s.input + s.output + s.cacheRead + s.cacheWrite).toLocaleString('en-US')} tokens · $${s.cost.toFixed(4)} · ${ron} · ${elapsed}`;
+  chip.title = `${s.steps} steps · ${(s.input + s.output + s.cacheRead + s.cacheWrite).toLocaleString('en-US')} tokens · ${cost} · ${elapsed}`;
 }
 
 function tickElapsed() {
@@ -3208,11 +3240,7 @@ async function applyEvent(ev) {
 
     case 'user':
       if (ev.text) {
-        if (ev.system) {
-          termNote(`${ev.systemLabel || '⟐ system'}: ${clean(ev.text).replace(/\s+/g, ' ').slice(0, 140)}`, C.grey);
-        } else {
-          termUser(ev.text, ev.agent);
-        }
+        if (!ev.system) termUser(ev.text, ev.agent);
         chatPush(ev.system
           ? { kind: 'system', label: ev.systemLabel || '⟐ system', text: ev.text, agent: ev.agent }
           : { kind: 'user', text: ev.text, agent: ev.agent });
@@ -7134,7 +7162,7 @@ termObserver.observe($('term'));
         card.appendChild(top);
         card.appendChild(el('div', 'ag-title', agent.title));
         const meta = el('div', 'ag-meta');
-        if (agent.repo && agent.repo.branch) meta.appendChild(el('span', 'br', `⎇ ${agent.repo.branch}${agent.repo.worktree ? ' (worktree)' : ''}`));
+        if (agent.repo && agent.repo.branch) meta.appendChild(el('span', 'br', `⎇ ${agent.repo.branch}${agent.repo.removed ? ' (worktree removed)' : agent.repo.worktree ? ' (worktree)' : ''}`));
         if (agent.model) meta.appendChild(el('span', '', agent.model));
         if (agent.owned) meta.appendChild(el('span', '', '✎ owned'));
         if (agent.approvals) meta.appendChild(el('span', 'ag-wait', `⚠ ${agent.approvals} approval${agent.approvals === 1 ? '' : 's'} waiting`));
