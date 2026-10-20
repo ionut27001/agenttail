@@ -20,6 +20,13 @@ never writes to session stores, transcripts or workspace files. Its only writes
 are the local nickname file and optional configuration files in the agenttail
 config directory.
 
+The agents overview (`GET /api/agents`) is read-only as well. To group agents by
+repository it reads `.git` (and, for linked worktrees, the `gitdir`,
+`commondir` and `HEAD` files) next to each session's working directory; it never
+runs `git`. The response carries repository names, branches and repo-relative
+file paths, redacted like everything else in stream mode, and never the local
+repository path.
+
 With `--allow-control`, agenttail can start **its own** DeepSeek Harness
 sessions through `dsh --profile acp`. Those sessions write ordinary dsh logs and
 may edit the chosen workspace; that is the point of control. Sessions started by
@@ -50,10 +57,14 @@ the Desktop app or another process are never attached to and stay view-only.
   listed in `control.json`, and only those directories are offered in the New
   Session dialog. `roots.json` is a read allowlist and is not reused for
   write-capable sessions.
-- **Audit log.** Every control action (`start`, `message`, `approve`, `reject`,
-  `stop`, `close`) is appended to `control-audit.log` in the per-user config
-  directory with a timestamp and the owned session id. Message bodies are never
-  written; a message entry records only its length and whether it was queued.
+- **Audit log.** Every control action (`start`, `message`, `model`, `approve`,
+  `reject`, `stop`, `close`) is appended to `control-audit.log` in the per-user
+  config directory with a timestamp and the owned session id. Message bodies,
+  reject reasons and image data are never written; a message entry records only
+  its length, the number of images and whether it was queued.
+- **Images.** A message can carry at most four PNG, JPEG, GIF or WebP images of
+  up to 5 MB each, and only when the agent declares image prompts during the
+  ACP handshake. dsh's ACP does not, so dsh sessions never receive images.
 - **Stream-mode privacy.** Because control is disabled in stream mode, approval
   payloads (which can contain commands and diffs) are never sent to a stream
   session.

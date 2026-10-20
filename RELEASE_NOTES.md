@@ -1,6 +1,7 @@
 # agenttail v0.2.0
 
-**Opt-in control for DeepSeek Harness, plus a deeper read side.** The default is
+**Several agents at once, opt-in control for DeepSeek Harness, and a deeper read
+side.** The default is
 still a local, read-only viewer; control is off unless you pass
 `--allow-control --no-stream-mode`.
 
@@ -15,9 +16,26 @@ still a local, read-only viewer; control is off unless you pass
 - Read side: model/provider, permission preset and approval-policy history,
   per-turn tokens and cost in Log, a cost-per-turn sparkline, and a background
   job list that jumps to console output.
+- Switch the model between turns from the input row; pasted images are sent
+  only to agents that declare image prompts (dsh does not).
+- Agents overview: every agent active in the last 30 minutes across dsh,
+  Claude Code and Antigravity, grouped by git repository (worktrees included),
+  each with its own colour, branch, model and current action. Files edited by
+  more than one agent are flagged; the activity bar and tree show the other
+  agents on the repo you are viewing. Owned sessions waiting on an approval say
+  so.
+- Agent replies render as markdown in Chat and Log; each turn in Log has a
+  summary (model, tools, files changed, failures, tokens, cost, duration).
+- The agent pane can dock as a full-height column on the right
+  (`Ctrl+Shift+.`); repeated identical actions collapse into one console line.
+- Five colour themes (matrix, amber, ice, dracula, paper), a Settings modal
+  behind a gear, and the agenttail wordmark in the header.
 - Security: per-start bearer token, `--allow-control` gate, stream-mode lockout,
   no auto-approve, workspace allowlist and an audit log without message bodies.
-- New `control` test suite; all existing suites still pass.
+  Stream mode now also redacts file paths outside the workspace (they could
+  carry the Windows user name).
+- New `control`, `agents` and control-UI test suites; all existing suites still
+  pass.
 
 ## Compatibility
 

@@ -83,12 +83,14 @@ Requirements: Node 24+, Windows, macOS or Linux. Windows is the tested platform;
 - ✍️ **Live editor typing** — follows the file the agent is editing and types edits in place with a short highlight sweep.
 - 🌡️ **Edit heat** — the tree tracks edits, failures and deleted files; hover reports `N edits · last … · M failed`. `.tmp`, `_*`, `node_modules`, `.git` and build directories are hidden unless **show hidden files** is enabled.
 - ⌨️ **Console and job progress** — running spinner, elapsed time, collapsible multi-line commands, `(+N lines)` outputs, a live job bar and a `[n/N]` mini progress bar. Failed commands flash red and show `✗ COMMAND FAILED` for three seconds.
-- 💬 **Chat and Log** — Chat groups tool calls and thinking for reading; Log is the full trajectory for auditing.
+- 💬 **Chat and Log** — Chat groups tool calls and thinking for reading; Log is the full trajectory for auditing, with a summary per turn (model, tools by kind, files changed, failures, tokens, cost, duration). Agent replies render as markdown: headings, lists, tables, quotes, code and links.
+- 👥 **Several agents at once** — an overview of every agent active in the last 30 minutes (dsh, Claude Code, Antigravity), grouped by git repository; worktrees of one repository count as the same repo. Each agent gets its own colour and shows its branch, model and current action; files edited by more than one agent are flagged. The activity bar names the other agents on the repo you are viewing, and the tree marks files they edited.
+- 🎨 **Themes** — matrix (default), amber, ice, dracula and a light paper theme, from Settings.
 - ◉ **One activity state** — RUNNING, EDITING, THINKING, REPLYING, IDLE or DONE, with a colour-coded stripe and dot; a settled job shows a checkmark briefly, then returns to the current state.
-- 📊 **Meters and layout** — CPU, RAM, GPU, steps, tokens, throughput and estimated cost; dockable console/chat, collapsible rails and 90/100/115/130% UI scale (115% on wide fresh profiles).
+- 📊 **Meters and layout** — CPU, RAM, GPU, steps, tokens, throughput and estimated cost; console/chat side by side, or the agent pane docked as a full-height column on the right (`Ctrl+Shift+.`); collapsible rails and 90/100/115/130% UI scale (115% on wide fresh profiles). Repeated identical actions collapse into one console line with a counter.
 - ⏪ **Replay** — finished sessions replay through the same pipeline, typing animation included, at a chosen speed.
 - 🔒 **Stream mode** — server-side redaction with fail-closed behaviour; add your own rules in `redact.json`.
-- 🎛️ **Control (opt-in)** — start an owned dsh session in an allowlisted folder, send messages, approve or reject commands, stop a turn, and see the model/provider and permission preset. View-only sessions stay read-only.
+- 🎛️ **Control (opt-in)** — start an owned dsh session in an allowlisted folder, send messages, approve or reject commands, stop a turn, switch the model between turns, and see the model/provider and permission preset. View-only sessions stay read-only.
 
 <table>
   <tr>
@@ -143,7 +145,7 @@ Downgrades require two consecutive polls to agree; upgrades apply immediately. T
 
 **System meters** show CPU, RAM and GPU alongside steps, tokens, throughput and estimated cost. CPU/RAM are sampled from `os.cpus()` deltas every 2 s; GPU uses one long-lived `nvidia-smi` process, started on the first SSE client and stopped on the last or on dispose. Without `nvidia-smi` the GPU meter shows `n/a` and everything else keeps working.
 
-**Visual effects** in the `⋯` menu: replay speed, effect intensity, boot sequence, matrix rain, spark line, cursor, glitch, heat, follow mode, show system and **show hidden files**.
+**Visual effects** in Settings (the gear in the header): replay speed, effect intensity, boot sequence, matrix rain, spark line, cursor, glitch, heat, follow mode, show system and **show hidden files**.
 
 </details>
 
@@ -184,7 +186,7 @@ Every control POST needs `Authorization: Bearer <token>` in addition to the exis
 **What control does**
 
 - **New session** — pick an allowlisted workspace, a permission preset (`workspace-write` by default, `read-only`, or `danger-full-access` with an explicit confirmation), a model from the live dsh catalog (including custom providers such as Ollama configured in the ACP profile), and a first message.
-- **Input** — Enter sends; Shift+Enter adds a newline. A message sent during a running turn is queued and sent when that turn ends.
+- **Input** — Enter sends; Shift+Enter adds a newline. A message sent during a running turn is queued and sent when that turn ends. The model picker next to the input switches the model for the next turn (the live dsh catalog). Pasted images are sent only when the agent declares image prompts; dsh's ACP does not, so agenttail says so instead of sending them.
 - **Approvals** — the exact command or diff appears in the chat and the activity bar, with Approve and Reject. Reject accepts an optional short reason. agenttail never auto-approves.
 - **Stop** — cancels the running turn and kills the tool process. **End** closes the owned session; it becomes view-only.
 - **Owned vs view-only** — sessions started by agenttail are marked ✎. Sessions started by the Desktop app or another process are view-only: dsh does not expose a live attach surface, and a second process cannot resume an active session (`session … is already owned by an active write handle`).
@@ -274,6 +276,7 @@ The session workspace is always allowed. Junctions/symlinks are followed only wh
 | `Ctrl+J` | collapse/expand the bottom area |
 | `Ctrl+.` | collapse/expand the agent chat |
 | `Ctrl+Shift+.` | dock the agent pane to the right side (full height) or back under the editor |
+| `Ctrl+Shift+A` | open the agents overview |
 
 </details>
 
