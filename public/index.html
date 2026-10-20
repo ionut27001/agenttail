@@ -1097,6 +1097,12 @@
   .wp-state.live { color: var(--c); border-color: var(--c); }
   .wp-act { flex: none; padding: 5px 10px; border-bottom: 1px solid var(--line-soft); background: var(--bg-2); color: var(--green-soft); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .wp-act .k { color: var(--c); margin-right: 6px; }
+  .wp-body { flex: 1; min-height: 0; min-width: 0; display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); }
+  .wp-main { display: grid; grid-template-rows: minmax(0, 1.6fr) minmax(0, 1fr); min-height: 0; min-width: 0; border-right: 1px solid var(--line-soft); }
+  .wp-editor { position: relative; min-height: 0; min-width: 0; overflow: hidden; background: var(--bg-2); }
+  .wp-console { position: relative; min-height: 0; min-width: 0; overflow: hidden; border-top: 1px solid var(--line-soft); background: var(--bg-term, #000); }
+  .wp-side { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+  .wp-slot-label { position: absolute; top: 3px; right: 8px; z-index: 3; color: var(--muted); font-size: 9px; letter-spacing: .12em; pointer-events: none; }
   .wp-feed { flex: 1; min-height: 0; min-width: 0; width: 100%; overflow-x: hidden; overflow-y: auto; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; font-size: 12px; line-height: 1.5; }
   .wp-feed > * { flex: none; min-width: 0; max-width: 100%; }
   .wp-feed .md-code, .wp-feed .md-table { max-width: 100%; }
@@ -6510,6 +6516,10 @@ termObserver.observe($('term'));
   window.__agents = { refresh, open: setOpen, get data() { return agents.data; } };
 
   /* ---------- watch wall ---------- */
+  // Pane widgets: { create(pane) -> { onEvent(ev), onHistoryEnd(), dispose() } }.
+  // pane: { agent, slots: { editor, console }, history (true while replaying
+  // the tail), root }. Widgets live in their own <script> blocks.
+  window.__wallHooks = window.__wallHooks || [];
   const wall = (() => {
     const panes = [];
     const MAX_PANES = 4;
@@ -6519,6 +6529,9 @@ termObserver.observe($('term'));
       for (const pane of panes.splice(0)) {
         try { pane.es.close(); } catch { /* ignore */ }
         clearInterval(pane.timer);
+        for (const widget of pane.widgets) {
+          try { widget.dispose && widget.dispose(); } catch { /* ignore */ }
+        }
       }
       $a('wallGrid').textContent = '';
       $a('wall').classList.add('hidden');
@@ -6556,6 +6569,9 @@ termObserver.observe($('term'));
     }
 
     function onEvent(pane, ev) {
+      for (const widget of pane.widgets) {
+        try { widget.onEvent && widget.onEvent(ev); } catch (err) { console.error('wall widget event failed', err); }
+      }
       const feed = pane.feed;
       if (ev.t === 'user' && !ev.system && ev.text) {
         feed.appendChild(el('div', 'wf-user', String(ev.text).slice(0, 600)));
@@ -6619,11 +6635,33 @@ termObserver.observe($('term'));
       root.appendChild(head);
       const act = el('div', 'wp-act');
       root.appendChild(act);
+      const body = el('div', 'wp-body');
+      const main = el('div', 'wp-main');
+      const editorSlot = el('div', 'wp-editor');
+      const consoleSlot = el('div', 'wp-console');
+      main.appendChild(editorSlot);
+      main.appendChild(consoleSlot);
+      const side = el('div', 'wp-side');
       const feed = el('div', 'wp-feed');
-      root.appendChild(feed);
+      side.appendChild(feed);
       const filesEl = el('div', 'wp-files');
-      root.appendChild(filesEl);
-      const pane = { agent, root, act, feed, filesEl, stateEl, calls: new Map(), files: [], stick: true, history: true, action: null };
+      side.appendChild(filesEl);
+      body.appendChild(main);
+      body.appendChild(side);
+      root.appendChild(body);
+      const pane = {
+        agent, root, act, feed, filesEl, stateEl, calls: new Map(), files: [], stick: true, history: true, action: null,
+        slots: { editor: editorSlot, console: consoleSlot },
+        widgets: [],
+      };
+      // Widgets (editor, console …) register in window.__wallHooks; each gets
+      // the pane and then every event of its session.
+      for (const hook of window.__wallHooks || []) {
+        try {
+          const widget = hook.create(pane);
+          if (widget) pane.widgets.push(widget);
+        } catch (err) { console.error('wall widget failed', err); }
+      }
       feed.addEventListener('scroll', () => {
         pane.stick = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 40;
       });
@@ -6634,6 +6672,9 @@ termObserver.observe($('term'));
       pane.es.addEventListener('ev', (e) => { try { onEvent(pane, JSON.parse(e.data)); } catch { /* ignore */ } });
       pane.es.addEventListener('historyEnd', () => {
         pane.history = false;
+        for (const widget of pane.widgets) {
+          try { widget.onHistoryEnd && widget.onHistoryEnd(); } catch { /* ignore */ }
+        }
         trim(feed);
         feed.scrollTop = feed.scrollHeight;
         if (!feed.childElementCount) feed.appendChild(el('div', 'wf-think', 'no activity yet'));
