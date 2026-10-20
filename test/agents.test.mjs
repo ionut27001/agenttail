@@ -115,6 +115,31 @@ try {
     check(agents.some((x) => x.id === fixture.liveId && x.state === 'live'), 'the live fixture session is listed as live', JSON.stringify(agents.map((x) => [x.id, x.state])));
     const live = agents.find((x) => x.id === fixture.liveId);
     check(!!live && live.sourceLabel === 'dsh' && Number.isInteger(live.color), 'agents carry a source label and a colour');
+    // The watch wall subscribes with tail + lite: the last N events, no tree.
+    const sse = await new Promise((resolve) => {
+      const ctrl = new AbortController();
+      const seen = [];
+      let count = null;
+      const finish = () => { ctrl.abort(); resolve({ seen, count }); };
+      setTimeout(finish, 6000);
+      fetch(`http://127.0.0.1:${PORT}/api/stream?source=dsh&id=${encodeURIComponent(fixture.finishedId)}&tail=2&lite=1`, { signal: ctrl.signal })
+        .then(async (res) => {
+          const reader = res.body.getReader();
+          const dec = new TextDecoder();
+          let buf = '';
+          for (;;) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            buf += dec.decode(value, { stream: true });
+            for (const m of buf.matchAll(/^event: (\w+)$/gm)) if (!seen.includes(m[1])) seen.push(m[1]);
+            const end = /event: historyEnd\ndata: (\{[^\n]*\})/.exec(buf);
+            if (end) { count = JSON.parse(end[1]); finish(); break; }
+          }
+        })
+        .catch(() => {});
+    });
+    check(!!sse.count && sse.count.count === 2 && sse.count.total > 2, 'tail=2 sends only the last two history events', JSON.stringify(sse.count));
+    check(!sse.seen.includes('tree'), 'lite mode sends no file tree', JSON.stringify(sse.seen));
     const post = await fetch(`http://127.0.0.1:${PORT}/api/agents`, { method: 'POST', headers: { Origin: `http://127.0.0.1:${PORT}`, 'Content-Type': 'application/json' }, body: '{}' });
     check(post.status === 405, 'the endpoint is read-only', String(post.status));
   } finally {

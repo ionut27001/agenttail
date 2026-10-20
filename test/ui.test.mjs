@@ -357,7 +357,7 @@ try {
   await evalExpr(`document.body.focus(); document.dispatchEvent(new KeyboardEvent('keydown', { key: '?', bubbles: true })); true`);
   check(await waitFor(`!document.getElementById('helpPanel').classList.contains('hidden')`, 3000), '? opens the keyboard shortcuts');
   const helpText = await evalExpr(`document.getElementById('helpPanel').textContent`);
-  check(['Ctrl+Shift+A', 'Ctrl+Shift+.', 'Ctrl+B', 'Ctrl+J', 'Esc'].every((k) => helpText.replace(/\s+/g, '').includes(k.replace(/\s+/g, ''))), 'the overlay lists the layout, dock and agents shortcuts', helpText.slice(0, 300));
+  check(['Alt+A', 'Alt+W', 'Ctrl+Shift+.', 'Ctrl+B', 'Ctrl+J', 'Esc'].every((k) => helpText.replace(/\s+/g, '').includes(k.replace(/\s+/g, ''))), 'the overlay lists the layout, dock and agents shortcuts', helpText.slice(0, 300));
   await evalExpr(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); true`);
   check(await evalExpr(`document.getElementById('helpPanel').classList.contains('hidden')`), 'Esc closes the shortcuts overlay');
   await evalExpr(`document.getElementById('helpBtn').click(); true`);
@@ -650,6 +650,21 @@ try {
   check(new Set(cards.map((c) => c.color)).size === cards.length, 'every agent card has its own colour', JSON.stringify(cards));
   await evalExpr(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); true`);
   check(await evalExpr(`document.getElementById('agentsPanel').classList.contains('hidden')`), 'Esc closes the agents overview');
+  await evalExpr(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'w', code: 'KeyW', altKey: true, bubbles: true })); true`);
+  check(await waitFor(`window.__wall.open_ && window.__wall.panes >= 2 && document.querySelectorAll('#wallGrid .wall-pane').length === window.__wall.panes`, 5000), 'Alt+W watches the agents of this workspace side by side', String(await evalExpr(`window.__wall.panes`)));
+  check(await waitFor(`[...document.querySelectorAll('#wallGrid .wp-feed')].every((f) => f.childElementCount > 0)`, 8000), 'every pane fills with its own live feed', JSON.stringify(await evalExpr(`[...document.querySelectorAll('#wallGrid .wp-feed')].map((f) => f.childElementCount)`)));
+  const paneColors = await evalExpr(`[...document.querySelectorAll('#wallGrid .wall-pane')].map((p) => p.style.getPropertyValue('--c'))`);
+  check(new Set(paneColors).size === paneColors.length, 'each pane carries its agent colour', JSON.stringify(paneColors));
+  // A command arrives live while the wall is open: its pane shows it with the result.
+  fs.appendFileSync(fixture.liveLog, frame([
+    ev('tool/call', 30, { turn: 1, step: 2, callId: 'call_wall_echo', name: 'pwsh', arguments: JSON.stringify({ command: 'echo wall-check', workdir: fixture.workspace }) }),
+    ev('tool/result', 31, { turn: 1, step: 2, message: { role: 'tool', toolCallId: 'call_wall_echo', content: [{ type: 'text', text: 'wall-check\n[exit code: 0]' }], isError: false } }),
+  ]));
+  const livePane = `document.querySelector('#wallGrid .wall-pane[data-key="dsh:${fixture.liveId}"]')`;
+  check(await waitFor(`!!${livePane} && [...${livePane}.querySelectorAll('.wf-call')].some((r) => r.textContent.includes('echo wall-check') && /✓ exit 0/.test(r.textContent))`, 8000), 'a live command appears in its pane with its result', await evalExpr(`${livePane}?.querySelector('.wp-feed')?.textContent.slice(-200) || 'no pane'`));
+  check(await evalExpr(`/running echo wall-check/.test(${livePane}.querySelector('.wp-act').textContent)`), 'the pane names the current action', await evalExpr(`${livePane}.querySelector('.wp-act').textContent`));
+  await evalExpr(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); true`);
+  check(await evalExpr(`!window.__wall.open_ && window.__wall.panes === 0`), 'Esc closes the wall and its streams');
 
   console.log('\nrepeated actions');
   await evalExpr(`(() => { for (let i = 0; i < 5; i++) termNote('✎ edit   repeated/same-file.js', C.greenDim); return true; })()`);

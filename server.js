@@ -1194,13 +1194,15 @@ async function serveStream(req, res, record, options = {}) {
     for (const approval of controlSession.pendingApprovals()) sseWrite(res, 'approval', safeApproval(approval));
   }
 
-  sseWrite(res, 'tree', await treePayload(record, stream, { showHidden: options.showHidden === true }));
+  // The watch wall subscribes in "lite" mode: no tree, no system meters.
+  if (!options.lite) sseWrite(res, 'tree', await treePayload(record, stream, { showHidden: options.showHidden === true }));
 
   // History (everything already decoded). An optional delay is used only by
   // the demo capture to make the loading skeleton visible.
   if (HISTORY_DELAY_MS > 0) await new Promise((resolve) => setTimeout(resolve, HISTORY_DELAY_MS));
-  for (const ev of stream.events) sseWrite(res, 'ev', ev);
-  sseWrite(res, 'historyEnd', { count: stream.events.length, at: Date.now() });
+  const history = options.tail ? stream.events.slice(-options.tail) : stream.events;
+  for (const ev of history) sseWrite(res, 'ev', ev);
+  sseWrite(res, 'historyEnd', { count: history.length, total: stream.events.length, at: Date.now() });
   sseWrite(res, 'status', {
     ...statusFor(stream),
     state: initialState.state,
@@ -1228,7 +1230,7 @@ async function serveStream(req, res, record, options = {}) {
     controlSession.on('approval-done', onApprovalDone);
     controlSession.on('error', onControlError);
   }
-  sysMonitor.start(onSys);
+  if (!options.lite) sysMonitor.start(onSys);
 
   const heartbeat = setInterval(() => {
     if (!res.destroyed) res.write(`: ping ${Date.now()}\n\n`);
@@ -1236,7 +1238,7 @@ async function serveStream(req, res, record, options = {}) {
 
   const cleanup = () => {
     clearInterval(heartbeat);
-    sysMonitor.stop(onSys);
+    if (!options.lite) sysMonitor.stop(onSys);
     stream.removeEventListener('event', onEvent);
     stream.removeEventListener('status', onStatus);
     stream.removeEventListener('reset', onReset);
@@ -1678,7 +1680,12 @@ const server = http.createServer(async (req, res) => {
         sendJson(res, 404, { error: 'session not found' });
         return;
       }
-      await serveStream(req, res, record, { showHidden: url.searchParams.get('hidden') === '1' });
+      const tail = Number.parseInt(url.searchParams.get('tail') || '', 10);
+      await serveStream(req, res, record, {
+        showHidden: url.searchParams.get('hidden') === '1',
+        tail: Number.isInteger(tail) && tail > 0 ? Math.min(tail, 2000) : 0,
+        lite: url.searchParams.get('lite') === '1',
+      });
       return;
     }
 

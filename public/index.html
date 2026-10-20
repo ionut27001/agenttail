@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>agenttail — live viewer for AI coding agent sessions</title>
-<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<link rel="icon" id="favicon" type="image/svg+xml" href="/favicon.svg" />
 <link rel="stylesheet" href="/vendor/fonts/fonts.css" />
 <link rel="stylesheet" href="/vendor/xterm/xterm.css" />
 <script>
@@ -1065,6 +1065,35 @@
   .ag-file { font-size: 10px; color: var(--muted); border: 1px solid var(--border); border-radius: 3px; padding: 0 5px; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .ag-file.overlap { color: var(--amber); border-color: var(--border-warn); }
   .ag-empty { color: var(--muted); font-size: 11px; padding: 18px 0; text-align: center; }
+  /* ---------- watch wall: agents side by side ---------- */
+  #wall { position: fixed; inset: 0; z-index: 180; display: flex; flex-direction: column; background: var(--bg); }
+  #wall.hidden { display: none; }
+  #wall .wall-head { flex: none; display: flex; align-items: center; gap: 12px; padding: 8px 14px; border-bottom: 1px solid var(--line); background: var(--panel); color: var(--green); font-size: 12px; letter-spacing: .14em; }
+  #wall .wall-head .dim { color: var(--muted); font-size: 11px; letter-spacing: .04em; }
+  #wall .wall-head button { margin-left: auto; padding: 2px 8px; font-size: 13px; line-height: 1; }
+  #wallGrid { flex: 1; min-height: 0; display: grid; gap: 1px; background: var(--line); grid-template-columns: repeat(var(--wall-cols, 2), minmax(0, 1fr)); grid-auto-rows: minmax(0, 1fr); }
+  .wall-pane { --c: var(--green); display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--bg); border-top: 3px solid var(--c); }
+  .wall-pane.live { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 35%, transparent); }
+  .wp-head { flex: none; display: flex; align-items: center; gap: 8px; min-width: 0; padding: 7px 10px; border-bottom: 1px solid var(--line-soft); }
+  .wp-src { flex: none; color: var(--c); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; }
+  .wp-branch { flex: none; color: var(--cyan); font-size: 11px; }
+  .wp-title { flex: 1; min-width: 0; color: var(--text); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+  .wp-title:hover { text-decoration: underline; }
+  .wp-state { flex: none; padding: 0 6px; border: 1px solid var(--line); border-radius: 3px; color: var(--muted); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; }
+  .wp-state.live { color: var(--c); border-color: var(--c); }
+  .wp-act { flex: none; padding: 5px 10px; border-bottom: 1px solid var(--line-soft); background: var(--bg-2); color: var(--green-soft); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .wp-act .k { color: var(--c); margin-right: 6px; }
+  .wp-feed { flex: 1; min-height: 0; overflow: auto; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; font-size: 12px; line-height: 1.5; }
+  .wp-feed > * { flex: none; }
+  .wf-user { color: var(--text); border-left: 2px solid var(--c); padding-left: 7px; white-space: pre-wrap; }
+  .wf-say { color: var(--text); }
+  .wf-think { color: var(--muted); font-size: 11px; font-style: italic; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .wf-call { color: var(--cyan); font-family: var(--mono); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .wf-call .ok { color: var(--green); margin-left: 6px; }
+  .wf-call .bad { color: var(--red); margin-left: 6px; }
+  .wf-job { color: var(--amber); font-size: 11px; }
+  .wp-files { flex: none; display: flex; flex-wrap: wrap; gap: 4px; padding: 6px 10px; border-top: 1px solid var(--line-soft); min-height: 26px; }
+  #agentsPanel .ag-watch { padding: 1px 8px; font-size: 10px; letter-spacing: .1em; }
   .tree-row .agent-mark { display: inline-flex; gap: 2px; margin-left: 6px; vertical-align: middle; }
   .tree-row .agent-mark .ag-dot { width: 6px; height: 6px; }
   .editor-tag { position: absolute; top: 5px; left: 8px; z-index: 7; background: var(--bg-tag); }
@@ -1305,7 +1334,8 @@
             <tr><td><kbd>Ctrl</kbd>+<kbd>J</kbd></td><td>Toggle the console / bottom area</td></tr>
             <tr><td><kbd>Ctrl</kbd>+<kbd>.</kbd></td><td>Toggle the agent chat pane</td></tr>
             <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>.</kbd></td><td>Dock the agent pane to the right / back</td></tr>
-            <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>A</kbd></td><td>Open the agents overview</td></tr>
+            <tr><td><kbd>Alt</kbd>+<kbd>A</kbd></td><td>Open the agents overview</td></tr>
+            <tr><td><kbd>Alt</kbd>+<kbd>W</kbd></td><td>Watch the live agents side by side</td></tr>
             <tr><td><kbd>Enter</kbd></td><td>Send the message (owned sessions)</td></tr>
             <tr><td><kbd>Shift</kbd>+<kbd>Enter</kbd></td><td>Insert a newline in the message box</td></tr>
             <tr><td><kbd>Enter</kbd> (approval reason)</td><td>Reject the approval with the typed reason</td></tr>
@@ -1335,6 +1365,7 @@
         <label><input type="checkbox" data-fx="glitch" checked /> error glitch</label>
         <label><input type="checkbox" data-fx="spark" checked /> sparkline + odometer</label>
         <label><input type="checkbox" data-fx="heat" checked /> tree heat</label>
+        <label title="Notify when an agent waits for an approval or stops working while this tab is in the background"><input type="checkbox" id="notifyBox" /> desktop notifications</label>
         </div>
         <div class="fx-sep"></div>
         <button id="replayBtn" disabled title="Replay a finished session from the start">REPLAY</button>
@@ -1350,7 +1381,7 @@
     <span id="activityIcon">·</span>
     <span id="activityText">CONNECTING</span>
     <span class="activity-spacer"></span>
-    <button id="coAgents" class="hidden" type="button" title="Agents working right now"></button>
+    <button id="coAgents" class="hidden" type="button" title="Agents working right now (Alt+A)"></button>
     <span id="followState" class="hidden">FOLLOW PAUSED</span>
     <button id="activityJobs" class="hidden" type="button" title="Running jobs"></button>
     <button id="approvalBadge" class="hidden" type="button" title="Approval needed">⚠ APPROVAL</button>
@@ -1452,9 +1483,13 @@
   <div id="bottomRail"><button id="bottomExpand" type="button">▴ CONSOLE · AGENT</button></div>
 </div>
 
+<div id="wall" class="hidden" role="dialog" aria-label="Agents side by side">
+  <div class="wall-head"><span>◫ WATCHING</span><span class="dim" id="wallSummary"></span><button id="wallClose" type="button" title="Close (Esc)">✕</button></div>
+  <div id="wallGrid"></div>
+</div>
 <div id="agentsBackdrop" class="hidden"></div>
 <div id="agentsPanel" class="hidden" role="dialog" aria-modal="true" aria-label="Agents">
-  <div class="ag-head"><span>AGENTS</span><span class="dim" id="agentsSummary"></span><button id="agentsClose" type="button" title="Close (Esc)">✕</button></div>
+  <div class="ag-head"><span>AGENTS</span><span class="dim" id="agentsSummary"></span><button id="agentsWatchLive" class="ag-watch" type="button" title="Watch the live agents side by side (Alt+W)">◫ WATCH LIVE</button><button id="agentsClose" type="button" title="Close (Esc)">✕</button></div>
   <div id="agentsBody"></div>
 </div>
 
@@ -5190,7 +5225,7 @@ function turnRow(item) {
   if (files) part(plural(files, 'file') + ' changed', 'lt-files');
   if (item.errors) part(plural(item.errors, 'failure'), 'lt-err');
   part(`${fmtInt(tokenTotal(item.usage))} tokens`);
-  if (item.cost > 0) part(`${item.cost.toFixed(4)}`);
+  if (item.cost > 0) part(`$${item.cost.toFixed(4)}`);
   part(item.startedAt && item.endedAt ? fmtActivityTime(item.endedAt - item.startedAt) : 'running', item.endedAt ? '' : 'lt-run');
   const lines = [`Turn ${item.turn}`];
   if (item.files && item.files.size) lines.push('', 'Files changed:', ...[...item.files].slice(0, 20).map((f) => `  ${f}`));
@@ -6007,7 +6042,7 @@ termObserver.observe($('term'));
     const last = data[data.length - 1];
     const total = values.reduce((a, b) => a + b, 0);
     const tip = useCost
-      ? `Cost per turn, newest on the right (last ${data.length} turns)\nlast turn ${Number(last.cost || 0).toFixed(4)} · total ${total.toFixed(4)} · highest ${max.toFixed(4)}`
+      ? `Cost per turn, newest on the right (last ${data.length} turns)\nlast turn $${Number(last.cost || 0).toFixed(4)} · total $${total.toFixed(4)} · highest $${max.toFixed(4)}`
       : `Tokens per turn, newest on the right (last ${data.length} turns; no price for this model)\nlast turn ${fmtInt(Number(last.tokens || 0))} · highest ${fmtInt(max)}`;
     canvas.title = tip;
     if (wrap) wrap.title = tip;
@@ -6199,6 +6234,14 @@ termObserver.observe($('term'));
       const head = el('div', 'ag-group-head');
       head.appendChild(el('b', '', group.name));
       head.appendChild(el('span', 'dim', `${group.git ? 'git repo' : 'folder'} · ${group.agents.length} agent${group.agents.length === 1 ? '' : 's'} · ${group.live} live`));
+      const watchable = group.agents.filter((a) => a.state !== 'finished');
+      if (watchable.length) {
+        const watch = el('button', 'ag-watch', '◫ WATCH SIDE BY SIDE');
+        watch.type = 'button';
+        watch.title = 'Follow these agents live, one pane each';
+        watch.addEventListener('click', () => wall.open(watchable));
+        head.appendChild(watch);
+      }
       section.appendChild(head);
       if (group.overlaps.length) {
         const box = el('div', 'ag-overlaps');
@@ -6272,6 +6315,7 @@ termObserver.observe($('term'));
     applyColor();
     markTree();
     renderPanel();
+    attention.update(agents.data);
   }
 
   function setOpen(open) {
@@ -6290,7 +6334,8 @@ termObserver.observe($('term'));
   $a('agentsBackdrop').addEventListener('click', () => setOpen(false));
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && agents.open) setOpen(false);
-    if (e.ctrlKey && e.shiftKey && !e.altKey && (e.key === 'A' || e.key === 'a')) {
+    // Alt+A (Ctrl+Shift+A is the browser's tab search in Chrome and Edge).
+    if ((e.altKey && !e.ctrlKey && !e.metaKey && (e.code === 'KeyA' || e.key === 'a' || e.key === 'A')) || (e.ctrlKey && e.shiftKey && !e.altKey && (e.key === 'A' || e.key === 'a'))) {
       e.preventDefault();
       setOpen(!agents.open);
     }
@@ -6305,9 +6350,321 @@ termObserver.observe($('term'));
     if (markTimer) return;
     markTimer = setTimeout(() => { markTimer = null; markTree(); }, 150);
   }).observe($a('tree'), { childList: true, subtree: true });
-  setInterval(() => { if (!document.hidden) refresh(); }, 5000);
+  let lastPoll = 0;
+  setInterval(() => {
+    if (document.hidden && Date.now() - lastPoll < 10_000) return;
+    lastPoll = Date.now();
+    refresh();
+  }, 5000);
   setTimeout(refresh, 800);
   window.__agents = { refresh, open: setOpen, get data() { return agents.data; } };
+
+  /* ---------- watch wall ---------- */
+  const wall = (() => {
+    const panes = [];
+    const MAX_PANES = 4;
+    const MAX_ROWS = 220;
+
+    function close() {
+      for (const pane of panes.splice(0)) {
+        try { pane.es.close(); } catch { /* ignore */ }
+        clearInterval(pane.timer);
+      }
+      $a('wallGrid').textContent = '';
+      $a('wall').classList.add('hidden');
+    }
+
+    function trim(feed) {
+      while (feed.childElementCount > MAX_ROWS) feed.firstElementChild.remove();
+    }
+
+    function pin(pane) {
+      if (pane.stick) pane.feed.scrollTop = pane.feed.scrollHeight;
+    }
+
+    function setAction(pane, glyph, text) {
+      pane.action = { glyph, text, at: Date.now() };
+      drawAction(pane);
+    }
+
+    function drawAction(pane) {
+      const a = pane.action;
+      pane.act.textContent = '';
+      pane.act.appendChild(el('span', 'k', a ? a.glyph : '·'));
+      pane.act.appendChild(document.createTextNode(a ? `${a.text}  · ${ago(a.at)}` : 'waiting for activity…'));
+    }
+
+    function addFile(pane, p) {
+      if (!p) return;
+      pane.files = [p, ...pane.files.filter((f) => f !== p)].slice(0, 8);
+      pane.filesEl.textContent = '';
+      for (const f of pane.files) {
+        const chip = el('span', 'ag-file', f.split('/').pop());
+        chip.title = f;
+        pane.filesEl.appendChild(chip);
+      }
+    }
+
+    function onEvent(pane, ev) {
+      const feed = pane.feed;
+      if (ev.t === 'user' && !ev.system && ev.text) {
+        feed.appendChild(el('div', 'wf-user', String(ev.text).slice(0, 600)));
+        setAction(pane, '▸', 'new user message');
+      } else if (ev.t === 'say') {
+        if (ev.thinking) feed.appendChild(el('div', 'wf-think', `thinking · ${mdToText(ev.thinking).replace(/\s+/g, ' ').slice(0, 160)}`));
+        if (ev.text) {
+          const say = el('div', 'wf-say');
+          renderMarkdown(say, ev.text);
+          feed.appendChild(say);
+          setAction(pane, '✦', `replying · ${mdToText(ev.text).replace(/\s+/g, ' ').slice(0, 90)}`);
+        } else if (ev.thinking) {
+          setAction(pane, '…', 'thinking');
+        }
+      } else if (ev.t === 'call') {
+        const args = ev.args || {};
+        const isEdit = EDIT_TOOLS.has(ev.name);
+        const label = ev.name === 'pwsh' ? (args.command || '') : (args.file_path || args.pattern || args.description || ev.name);
+        const glyph = ev.name === 'pwsh' ? '$' : isEdit ? '✎' : ev.name === 'read' ? '👁' : '⚙';
+        const row = el('div', 'wf-call', `${glyph} ${String(label).replace(/\s+/g, ' ')}`);
+        row.title = String(label);
+        feed.appendChild(row);
+        if (ev.callId) pane.calls.set(ev.callId, row);
+        if (isEdit) addFile(pane, args.file_path);
+        setAction(pane, glyph, `${ev.name === 'pwsh' ? 'running' : isEdit ? 'editing' : ev.name} ${String(label).replace(/\s+/g, ' ').slice(0, 120)}`);
+      } else if (ev.t === 'result') {
+        const row = pane.calls.get(ev.callId);
+        if (row) {
+          const exit = /\[exit code:\s*(-?\d+)\]/i.exec(ev.text || '');
+          const bad = ev.isError || (exit && exit[1] !== '0');
+          row.appendChild(el('span', bad ? 'bad' : 'ok', bad ? `✗${exit ? ' exit ' + exit[1] : ''}` : `✓${exit ? ' exit ' + exit[1] : ''}`));
+          pane.calls.delete(ev.callId);
+        }
+      } else if (ev.t === 'job') {
+        feed.appendChild(el('div', 'wf-job', `▶ job running · ${String(ev.label || '').replace(/\s+/g, ' ').slice(0, 140)}`));
+        setAction(pane, '▶', `job running · ${String(ev.label || '').slice(0, 100)}`);
+      } else if (ev.t === 'jobEnd') {
+        feed.appendChild(el('div', 'wf-job', `■ job ${ev.status || 'ended'}${ev.detail ? ' · ' + ev.detail : ''}`));
+      } else {
+        return;
+      }
+      if (pane.history) return;
+      trim(feed);
+      pin(pane);
+    }
+
+    function paneFor(agent) {
+      const root = el('section', `wall-pane${agent.state === 'live' ? ' live' : ''}`);
+      root.style.setProperty('--c', colorOf(agent));
+      root.dataset.key = agent.key;
+      const head = el('div', 'wp-head');
+      head.appendChild(dot(agent));
+      head.appendChild(el('span', 'wp-src', agent.sourceLabel));
+      if (agent.repo && agent.repo.branch) head.appendChild(el('span', 'wp-branch', `⎇ ${agent.repo.branch}`));
+      const title = el('span', 'wp-title', agent.title);
+      title.title = 'Open this session in the main view';
+      title.addEventListener('click', () => { close(); location.hash = hashFor(agent); });
+      head.appendChild(title);
+      const stateEl = el('span', `wp-state${agent.state === 'live' ? ' live' : ''}`, agent.state);
+      head.appendChild(stateEl);
+      root.appendChild(head);
+      const act = el('div', 'wp-act');
+      root.appendChild(act);
+      const feed = el('div', 'wp-feed');
+      root.appendChild(feed);
+      const filesEl = el('div', 'wp-files');
+      root.appendChild(filesEl);
+      const pane = { agent, root, act, feed, filesEl, stateEl, calls: new Map(), files: [], stick: true, history: true, action: null };
+      feed.addEventListener('scroll', () => {
+        pane.stick = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 40;
+      });
+      for (const t of agent.touched || []) addFile(pane, t.path);
+      drawAction(pane);
+      const url = `/api/stream?source=${encodeURIComponent(agent.source)}&id=${encodeURIComponent(agent.id)}&tail=150&lite=1`;
+      pane.es = new EventSource(url);
+      pane.es.addEventListener('ev', (e) => { try { onEvent(pane, JSON.parse(e.data)); } catch { /* ignore */ } });
+      pane.es.addEventListener('historyEnd', () => {
+        pane.history = false;
+        trim(feed);
+        feed.scrollTop = feed.scrollHeight;
+        if (!feed.childElementCount) feed.appendChild(el('div', 'wf-think', 'no activity yet'));
+      });
+      pane.es.addEventListener('status', (e) => {
+        try {
+          const st = JSON.parse(e.data);
+          if (!st.state) return;
+          stateEl.textContent = st.state;
+          stateEl.classList.toggle('live', st.state === 'live');
+          root.classList.toggle('live', st.state === 'live');
+        } catch { /* ignore */ }
+      });
+      pane.timer = setInterval(() => drawAction(pane), 5000);
+      return pane;
+    }
+
+    function open(list) {
+      const chosen = (list || []).slice(0, MAX_PANES);
+      if (!chosen.length) return;
+      close();
+      setOpen(false);
+      const grid = $a('wallGrid');
+      grid.style.setProperty('--wall-cols', String(chosen.length <= 2 ? chosen.length : 2));
+      for (const agent of chosen) {
+        const pane = paneFor(agent);
+        panes.push(pane);
+        grid.appendChild(pane.root);
+      }
+      $a('wallSummary').textContent = chosen.map((a) => `${a.sourceLabel}${a.repo && a.repo.branch ? ' · ' + a.repo.branch : ''}`).join('  +  ');
+      $a('wall').classList.remove('hidden');
+    }
+
+    /** Live agents of the repo being viewed, else the live agents anywhere. */
+    function defaultList() {
+      const data = agents.data;
+      if (!data) return [];
+      const { group } = findMe();
+      const mine = group ? group.agents.filter((a) => a.state !== 'finished') : [];
+      if (mine.length >= 2) return mine;
+      return data.groups.flatMap((g) => g.agents).filter((a) => a.state === 'live');
+    }
+
+    $a('wallClose').addEventListener('click', close);
+    return {
+      open,
+      close,
+      openDefault: () => open(defaultList()),
+      get open_() { return !$a('wall').classList.contains('hidden'); },
+      get panes() { return panes.length; },
+    };
+  })();
+  $a('agentsWatchLive').addEventListener('click', () => wall.open((agents.data ? agents.data.groups.flatMap((g) => g.agents) : []).filter((a) => a.state === 'live')));
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && wall.open_) { wall.close(); return; }
+    // Ctrl+Shift+W closes the browser window, so the wall uses Alt+W.
+    if (e.altKey && !e.ctrlKey && !e.metaKey && (e.code === 'KeyW' || e.key === 'w' || e.key === 'W')) {
+      e.preventDefault();
+      if (wall.open_) wall.close();
+      else agents.data ? wall.openDefault() : refresh().then(() => wall.openDefault());
+    }
+  });
+  window.__wall = wall;
+
+  /* ---------- attention: title count, favicon badge, notifications ---------- */
+  const attention = (() => {
+    const baseTitle = document.title;
+    const NOTIFY_KEY = 'agenttail-notify';
+    const prev = new Map(); // agent key -> { state, approvals }
+    const done = new Map(); // agents that stopped while the tab was hidden
+    let approvals = 0;
+    let seeded = false;
+    let iconImage = null;
+    let notify = false;
+    try { notify = localStorage.getItem(NOTIFY_KEY) === '1'; } catch { /* ignore */ }
+
+    function label(agent) {
+      return `${agent.sourceLabel}${agent.repo && agent.repo.branch ? ' · ' + agent.repo.branch : ''}`;
+    }
+
+    function desktop(title, body, tag) {
+      if (!notify || !document.hidden || typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+      try { new Notification(title, { body, tag, silent: false }); } catch { /* ignore */ }
+    }
+
+    function drawIcon() {
+      const link = $a('favicon');
+      if (!link) return;
+      const count = approvals + done.size;
+      if (!count) {
+        if (link.dataset.badge) {
+          link.type = 'image/svg+xml';
+          link.href = '/favicon.svg';
+          delete link.dataset.badge;
+        }
+        return;
+      }
+      const colour = approvals ? '#ffb020' : '#37f28a';
+      const paint = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = 32;
+        canvas.height = 32;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#050c09';
+        ctx.fillRect(0, 0, 32, 32);
+        if (iconImage && iconImage.complete) ctx.drawImage(iconImage, 0, 0, 32, 32);
+        ctx.beginPath();
+        ctx.arc(23, 9, 9, 0, Math.PI * 2);
+        ctx.fillStyle = colour;
+        ctx.fill();
+        ctx.fillStyle = '#000';
+        ctx.font = 'bold 12px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(count > 9 ? '9+' : String(count), 23, 10);
+        link.type = 'image/png';
+        link.href = canvas.toDataURL('image/png');
+        link.dataset.badge = String(count);
+      };
+      if (!iconImage) {
+        iconImage = new Image();
+        iconImage.onload = paint;
+        iconImage.src = '/favicon.svg';
+      }
+      paint();
+    }
+
+    function render() {
+      const count = approvals + done.size;
+      const mark = approvals ? '⚠ ' : done.size ? '✓ ' : '';
+      document.title = count ? `(${count}) ${mark}${baseTitle}` : baseTitle;
+      drawIcon();
+    }
+
+    function update(data) {
+      const list = data ? data.groups.flatMap((g) => g.agents) : [];
+      approvals = list.reduce((sum, a) => sum + (a.approvals || 0), 0);
+      for (const agent of list) {
+        const before = prev.get(agent.key);
+        if (seeded && before) {
+          if ((agent.approvals || 0) > (before.approvals || 0)) {
+            desktop('Approval needed', `${label(agent)}: ${agent.title}`, `approval:${agent.key}`);
+          }
+          if (before.state === 'live' && agent.state !== 'live' && document.hidden) {
+            done.set(agent.key, agent);
+            desktop('Agent stopped working', `${label(agent)}: ${agent.title}`, `done:${agent.key}`);
+          }
+        }
+        prev.set(agent.key, { state: agent.state, approvals: agent.approvals || 0 });
+      }
+      seeded = true;
+      render();
+    }
+
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && done.size) {
+        done.clear();
+        render();
+      }
+    });
+
+    const box = $a('notifyBox');
+    if (box) {
+      box.checked = notify;
+      box.addEventListener('change', async () => {
+        notify = box.checked;
+        if (notify && typeof Notification !== 'undefined' && Notification.permission === 'default') {
+          try { await Notification.requestPermission(); } catch { /* ignore */ }
+        }
+        if (notify && typeof Notification !== 'undefined' && Notification.permission === 'denied') {
+          notify = false;
+          box.checked = false;
+          box.parentElement.title = 'Notifications are blocked for this page in the browser settings';
+        }
+        try { localStorage.setItem(NOTIFY_KEY, notify ? '1' : '0'); } catch { /* ignore */ }
+      });
+    }
+
+    return { update, get count() { return approvals + done.size; }, get done() { return [...done.keys()]; } };
+  })();
+  window.__attention = attention;
 })();
 </script>
 
