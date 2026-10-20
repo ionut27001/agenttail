@@ -1498,6 +1498,27 @@ const MIME = {
   '.map': 'application/json; charset=utf-8',
 };
 
+/** The page's own CSS and scripts (public/app). Revalidated on every load. */
+async function serveApp(rel, res) {
+  if (!rel || rel.includes('..') || rel.includes('\\') || rel.includes('\0') || !/^[A-Za-z0-9_.-]+\.(?:js|css)$/.test(rel)) {
+    sendJson(res, 404, { error: 'not found' });
+    return;
+  }
+  let body;
+  try {
+    body = await readPublic(`app/${rel}`);
+  } catch {
+    sendJson(res, 404, { error: 'not found' });
+    return;
+  }
+  res.writeHead(200, {
+    'Content-Type': MIME[path.extname(rel).toLowerCase()] || 'application/octet-stream',
+    'Cache-Control': 'no-cache',
+    'X-Content-Type-Options': 'nosniff',
+  });
+  res.end(body);
+}
+
 async function serveVendor(rel, res) {
   if (!rel || rel.includes('..') || rel.includes('\\') || rel.includes('\0') || !/^[A-Za-z0-9_./-]+$/.test(rel)) {
     sendJson(res, 404, { error: 'not found' });
@@ -1616,6 +1637,10 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (p.startsWith('/app/')) {
+      await serveApp(decodeURIComponent(p.slice('/app/'.length)), res);
+      return;
+    }
     if (p.startsWith('/vendor/')) {
       await serveVendor(decodeURIComponent(p.slice('/vendor/'.length)), res);
       return;

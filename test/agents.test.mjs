@@ -125,6 +125,15 @@ try {
     check(agents.some((x) => x.id === fixture.liveId && x.state === 'live'), 'the live fixture session is listed as live', JSON.stringify(agents.map((x) => [x.id, x.state])));
     const live = agents.find((x) => x.id === fixture.liveId);
     check(!!live && live.sourceLabel === 'dsh' && Number.isInteger(live.color), 'agents carry a source label and a colour');
+    // The page's own files are served from /app/, and nothing else is.
+    const appJs = await fetch(`http://127.0.0.1:${PORT}/app/main.js`);
+    check(appJs.status === 200 && /javascript/.test(appJs.headers.get('content-type') || ''), 'the page scripts are served from /app/');
+    const appCss = await fetch(`http://127.0.0.1:${PORT}/app/app.css`);
+    check(appCss.status === 200 && /text\/css/.test(appCss.headers.get('content-type') || ''), 'the stylesheet is served from /app/');
+    for (const bad of ['/app/..%2Fserver.js', '/app/%2E%2E/server.js', '/app/index.html', '/app/sub/x.js', '/app/']) {
+      const res = await fetch(`http://127.0.0.1:${PORT}${bad}`);
+      check(res.status === 404, `/app/ refuses ${bad}`, String(res.status));
+    }
     // The watch wall subscribes with tail + lite: the last N events, no tree.
     const sse = await new Promise((resolve) => {
       const ctrl = new AbortController();

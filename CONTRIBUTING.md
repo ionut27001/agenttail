@@ -8,5 +8,13 @@ Thanks for considering a contribution.
 4. Run `npm test`; it starts throwaway servers on loopback and drives headless Edge for the UI suite.
 5. Keep the runtime dependency-free and every request local.
 
+## Layout
+
+- `server.js` — the local HTTP server (read side, SSE, control endpoints).
+- `lib/` — session sources (dsh, Claude Code, Antigravity), redaction, roots, the agents overview, the ACP control plane.
+- `public/index.html` — the page markup; `public/app/` holds its stylesheet and classic scripts, loaded in order: `main.js` (event pipeline, editor, console, chat, layout), `control.js`, `agents.js` (overview, watch wall, alerts) and the wall widgets (`wall-editor.js`, `wall-console.js`, `wall-map.js`, `wall-timeline.js`), then `context.js`.
+- `public/vendor/` — vendored Monaco, xterm.js and fonts; nothing loads from a CDN.
+- `test/` — one suite per area; `npm test` runs them all.
+
 By submitting a contribution you agree that it is licensed under the MIT
 License in this repository.
