@@ -1085,8 +1085,27 @@
   #wall .wall-head { flex: none; display: flex; align-items: center; gap: 12px; padding: 8px 14px; border-bottom: 1px solid var(--line); background: var(--panel); color: var(--green); font-size: 12px; letter-spacing: .14em; }
   #wall .wall-head .dim { color: var(--muted); font-size: 11px; letter-spacing: .04em; }
   #wall .wall-head button { margin-left: auto; padding: 2px 8px; font-size: 13px; line-height: 1; }
-  #wallGrid { flex: 1; min-height: 0; display: grid; gap: 1px; background: var(--line); grid-template-columns: repeat(var(--wall-cols, 2), minmax(0, 1fr)); grid-auto-rows: minmax(0, 1fr); }
-  #wallGrid.odd .wall-pane:last-child { grid-column: 1 / -1; }
+  #wallGrid { flex: 1; min-height: 0; display: flex; gap: 1px; background: var(--line); }
+  #wall .wall-head button.wall-toggle { margin-left: 0; padding: 2px 9px; font-size: 10px; letter-spacing: .1em; }
+  #wall .wall-head button.wall-toggle:first-of-type { margin-left: auto; }
+  #wall .wall-head button.wall-toggle + #wallClose { margin-left: 4px; }
+  #wallGrid > .wall-pane { flex: 1 1 0; transition: flex-basis .45s ease, flex-grow .45s ease; }
+  #wallGrid > .wall-pane.dormant { flex: 0 0 230px; cursor: pointer; }
+  .wall-pane.dormant .wp-body { display: none; }
+  .wall-pane .wp-dormant { display: none; }
+  .wall-pane.dormant .wp-dormant { display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 14px; color: var(--muted); text-align: center; font-size: 11px; }
+  .wall-pane.dormant .wp-dormant .z { font-size: 26px; opacity: .8; animation: wp-doze 3s ease-in-out infinite; }
+  @keyframes wp-doze { 50% { transform: translateY(-4px); opacity: .45; } }
+  .wall-pane.dormant .wp-head { flex-wrap: wrap; }
+  .wall-pane.dormant .wp-title { flex-basis: 100%; white-space: normal; }
+  .wall-pane.dormant .wp-act { white-space: normal; }
+  #wall.chat-inline .wp-body { grid-template-columns: minmax(0, 1fr); }
+  #wall.chat-inline .wp-side { display: none; }
+  #wall.chat-inline .wp-main { border-right: none; grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); }
+  @media (prefers-reduced-motion: reduce) {
+    #wallGrid > .wall-pane { transition: none; }
+    .wall-pane.dormant .wp-dormant .z { animation: none; }
+  }
   #wallStrip { flex: none; display: grid; grid-template-rows: auto auto; border-top: 1px solid var(--line); background: var(--panel); }
   #wallStrip .ws-slot { position: relative; min-width: 0; overflow: hidden; }
   #wallStrip .ws-slot:empty { display: none; }
@@ -1573,7 +1592,10 @@
 </div>
 
 <div id="wall" class="hidden" role="dialog" aria-label="Agents side by side">
-  <div class="wall-head"><span>◫ WATCHING</span><span class="dim" id="wallSummary"></span><button id="wallClose" type="button" title="Close (Esc)">✕</button></div>
+  <div class="wall-head"><span>◫ WATCHING</span><span class="dim" id="wallSummary"></span>
+    <button id="wallChatMode" class="wall-toggle" type="button" title="Show the agent chat and reasoning beside the editor, or inside the console">CHAT: SIDE</button>
+    <button id="wallDormantMode" class="wall-toggle" type="button" title="Shrink agents that are waiting or quiet, so working agents get the space">QUIET AGENTS: SHRINK</button>
+    <button id="wallClose" type="button" title="Close (Esc)">✕</button></div>
   <div id="wallGrid"></div>
   <div id="wallStrip">
     <div class="ws-slot ws-map"></div>
@@ -7069,6 +7091,12 @@ termObserver.observe($('term'));
   // Strip widgets: { create({ slots: { map, timeline }, panes }) -> { onPaneEvent(pane, ev), dispose() } }.
   // Panes open before the strip; their events (history tail first) arrive after.
   window.__wallStripHooks = window.__wallStripHooks || [];
+  const WALL_PREFS_KEY = 'agenttail-wall';
+  const wallPrefs = { chatInline: false, shrinkQuiet: true };
+  try { Object.assign(wallPrefs, JSON.parse(localStorage.getItem(WALL_PREFS_KEY) || '{}')); } catch { /* ignore */ }
+  // The console widget asks this to decide whether chat lines go to the console.
+  window.__wallChatInline = () => !!wallPrefs.chatInline;
+  const DORMANT_MS = 60_000;
   const wall = (() => {
     const panes = [];
     const MAX_PANES = 4;
@@ -7119,6 +7147,12 @@ termObserver.observe($('term'));
     }
 
     function onEvent(pane, ev) {
+      if (!pane.history && ['call', 'result', 'say', 'user', 'job', 'jobEnd', 'jobOutput'].includes(ev.t)) {
+        pane.lastActiveAt = Date.now();
+        updateDormant(pane);
+      } else if (pane.history && typeof ev.time === 'number') {
+        pane.lastActiveAt = Math.max(pane.lastActiveAt, ev.time);
+      }
       for (const widget of pane.widgets) {
         try { widget.onEvent && widget.onEvent(ev); } catch (err) { console.error('wall widget event failed', err); }
       }
@@ -7200,8 +7234,20 @@ termObserver.observe($('term'));
       body.appendChild(main);
       body.appendChild(side);
       root.appendChild(body);
+      const dormantEl = el('div', 'wp-dormant');
+      dormantEl.appendChild(el('span', 'z', '💤'));
+      const dormantText = el('span', '', 'waiting');
+      dormantEl.appendChild(dormantText);
+      root.appendChild(dormantEl);
+      root.addEventListener('click', (e) => {
+        if (!root.classList.contains('dormant') && !pane.pinned) return;
+        if (e.target.closest('.wp-title')) return;
+        pane.pinned = !pane.pinned;
+        updateDormant(pane);
+      });
       const pane = {
         agent, root, act, feed, filesEl, stateEl, calls: new Map(), files: [], stick: true, history: true, action: null,
+        dormantText, lastActiveAt: 0, state: agent.state, pinned: false,
         slots: { editor: editorSlot, console: consoleSlot },
         widgets: [],
       };
@@ -7237,11 +7283,63 @@ termObserver.observe($('term'));
           stateEl.textContent = st.state;
           stateEl.classList.toggle('live', st.state === 'live');
           root.classList.toggle('live', st.state === 'live');
+          pane.state = st.state;
+          updateDormant(pane);
         } catch { /* ignore */ }
       });
-      pane.timer = setInterval(() => drawAction(pane), 5000);
+      pane.timer = setInterval(() => { drawAction(pane); updateDormant(pane); }, 2000);
       return pane;
     }
+
+    /**
+     * A pane is dormant when its agent is not working (idle/finished) or has
+     * produced nothing for a minute. Dormant panes shrink to a slim column
+     * unless the user pinned them open; never all of them at once.
+     */
+    function updateDormant(pane) {
+      const quietFor = Date.now() - (pane.lastActiveAt || 0);
+      const quiet = pane.state !== 'live' || quietFor > DORMANT_MS;
+      pane.quiet = quiet;
+      const label = pane.state !== 'live'
+        ? (pane.state === 'idle' ? 'waiting for you' : 'finished')
+        : `thinking quietly · ${ago(pane.lastActiveAt)}`;
+      pane.dormantText.textContent = label;
+      applyDormant();
+    }
+
+    function applyDormant() {
+      const active = panes.filter((p) => !(p.quiet && !p.pinned));
+      for (const p of panes) {
+        const shrink = wallPrefs.shrinkQuiet && p.quiet && !p.pinned && active.length > 0;
+        if (p.root.classList.contains('dormant') !== shrink) p.root.classList.toggle('dormant', shrink);
+        p.root.title = shrink ? 'Quiet agent — click to keep it open' : (p.pinned ? 'Pinned open — click to let it shrink when quiet' : '');
+      }
+    }
+
+    function renderToggles() {
+      $a('wallChatMode').textContent = wallPrefs.chatInline ? 'CHAT: IN CONSOLE' : 'CHAT: SIDE';
+      $a('wallDormantMode').textContent = wallPrefs.shrinkQuiet ? 'QUIET AGENTS: SHRINK' : 'QUIET AGENTS: KEEP';
+      $a('wall').classList.toggle('chat-inline', wallPrefs.chatInline);
+    }
+
+    function savePrefs() {
+      try { localStorage.setItem(WALL_PREFS_KEY, JSON.stringify(wallPrefs)); } catch { /* ignore */ }
+    }
+
+    $a('wallChatMode').addEventListener('click', () => {
+      wallPrefs.chatInline = !wallPrefs.chatInline;
+      savePrefs();
+      renderToggles();
+      // Replay the panes so the consoles pick up (or drop) the chat lines.
+      const agentsNow = panes.map((p) => p.agent);
+      if (agentsNow.length) open(agentsNow);
+    });
+    $a('wallDormantMode').addEventListener('click', () => {
+      wallPrefs.shrinkQuiet = !wallPrefs.shrinkQuiet;
+      savePrefs();
+      renderToggles();
+      applyDormant();
+    });
 
     const strip = { widgets: [] };
     function openStrip() {
@@ -7271,9 +7369,7 @@ termObserver.observe($('term'));
       close();
       setOpen(false);
       const grid = $a('wallGrid');
-      grid.style.setProperty('--wall-cols', String(chosen.length <= 2 ? chosen.length : 2));
-      // An odd pane out takes the whole last row instead of leaving a hole.
-      grid.classList.toggle('odd', chosen.length > 2 && chosen.length % 2 === 1);
+      renderToggles();
       for (const agent of chosen) {
         const pane = paneFor(agent);
         panes.push(pane);
@@ -7301,6 +7397,8 @@ termObserver.observe($('term'));
       openDefault: () => open(defaultList()),
       get open_() { return !$a('wall').classList.contains('hidden'); },
       get panes() { return panes.length; },
+      get dormant() { return panes.filter((p) => p.root.classList.contains('dormant')).map((p) => p.agent.key); },
+      prefs: wallPrefs,
     };
   })();
   $a('agentsWatchLive').addEventListener('click', () => wall.open((agents.data ? agents.data.groups.flatMap((g) => g.agents) : []).filter((a) => a.state === 'live')));
@@ -7641,6 +7739,43 @@ termObserver.observe($('term'));
         if (ev.t === 'jobOutput') {
           clearPlaceholder();
           renderJobOutput(term, ev.text);
+          return;
+        }
+        if (window.__wallChatInline && window.__wallChatInline()) renderChat(ev);
+      }
+
+      /** Chat and reasoning as console lines (the wall's "chat in console" mode). */
+      function renderChat(ev) {
+        const width = Math.max(20, (term.cols || 80) - 4);
+        const wrap = (text, max) => {
+          const lines = [];
+          for (const raw of String(text).split('\n')) {
+            let line = raw.replace(/\s+$/, '');
+            if (!line) { if (lines.length && lines[lines.length - 1] !== '') lines.push(''); continue; }
+            while (line.length > width) { lines.push(line.slice(0, width)); line = line.slice(width); }
+            lines.push(line);
+          }
+          while (lines.length && lines[lines.length - 1] === '') lines.pop();
+          if (lines.length > max) return [...lines.slice(0, max), `… (+${lines.length - max} lines)`];
+          return lines;
+        };
+        if (ev.t === 'user' && !ev.system && ev.text) {
+          clearPlaceholder();
+          write(`\r\n${C.cyan}▸ ${esc(wrap(ev.text, 6).join('\r\n  '))}${C.reset}\r\n`);
+        } else if (ev.t === 'say') {
+          if (ev.thinking) {
+            clearPlaceholder();
+            write(`${C.grey}\x1b[3m  … ${esc(wrap(mdToText(ev.thinking), 3).join('\r\n    '))}\x1b[23m${C.reset}\r\n`);
+          }
+          if (ev.text) {
+            clearPlaceholder();
+            write(`${C.white}✦ ${esc(wrap(mdToText(ev.text), 24).join('\r\n  '))}${C.reset}\r\n`);
+          }
+        } else {
+          return;
+        }
+        if (!pane.history) {
+          try { term.scrollToBottom(); } catch { /* ignore */ }
         }
       }
 

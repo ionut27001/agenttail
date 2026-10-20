@@ -672,9 +672,6 @@ try {
   // Watch three agents of this workspace explicitly to check the layout.
   await evalExpr(`window.__wall.open(window.__agents.data.groups.flatMap((g) => g.agents).filter((a) => a.state !== 'finished').slice(0, 3)); true`);
   check(await waitFor(`window.__wall.open_ && window.__wall.panes >= 2 && document.querySelectorAll('#wallGrid .wall-pane').length === window.__wall.panes`, 5000), 'several agents are watched side by side', String(await evalExpr(`window.__wall.panes`)));
-  if (await evalExpr(`window.__wall.panes`) === 3) {
-    check(await evalExpr(`(() => { const ps = [...document.querySelectorAll('#wallGrid .wall-pane')]; const g = document.getElementById('wallGrid').getBoundingClientRect(); return Math.abs(ps[2].getBoundingClientRect().width - g.width) < 4; })()`), 'with three agents the last pane takes the full width');
-  }
   check(await waitFor(`[...document.querySelectorAll('#wallGrid .wp-feed')].every((f) => f.childElementCount > 0)`, 8000), 'every pane fills with its own live feed', JSON.stringify(await evalExpr(`[...document.querySelectorAll('#wallGrid .wp-feed')].map((f) => f.childElementCount)`)));
   const paneColors = await evalExpr(`[...document.querySelectorAll('#wallGrid .wall-pane')].map((p) => p.style.getPropertyValue('--c'))`);
   check(new Set(paneColors).size === paneColors.length, 'each pane carries its agent colour', JSON.stringify(paneColors));
@@ -704,6 +701,26 @@ try {
     ]));
     check(await waitFor(`window.__wallMap().tiles.some((t) => t.path === 'notes.md' && t.clash) && /⚡/.test(window.__wallMap().clash)`, 8000), 'two agents on the same file make it flash on the map', JSON.stringify(await evalExpr(`window.__wallMap()`)));
   }
+  // Quiet agents (idle, or silent for a minute) shrink; the working one keeps the space.
+  check(await waitFor(`window.__wall.dormant.length >= 1 && !window.__wall.dormant.includes('dsh:${fixture.liveId}')`, 5000), 'quiet agents shrink while the working agent keeps its pane', JSON.stringify(await evalExpr(`window.__wall.dormant`)));
+  const widths = await evalExpr(`[...document.querySelectorAll('#wallGrid .wall-pane')].map((p) => ({ key: p.dataset.key, w: Math.round(p.getBoundingClientRect().width), dormant: p.classList.contains('dormant') }))`);
+  check(widths.filter((p) => p.dormant).every((p) => p.w <= 240) && widths.filter((p) => !p.dormant).every((p) => p.w > 500), 'a shrunk pane is a slim column and the active pane fills the rest', JSON.stringify(widths));
+  const sleeper = widths.find((p) => p.dormant)?.key;
+  await evalExpr(`document.querySelector('#wallGrid .wall-pane[data-key="${sleeper}"]').click(); true`);
+  check(await evalExpr(`!window.__wall.dormant.includes('${sleeper}')`), 'clicking a shrunk pane pins it open');
+  await evalExpr(`document.getElementById('wallDormantMode').click(); true`);
+  check(await evalExpr(`window.__wall.dormant.length === 0 && /KEEP/.test(document.getElementById('wallDormantMode').textContent)`), 'quiet agents can be kept full size');
+  await evalExpr(`document.getElementById('wallDormantMode').click(); true`);
+  // Chat in the console: the side feed goes away and replies print in the console.
+  await evalExpr(`document.getElementById('wallChatMode').click(); true`);
+  check(await waitFor(`document.getElementById('wall').classList.contains('chat-inline') && window.__wall.panes >= 1 && getComputedStyle(document.querySelector('#wallGrid .wp-side')).display === 'none'`, 5000), 'the chat can move into the console');
+  await sleep(800);
+  fs.appendFileSync(fixture.liveLog, frame([
+    ev('assistant/message', 34, { turn: 1, step: 2, message: { role: 'assistant', content: [{ type: 'reasoning', text: 'Checking the console view.' }, { type: 'text', text: 'Inline reply from the agent.' }] } }),
+  ]));
+  check(await waitFor(`(() => { const p = document.querySelector('#wallGrid .wall-pane[data-key="dsh:${fixture.liveId}"]'); const t = p ? (window.__wallConsoleText(p) || '') : ''; return t.includes('✦ Inline reply from the agent') && t.includes('Checking the console view'); })()`, 8000), 'messages and replies print in the pane console', JSON.stringify(String(await evalExpr(`window.__wallConsoleText(document.querySelector('#wallGrid .wall-pane[data-key="dsh:${fixture.liveId}"]'))`)).slice(-300)));
+  await evalExpr(`document.getElementById('wallChatMode').click(); true`);
+  check(await waitFor(`!document.getElementById('wall').classList.contains('chat-inline') && /SIDE/.test(document.getElementById('wallChatMode').textContent)`, 5000), 'and back beside the editor');
   await evalExpr(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); true`);
   check(await evalExpr(`!window.__wall.open_ && window.__wall.panes === 0`), 'Esc closes the wall and its streams');
 
