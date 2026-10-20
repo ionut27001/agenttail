@@ -338,6 +338,21 @@ try {
   check(await evalExpr(`(() => { const r = document.querySelector('.brand .brand-full').getBoundingClientRect(); return r.width > 60 && r.height > 10; })()`), 'the header shows the agenttail wordmark');
   check(await evalExpr(`/AGENT NOW/.test(document.getElementById('activityLabel').textContent)`), 'the activity bar is labelled as the agent status');
 
+  console.log('\nthemes');
+  check(await evalExpr(`JSON.stringify(window.__theme.list()) === JSON.stringify(['matrix', 'amber', 'ice', 'dracula', 'paper']) && document.getElementById('themeSelect').options.length === 5`), 'five themes are offered in Settings');
+  const matrixBg = await evalExpr(`getComputedStyle(document.body).backgroundColor`);
+  check(await evalExpr(`!document.documentElement.dataset.theme || document.documentElement.dataset.theme === 'matrix'`), 'matrix is the default theme');
+  await evalExpr(`(() => { const sel = document.getElementById('themeSelect'); sel.value = 'paper'; sel.dispatchEvent(new Event('change')); return true; })()`);
+  await sleep(300);
+  const paper = await evalExpr(`(() => ({ attr: document.documentElement.dataset.theme, bg: getComputedStyle(document.body).backgroundColor, saved: localStorage.getItem('agenttail-theme'), logo: getComputedStyle(document.querySelector('.brand svg g')).fill, agent0: getComputedStyle(document.documentElement).getPropertyValue('--agent-0').trim() }))()`);
+  check(paper.attr === 'paper' && paper.saved === 'paper' && paper.bg !== matrixBg, 'choosing a theme applies and saves it', JSON.stringify({ ...paper, matrixBg }));
+  check(paper.logo !== 'rgb(55, 242, 138)' && paper.agent0 === '#118a4a', 'the logo and agent colours follow the light theme', JSON.stringify(paper));
+  await reloadPage();
+  check(await evalExpr(`document.documentElement.dataset.theme === 'paper'`), 'the saved theme is applied on load');
+  await evalExpr(`window.__theme.set('matrix'); true`);
+  await sleep(200);
+  check(await evalExpr(`getComputedStyle(document.body).backgroundColor`) === matrixBg, 'switching back restores the matrix colours');
+
   console.log('\nsystem meters');
   const sysReady = await waitFor(`['sysCpu', 'sysRam'].every((id) => document.getElementById(id).querySelector('.v').textContent !== '—')`, 12000);
   check(sysReady, 'CPU and RAM meters receive SSE samples');
