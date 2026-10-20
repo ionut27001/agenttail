@@ -667,7 +667,14 @@ try {
   await evalExpr(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); true`);
   check(await evalExpr(`document.getElementById('agentsPanel').classList.contains('hidden')`), 'Esc closes the agents overview');
   await evalExpr(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'w', code: 'KeyW', altKey: true, bubbles: true })); true`);
-  check(await waitFor(`window.__wall.open_ && window.__wall.panes >= 2 && document.querySelectorAll('#wallGrid .wall-pane').length === window.__wall.panes`, 5000), 'Alt+W watches the agents of this workspace side by side', String(await evalExpr(`window.__wall.panes`)));
+  check(await waitFor(`window.__wall.open_ && window.__wall.panes >= 1`, 5000), 'Alt+W opens the watch wall');
+  check(await evalExpr(`[...document.querySelectorAll('#wallGrid .wall-pane')].every((p) => window.__agents.data.groups.flatMap((g) => g.agents).find((a) => a.key === p.dataset.key)?.state === 'live')`), 'by default the wall shows only agents that are working right now');
+  // Watch three agents of this workspace explicitly to check the layout.
+  await evalExpr(`window.__wall.open(window.__agents.data.groups.flatMap((g) => g.agents).filter((a) => a.state !== 'finished').slice(0, 3)); true`);
+  check(await waitFor(`window.__wall.open_ && window.__wall.panes >= 2 && document.querySelectorAll('#wallGrid .wall-pane').length === window.__wall.panes`, 5000), 'several agents are watched side by side', String(await evalExpr(`window.__wall.panes`)));
+  if (await evalExpr(`window.__wall.panes`) === 3) {
+    check(await evalExpr(`(() => { const ps = [...document.querySelectorAll('#wallGrid .wall-pane')]; const g = document.getElementById('wallGrid').getBoundingClientRect(); return Math.abs(ps[2].getBoundingClientRect().width - g.width) < 4; })()`), 'with three agents the last pane takes the full width');
+  }
   check(await waitFor(`[...document.querySelectorAll('#wallGrid .wp-feed')].every((f) => f.childElementCount > 0)`, 8000), 'every pane fills with its own live feed', JSON.stringify(await evalExpr(`[...document.querySelectorAll('#wallGrid .wp-feed')].map((f) => f.childElementCount)`)));
   const paneColors = await evalExpr(`[...document.querySelectorAll('#wallGrid .wall-pane')].map((p) => p.style.getPropertyValue('--c'))`);
   check(new Set(paneColors).size === paneColors.length, 'each pane carries its agent colour', JSON.stringify(paneColors));
@@ -679,6 +686,11 @@ try {
   const livePane = `document.querySelector('#wallGrid .wall-pane[data-key="dsh:${fixture.liveId}"]')`;
   check(await waitFor(`!!${livePane} && [...${livePane}.querySelectorAll('.wf-call')].some((r) => r.textContent.includes('echo wall-check') && /✓ exit 0/.test(r.textContent))`, 8000), 'a live command appears in its pane with its result', await evalExpr(`${livePane}?.querySelector('.wp-feed')?.textContent.slice(-200) || 'no pane'`));
   check(await evalExpr(`/running echo wall-check/.test(${livePane}.querySelector('.wp-act').textContent)`), 'the pane names the current action', await evalExpr(`${livePane}.querySelector('.wp-act').textContent`));
+  fs.appendFileSync(fixture.liveLog, frame([
+    ev('tool/call', 32, { turn: 1, step: 2, callId: 'call_wall_edit', name: 'edit', arguments: JSON.stringify({ file_path: path.join(fixture.workspace, 'notes.md'), old_string: 'First line.', new_string: 'First line, edited while you watch.' }) }),
+    ev('tool/result', 33, { turn: 1, step: 2, message: { role: 'tool', toolCallId: 'call_wall_edit', content: [{ type: 'text', text: 'Edited notes.md' }], isError: false } }),
+  ]));
+  check(await waitFor(`(() => { const e = window.__wallEditor(${livePane}); return !!e && /editing notes\\.md/.test(e.label) && e.text.includes('edited while you watch'); })()`, 10000), 'the pane editor types a live edit into the file', JSON.stringify(await evalExpr(`window.__wallEditor(${livePane})`)));
   await evalExpr(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); true`);
   check(await evalExpr(`!window.__wall.open_ && window.__wall.panes === 0`), 'Esc closes the wall and its streams');
 
