@@ -26,15 +26,21 @@ const check = (cond, msg, extra) => {
 // is a pointer file, the way `git worktree add` lays them out.
 const main = path.join(tmp, 'repo');
 const wt = path.join(tmp, 'repo-feature');
+const wtGone = path.join(tmp, 'repo-gone');
 const plain = path.join(tmp, 'notes');
 fs.mkdirSync(path.join(main, '.git', 'worktrees', 'repo-feature'), { recursive: true });
+fs.mkdirSync(path.join(main, '.git', 'worktrees', 'repo-gone'), { recursive: true });
 fs.mkdirSync(path.join(main, 'src'), { recursive: true });
 fs.mkdirSync(path.join(wt, 'src'), { recursive: true });
+fs.mkdirSync(path.join(wtGone, 'src'), { recursive: true });
 fs.mkdirSync(plain, { recursive: true });
 fs.writeFileSync(path.join(main, '.git', 'HEAD'), 'ref: refs/heads/main\n');
 fs.writeFileSync(path.join(main, '.git', 'worktrees', 'repo-feature', 'HEAD'), 'ref: refs/heads/feat/themes\n');
 fs.writeFileSync(path.join(main, '.git', 'worktrees', 'repo-feature', 'commondir'), '../..\n');
 fs.writeFileSync(path.join(wt, '.git'), `gitdir: ${path.join(main, '.git', 'worktrees', 'repo-feature')}\n`);
+fs.writeFileSync(path.join(main, '.git', 'worktrees', 'repo-gone', 'HEAD'), 'ref: refs/heads/feat/gone\n');
+fs.writeFileSync(path.join(main, '.git', 'worktrees', 'repo-gone', 'commondir'), '../..\n');
+fs.writeFileSync(path.join(wtGone, '.git'), `gitdir: ${path.join(main, '.git', 'worktrees', 'repo-gone')}\n`);
 
 try {
   console.log('\nrepo detection');
@@ -45,6 +51,10 @@ try {
   check(!!b && b.branch === 'feat/themes' && b.worktree === true && b.root === wt, 'a linked worktree finds its branch', JSON.stringify(b));
   check(!!a && !!b && a.key === b.key && a.name === 'repo', 'a worktree and its main checkout are the same repository');
   check(c === null, 'a folder outside git has no repository');
+  const goneBefore = await repoFor(wtGone);
+  fs.rmSync(wtGone, { recursive: true, force: true });
+  const goneAfter = await repoFor(wtGone);
+  check(!!goneBefore && !!goneAfter && goneBefore.key === goneAfter.key && goneAfter.key === a?.key && goneAfter.removed === true && goneAfter.worktree === true, 'a deleted worktree still resolves to the remembered repository', JSON.stringify({ before: goneBefore, after: goneAfter }));
 
   console.log('\nhelpers');
   check(toolKind('pwsh') === 'command' && toolKind('Bash') === 'command', 'shell tools are commands');
