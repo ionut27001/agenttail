@@ -273,6 +273,7 @@ The session workspace is always allowed. Junctions/symlinks are followed only wh
 | `Ctrl+B` | collapse/expand the workspace tree |
 | `Ctrl+J` | collapse/expand the bottom area |
 | `Ctrl+.` | collapse/expand the agent chat |
+| `Ctrl+Shift+.` | dock the agent pane to the right side (full height) or back under the editor |
 
 </details>
 

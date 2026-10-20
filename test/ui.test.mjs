@@ -99,6 +99,27 @@ chatEvents.push(
       { type: 'text', text: 'All long checks are done. The build passed and the edits are in place.' },
     ] } },
   },
+  {
+    type: 'assistant/message', seq: 27, time: Date.now() - 975000,
+    data: { turn: 1, step: 1, usage: null, message: { role: 'assistant', content: [
+      { type: 'text', text: [
+        '**Summary**',
+        '- **Build:** passed',
+        '- Tests:',
+        '  - `unit` ok',
+        '  - e2e ok',
+        '',
+        '| # | Task |',
+        '|---|---|',
+        '| 01 | Two panes (**running**) |',
+        '| 02 | Speed |',
+        '',
+        '### Next steps',
+        '1. review the diff',
+        '2. ship it',
+      ].join('\n') },
+    ] } },
+  },
 );
 for (let i = 1; i <= 55; i += 1) {
   chatEvents.push({
@@ -781,6 +802,48 @@ try {
   }))()`);
   check(logView.active && logView.tools > 0 && logView.users > 0 && logView.says > 0 && logView.thinks > 0, 'Log view shows the chronological trajectory', JSON.stringify(logView));
   check(logView.exits > 0, 'Log view shows tool result exit codes', JSON.stringify(logView));
+  const mdView = await evalExpr(`(() => {
+    const say = [...document.querySelectorAll('#chatLog .log-say')].find((e) => e.querySelector('.md-table'));
+    if (!say) return null;
+    return {
+      rows: say.querySelectorAll('.md-table tbody tr').length,
+      head: [...say.querySelectorAll('.md-table th')].map((e) => e.textContent),
+      bold: [...say.querySelectorAll('strong')].map((e) => e.textContent),
+      nested: say.querySelectorAll('ul ul li').length,
+      ordered: say.querySelectorAll('ol li').length,
+      heading: say.querySelector('.md-h3')?.textContent || '',
+      raw: /\\*\\*|\\|---|^###/m.test(say.textContent),
+      ws: getComputedStyle(say).whiteSpace,
+    };
+  })()`);
+  check(!!mdView && mdView.rows === 2 && mdView.head.join('|') === '#|Task', 'Log view renders markdown tables', JSON.stringify(mdView));
+  check(!!mdView && mdView.bold.includes('Summary') && mdView.bold.includes('Build:') && mdView.bold.includes('running'), 'Log view renders bold text, including inside tables', JSON.stringify(mdView?.bold));
+  check(!!mdView && mdView.nested === 2 && mdView.ordered === 2 && mdView.heading === 'Next steps', 'Log view renders nested lists, ordered lists and headings', JSON.stringify(mdView));
+  check(!!mdView && !mdView.raw && mdView.ws === 'normal', 'no raw markdown markers are left in the Log view', JSON.stringify(mdView));
+
+  console.log('\nagent side mode');
+  const sideGeom = () => evalExpr(`(() => {
+    const r = (id) => document.getElementById(id).getBoundingClientRect();
+    const c = r('chatPane'); const e = r('editorWrap'); const t = r('terminalPane'); const a = r('activityBar'); const app = r('app');
+    return { side: document.body.classList.contains('chat-side'), parent: document.getElementById('chatPane').parentElement.id,
+      top: c.top, actBottom: a.bottom, bottom: c.bottom, appBottom: app.bottom, left: c.left, right: c.right, appRight: app.right,
+      editorRight: e.right, termRight: t.right, termW: t.width, w: c.width };
+  })()`);
+  const docked = await sideGeom();
+  check(!docked.side && docked.parent === 'bottomArea', 'the agent starts docked under the editor', JSON.stringify(docked));
+  await evalExpr(`document.getElementById('chatDock').click(); true`);
+  await sleep(500);
+  const side = await sideGeom();
+  check(side.side && side.parent === 'app', 'the dock button moves the agent to the right side', JSON.stringify(side));
+  check(Math.abs(side.top - side.actBottom) <= 2 && side.bottom >= side.appBottom - 2, 'the side agent spans the full height below the activity bar', JSON.stringify(side));
+  check(side.left >= side.editorRight - 1 && side.left >= side.termRight - 1 && Math.abs(side.right - side.appRight) <= 2, 'editor and console sit to the left of the side agent', JSON.stringify(side));
+  check(side.termW > docked.termW + 100, 'the console gets the full width under the editor', JSON.stringify({ before: docked.termW, after: side.termW }));
+  check(await evalExpr(`document.querySelectorAll('#chatLog .md-table').length > 0`), 'the side agent still shows the rendered log');
+  check(await evalExpr(`JSON.parse(localStorage.getItem('agenttail-layout') || '{}').chatSide === true`), 'the side mode is remembered');
+  await evalExpr(`document.dispatchEvent(new KeyboardEvent('keydown', { key: '>', code: 'Period', ctrlKey: true, shiftKey: true, bubbles: true })); true`);
+  await sleep(500);
+  const back = await sideGeom();
+  check(!back.side && back.parent === 'bottomArea' && Math.abs(back.termW - docked.termW) <= 2, 'Ctrl+Shift+. docks the agent back under the editor', JSON.stringify(back));
   const rowHeights = await evalExpr(`[...document.getElementById('chatLog').children].map((e) => e.getBoundingClientRect().height)`);
   check(rowHeights.length === 0 || Math.min(...rowHeights) >= 10, 'chat rows keep their natural height (no collapsed bars)', JSON.stringify(rowHeights.slice(-8)));
   await evalExpr(`document.getElementById('chatViewChat').click(); true`);

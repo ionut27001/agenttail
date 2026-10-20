@@ -350,6 +350,24 @@
   body.chat-collapsed #bottomArea { grid-template-columns: minmax(220px, 1fr) 6px 28px; }
   body.chat-collapsed #chatPane { display: none; }
   body.chat-collapsed #chatRail { display: flex; }
+  /* Agent docked to the right: a full-height column beside editor + console. */
+  #sideSplitter { display: none; cursor: col-resize; background: var(--line-soft); border-left: 1px solid var(--line); border-right: 1px solid #000; }
+  #sideSplitter:hover { background: var(--green-dim); }
+  body.chat-side #app { grid-template-columns: minmax(0, 1fr) 6px var(--chat-side-w, 480px); }
+  body.chat-side #topbar { grid-column: 1 / -1; grid-row: 1; }
+  body.chat-side #activityBar { grid-column: 1 / -1; grid-row: 2; }
+  body.chat-side #middle { grid-column: 1; grid-row: 3; }
+  body.chat-side #splitter { grid-column: 1; grid-row: 4; }
+  body.chat-side #bottomArea { grid-column: 1; grid-row: 5; grid-template-columns: minmax(0, 1fr); }
+  body.chat-side #bottomRail { grid-column: 1; grid-row: 6; }
+  body.chat-side #consoleChatSplitter { display: none; }
+  body.chat-side #sideSplitter { display: block; grid-column: 2; grid-row: 3 / 7; }
+  body.chat-side #chatPane { grid-column: 3; grid-row: 3 / 7; min-width: 0; border-left: none; border-top: 1px solid var(--line); }
+  body.chat-side #chatRail { grid-column: 3; grid-row: 3 / 7; }
+  body.chat-side.chat-collapsed #app { grid-template-columns: minmax(0, 1fr) 0 28px; }
+  body.chat-side.chat-collapsed #sideSplitter { display: none; }
+  body.chat-side.chat-collapsed #bottomArea { grid-template-columns: minmax(0, 1fr); }
+  #chatDock { font-size: 13px !important; }
   #bottomRail { display: none; grid-row: 6; align-items: center; justify-content: center; background: var(--panel); border-top: 1px solid var(--line); }
   #bottomRail button { border: none; background: transparent; color: var(--muted); font-size: 9px; letter-spacing: .12em; }
   #bottomRail button:hover { color: var(--green); }
@@ -522,6 +540,35 @@
   .chat-views button.active { color: var(--green); border-color: var(--green-dim); background: #0b1a13; }
   .md-code { background: #020906; border: 1px solid #12301f; border-radius: 3px; padding: 5px 7px; margin: 4px 0; overflow: auto; max-height: 220px; color: #bfffd4; font-family: var(--mono); font-size: 11px; line-height: 1.45; white-space: pre; }
   .md-inline { background: #0a1a12; border: 1px solid #173a27; border-radius: 2px; padding: 0 3px; color: var(--cyan); font-family: var(--mono); font-size: 11px; }
+  #chatLog .md { white-space: normal; line-height: 1.55; }
+  .md > :first-child { margin-top: 0; }
+  .md > :last-child { margin-bottom: 0; }
+  .md p { margin: 0 0 7px; }
+  .md strong { color: #ffffff; font-weight: 700; }
+  .md em { font-style: italic; color: #d7ffe4; }
+  .md del { opacity: .6; }
+  .md a { color: var(--cyan); text-decoration: underline; text-decoration-color: #1f4d4d; }
+  .md a:hover { text-decoration-color: var(--cyan); }
+  .md-h { color: var(--green); font-weight: 700; margin: 10px 0 5px; letter-spacing: .02em; }
+  .md-h1 { font-size: 15px; border-bottom: 1px solid var(--line); padding-bottom: 3px; }
+  .md-h2 { font-size: 14px; }
+  .md-h3 { font-size: 13px; }
+  .md-h4, .md-h5, .md-h6 { font-size: 12.5px; color: var(--green-soft); }
+  .md ul, .md ol { margin: 2px 0 8px; padding-left: 20px; }
+  .md li { margin: 2px 0; }
+  .md li > ul, .md li > ol { margin: 2px 0 2px; }
+  .md li::marker { color: var(--green-dim); }
+  .md ol > li::marker { color: var(--green); font-size: 11px; }
+  .md li.md-task { list-style: none; margin-left: -16px; }
+  .md .md-box { color: var(--green); margin-right: 6px; }
+  .md li.md-task.done { color: var(--muted); }
+  .md-table { border-collapse: collapse; margin: 4px 0 9px; font-size: 11.5px; display: block; overflow-x: auto; max-width: 100%; }
+  .md-table th, .md-table td { border: 1px solid #173a27; padding: 3px 9px; text-align: left; vertical-align: top; }
+  .md-table th { background: #0b1a13; color: var(--green); font-weight: 600; white-space: nowrap; }
+  .md-table tbody tr:nth-child(even) td { background: rgba(11, 26, 19, .55); }
+  .md-quote { margin: 4px 0 8px; padding: 2px 0 2px 10px; border-left: 2px solid var(--green-dim); color: #9fc7b0; }
+  .md-hr { border: none; border-top: 1px solid var(--line); margin: 10px 0; }
+  .md-code[data-lang]::before { content: attr(data-lang); display: block; color: var(--muted); font-size: 9px; letter-spacing: .1em; margin-bottom: 3px; }
   .log-row { align-self: stretch; max-width: 100%; overflow: hidden; }
   .log-user { color: #d7ffe4; border-left: 2px solid #1c5133; padding: 2px 6px; white-space: pre-wrap; font-size: 12px; }
   .log-say { color: #e6fff0; border-left: 2px solid #1c5133; padding: 2px 6px; white-space: pre-wrap; font-size: 12.5px; }
@@ -769,6 +816,7 @@
   </main>
 
   <div id="splitter" title="Drag to resize · double-click to minimize/restore"></div>
+  <div id="sideSplitter" title="Drag to resize the agent column"></div>
 
   <section id="bottomArea">
     <section id="terminalPane">
@@ -794,6 +842,7 @@
         <span class="chat-views"><button id="chatViewChat" type="button">Chat</button><button id="chatViewLog" class="active" type="button">Log</button></span>
         <span class="chat-spacer"></span>
         <canvas id="turnSpark" class="hidden" width="144" height="32" title="cost per turn"></canvas>
+        <button id="chatDock" type="button" title="Dock the agent to the right side (Ctrl+Shift+.)" aria-pressed="false">⇥</button>
         <button id="chatPin" type="button" title="Pin auto-scroll">📌</button>
         <button id="chatClose" type="button" title="Collapse chat (Ctrl+.)">▸</button>
       </div>
@@ -1625,7 +1674,7 @@ function mdToText(md) {
       }
       const parsed = rows
         .filter((r, idx) => !(idx === 1 && /^[\s|:-]+$/.test(r)))
-        .map((r) => r.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim()));
+        .map((r) => mdCells(r));
       const widths = [];
       for (const row of parsed) row.forEach((c, ci) => { widths[ci] = Math.max(widths[ci] || 0, c.length); });
       for (const row of parsed) out.push(row.map((c, ci) => c.padEnd(widths[ci])).join('  ').trimEnd());
@@ -1643,7 +1692,7 @@ function mdToText(md) {
   s = s.replace(/\*([^*\n]+)\*/g, '$1');
   s = s.replace(/(?<!\w)_([^_\n]+)_(?!\w)/g, '$1');
   s = s.replace(/`([^`]+)`/g, '$1');
-  s = s.replace(/^\s*([-*+])\s+/gm, '• ');
+  s = s.replace(/^(\s*)[-*+]\s+/gm, '$1• ');
   s = s.replace(/^\s*-{3,}\s*$/gm, '────────');
   s = s.replace(/\n{3,}/g, '\n\n');
   return s.trim();
@@ -3113,7 +3162,7 @@ window.__fx = {
 
 /* ---------- docked layout ---------- */
 const LAYOUT_KEY = 'agenttail-layout';
-const layout = { bottomH: null, chatW: null, bottomCollapsed: false, chatCollapsed: false, treeCollapsed: false, saved: false };
+const layout = { bottomH: null, chatW: null, chatSideW: null, chatSide: false, bottomCollapsed: false, chatCollapsed: false, treeCollapsed: false, saved: false };
 try {
   const saved = JSON.parse(localStorage.getItem(LAYOUT_KEY) || 'null');
   if (saved && typeof saved === 'object') Object.assign(layout, saved);
@@ -3154,6 +3203,31 @@ function applyUiScale(scale, persist = true) {
 function clampLayout() {
   layout.bottomH = Math.max(120, Number(layout.bottomH) || 220);
   layout.chatW = Math.max(420, Number(layout.chatW) || 480);
+  const width = window.innerWidth / (uiScale || 1);
+  layout.chatSideW = Math.min(Math.max(320, Number(layout.chatSideW) || Math.round(width * 0.32)), Math.max(320, width - 480));
+  layout.chatSide = !!layout.chatSide;
+}
+
+/** Move the agent pane between the bottom area and the right-side column. */
+function placeChatPane() {
+  const pane = $('chatPane');
+  const rail = $('chatRail');
+  const side = !!layout.chatSide;
+  const target = side ? $('app') : $('bottomArea');
+  if (pane.parentElement === target) return;
+  const log = $('chatLog');
+  const atBottom = log && log.scrollHeight - log.scrollTop - log.clientHeight < 40;
+  // Both live last in either parent: after the console in the bottom area,
+  // or after the side splitter in #app (grid placement does the rest).
+  target.appendChild(pane);
+  target.appendChild(rail);
+  if (log && (atBottom || chat.pinned)) log.scrollTop = log.scrollHeight;
+  const dock = $('chatDock');
+  if (dock) {
+    dock.textContent = side ? '⤓' : '⇥';
+    dock.title = side ? 'Dock the agent under the editor (Ctrl+Shift+.)' : 'Dock the agent to the right side (Ctrl+Shift+.)';
+    dock.setAttribute('aria-pressed', String(side));
+  }
 }
 function applyLayout() {
   clampLayout();
@@ -3162,6 +3236,9 @@ function applyLayout() {
   const shownChat = Math.min(layout.chatW, Math.max(420, window.innerWidth - 226));
   app.style.setProperty('--bottom-h', `${shownBottom}px`);
   app.style.setProperty('--chat-w', `${shownChat}px`);
+  app.style.setProperty('--chat-side-w', `${layout.chatSideW}px`);
+  document.body.classList.toggle('chat-side', !!layout.chatSide);
+  placeChatPane();
   document.body.classList.toggle('bottom-collapsed', !!layout.bottomCollapsed);
   document.body.classList.toggle('chat-collapsed', !!layout.chatCollapsed);
   document.body.classList.toggle('tree-collapsed', !!layout.treeCollapsed);
@@ -3180,6 +3257,13 @@ function toggleBottom(force) {
   layout.bottomCollapsed = force === undefined ? !layout.bottomCollapsed : !!force;
   applyLayout();
   saveLayout();
+}
+function toggleChatSide(force) {
+  layout.chatSide = force === undefined ? !layout.chatSide : !!force;
+  if (layout.chatCollapsed) layout.chatCollapsed = false;
+  applyLayout();
+  saveLayout();
+  renderChat();
 }
 function setChatOpen(open) {
   layout.chatCollapsed = !open;
@@ -3217,6 +3301,7 @@ document.addEventListener('keydown', (e) => {
   if (!e.ctrlKey || e.altKey || e.metaKey) return;
   if (e.key === 'b' || e.key === 'B') { e.preventDefault(); toggleTree(); }
   else if (e.key === 'j' || e.key === 'J') { e.preventDefault(); toggleBottom(); }
+  else if (e.shiftKey && (e.key === '>' || e.code === 'Period')) { e.preventDefault(); toggleChatSide(); }
   else if (e.key === '.' || e.code === 'Period') { e.preventDefault(); toggleChat(); }
 });
 
@@ -3232,9 +3317,15 @@ document.addEventListener('keydown', (e) => {
     drag = { mode: 'chat' };
     e.preventDefault();
   });
+  $('sideSplitter').addEventListener('pointerdown', (e) => {
+    drag = { mode: 'side' };
+    e.preventDefault();
+  });
+  $('chatDock').addEventListener('click', () => toggleChatSide());
   window.addEventListener('pointermove', (e) => {
     if (!drag) return;
     if (drag.mode === 'bottom') layout.bottomH = Math.round(window.innerHeight - e.clientY);
+    else if (drag.mode === 'side') layout.chatSideW = Math.round($('app').getBoundingClientRect().right - e.clientX);
     else layout.chatW = Math.round($('bottomArea').getBoundingClientRect().right - e.clientX);
     applyLayout();
   });
@@ -3553,53 +3644,247 @@ function chatReset() {
   updateChatRail();
 }
 
+/**
+ * Markdown -> DOM for agent messages. Builds nodes directly (never innerHTML),
+ * so model text can't inject markup. Covers what agents actually write:
+ * headings, lists (nested, ordered), tables, quotes, rules, fenced code and
+ * inline bold / italic / strike / code / links.
+ */
 function renderMarkdown(el, text) {
   el.textContent = '';
-  const source = String(text || '');
+  el.classList.add('md');
+  const lines = String(text || '').replace(/\r\n?/g, '\n').split('\n');
+  mdBlocks(el, lines);
+}
+
+const MD_LIST = /^(\s*)([-*+]|\d{1,9}[.)])\s+(.*)$/;
+const MD_FENCE = /^\s*(```+|~~~+)\s*([\w+#.-]*)/;
+const MD_HR = /^\s*([-*_])(\s*\1){2,}\s*$/;
+const MD_HEADING = /^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$/;
+const mdIsTableSep = (line) => /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/.test(line) && line.includes('-');
+const mdIsTableStart = (lines, i) => lines[i].includes('|') && i + 1 < lines.length && mdIsTableSep(lines[i + 1]);
+
+function mdStartsBlock(lines, i) {
+  const line = lines[i];
+  return MD_FENCE.test(line) || MD_HEADING.test(line) || MD_HR.test(line)
+    || /^\s*>/.test(line) || MD_LIST.test(line) || mdIsTableStart(lines, i);
+}
+
+function mdBlocks(container, lines) {
   let i = 0;
-  const inline = (line) => {
-    const parts = line.split(/(`[^`]+`)/g);
-    for (const part of parts) {
-      if (!part) continue;
-      if (part.startsWith('`') && part.endsWith('`') && part.length > 2) {
-        const code = document.createElement('code');
-        code.className = 'md-inline';
-        code.textContent = part.slice(1, -1);
-        el.appendChild(code);
-      } else {
-        el.appendChild(document.createTextNode(part));
+  while (i < lines.length) {
+    const line = lines[i];
+    if (!line.trim()) { i++; continue; }
+
+    const fence = MD_FENCE.exec(line);
+    if (fence) {
+      const close = fence[1][0];
+      const body = [];
+      i++;
+      while (i < lines.length && !new RegExp(`^\\s*${close === '`' ? '`' : '~'}{${fence[1].length},}\\s*$`).test(lines[i])) {
+        body.push(lines[i]);
+        i++;
       }
-    }
-  };
-  while (i < source.length) {
-    const lineEnd = source.indexOf('\n', i);
-    const line = source.slice(i, lineEnd === -1 ? source.length : lineEnd);
-    if (/^```/.test(line.trim())) {
-      let j = lineEnd === -1 ? source.length : lineEnd + 1;
-      const codeLines = [];
-      while (j < source.length) {
-        const e = source.indexOf('\n', j);
-        const inner = source.slice(j, e === -1 ? source.length : e);
-        if (/^```/.test(inner.trim())) {
-          j = e === -1 ? source.length : e + 1;
-          break;
-        }
-        codeLines.push(inner);
-        j = e === -1 ? source.length : e + 1;
-      }
+      i++;
       const pre = document.createElement('pre');
       pre.className = 'md-code';
+      if (fence[2]) pre.dataset.lang = fence[2];
       const code = document.createElement('code');
-      code.textContent = codeLines.join('\n');
+      code.textContent = body.join('\n');
       pre.appendChild(code);
-      el.appendChild(pre);
-      i = j;
+      container.appendChild(pre);
       continue;
     }
-    inline(line);
-    if (lineEnd !== -1) el.appendChild(document.createTextNode('\n'));
-    i = lineEnd === -1 ? source.length : lineEnd + 1;
+
+    const heading = MD_HEADING.exec(line);
+    if (heading) {
+      const h = document.createElement('div');
+      h.className = `md-h md-h${heading[1].length}`;
+      mdInline(h, heading[2]);
+      container.appendChild(h);
+      i++;
+      continue;
+    }
+
+    if (MD_HR.test(line)) {
+      const hr = document.createElement('hr');
+      hr.className = 'md-hr';
+      container.appendChild(hr);
+      i++;
+      continue;
+    }
+
+    if (mdIsTableStart(lines, i)) {
+      const table = document.createElement('table');
+      table.className = 'md-table';
+      const align = mdCells(lines[i + 1]).map((c) => (/^:-+:$/.test(c) ? 'center' : /-+:$/.test(c) ? 'right' : ''));
+      const row = (cells, tag, parent) => {
+        const tr = document.createElement('tr');
+        cells.forEach((cell, n) => {
+          const td = document.createElement(tag);
+          if (align[n]) td.style.textAlign = align[n];
+          mdInline(td, cell);
+          tr.appendChild(td);
+        });
+        parent.appendChild(tr);
+      };
+      const thead = document.createElement('thead');
+      row(mdCells(lines[i]), 'th', thead);
+      table.appendChild(thead);
+      const tbody = document.createElement('tbody');
+      i += 2;
+      while (i < lines.length && lines[i].trim() && lines[i].includes('|')) {
+        row(mdCells(lines[i]), 'td', tbody);
+        i++;
+      }
+      table.appendChild(tbody);
+      container.appendChild(table);
+      continue;
+    }
+
+    if (/^\s*>/.test(line)) {
+      const quoted = [];
+      while (i < lines.length && /^\s*>/.test(lines[i])) {
+        quoted.push(lines[i].replace(/^\s*>\s?/, ''));
+        i++;
+      }
+      const quote = document.createElement('blockquote');
+      quote.className = 'md-quote';
+      mdBlocks(quote, quoted);
+      container.appendChild(quote);
+      continue;
+    }
+
+    if (MD_LIST.test(line)) {
+      i = mdList(container, lines, i);
+      continue;
+    }
+
+    const para = [];
+    while (i < lines.length && lines[i].trim() && (para.length === 0 || !mdStartsBlock(lines, i))) {
+      para.push(lines[i].trim());
+      i++;
+    }
+    const p = document.createElement('p');
+    para.forEach((part, n) => {
+      if (n) p.appendChild(document.createElement('br'));
+      mdInline(p, part);
+    });
+    container.appendChild(p);
   }
+}
+
+/** One list (and its nested lists); returns the index after it. */
+function mdList(container, lines, start) {
+  const first = MD_LIST.exec(lines[start]);
+  const indent = first[1].length;
+  const ordered = /\d/.test(first[2]);
+  const list = document.createElement(ordered ? 'ol' : 'ul');
+  if (ordered && parseInt(first[2], 10) !== 1) list.start = parseInt(first[2], 10);
+  let i = start;
+  let li = null;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (!line.trim()) {
+      // A blank line ends the list unless the next line continues it.
+      const next = lines[i + 1];
+      const m = next !== undefined ? MD_LIST.exec(next) : null;
+      if (m && m[1].length >= indent) { i++; continue; }
+      if (next !== undefined && next.trim() && /^\s+/.test(next) && li) { i++; continue; }
+      break;
+    }
+    const m = MD_LIST.exec(line);
+    if (m && m[1].length === indent && /\d/.test(m[2]) === ordered) {
+      li = document.createElement('li');
+      const task = /^\[([ xX])\]\s+(.*)$/.exec(m[3]);
+      if (task) {
+        li.className = `md-task${task[1] === ' ' ? '' : ' done'}`;
+        const box = document.createElement('span');
+        box.className = 'md-box';
+        box.textContent = task[1] === ' ' ? '☐' : '☑';
+        li.appendChild(box);
+        mdInline(li, task[2]);
+      } else {
+        mdInline(li, m[3]);
+      }
+      list.appendChild(li);
+      i++;
+      continue;
+    }
+    if (m && m[1].length > indent && li) {
+      i = mdList(li, lines, i);
+      continue;
+    }
+    // A shallower item, or a switch between ordered and unordered, ends it.
+    if (m || !li || mdStartsBlock(lines, i) || !/^\s+/.test(line)) break;
+    // Indented continuation text of the current item.
+    li.appendChild(document.createElement('br'));
+    mdInline(li, line.trim());
+    i++;
+  }
+  container.appendChild(list);
+  return i;
+}
+
+function mdCells(line) {
+  let s = line.trim();
+  if (s.startsWith('|')) s = s.slice(1);
+  if (s.endsWith('|') && !s.endsWith('\\|')) s = s.slice(0, -1);
+  const cells = [];
+  let cur = '';
+  let inCode = false;
+  for (let k = 0; k < s.length; k++) {
+    const ch = s[k];
+    if (ch === '\\' && s[k + 1] === '|') { cur += '|'; k++; continue; }
+    if (ch === '`') inCode = !inCode;
+    if (ch === '|' && !inCode) { cells.push(cur.trim()); cur = ''; continue; }
+    cur += ch;
+  }
+  cells.push(cur.trim());
+  return cells;
+}
+
+const MD_INLINE = /(`+)([\s\S]+?)\1|\*\*(?=\S)([\s\S]+?)\*\*|__(?=\S)([\s\S]+?)__|~~(?=\S)([\s\S]+?)~~|\*(?=[^\s*])([^*]+?)\*|(?<![\w])_(?=[^\s_])([^_]+?)_(?![\w])|\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g;
+
+function mdInline(parent, text) {
+  const source = String(text || '');
+  let last = 0;
+  MD_INLINE.lastIndex = 0;
+  for (let m = MD_INLINE.exec(source); m; m = MD_INLINE.exec(source)) {
+    if (m.index > last) parent.appendChild(document.createTextNode(source.slice(last, m.index)));
+    last = MD_INLINE.lastIndex;
+    let node;
+    if (m[1]) {
+      node = document.createElement('code');
+      node.className = 'md-inline';
+      node.textContent = m[2].trim() ? m[2].replace(/^ (.*) $/, '$1') : m[2];
+    } else if (m[3] !== undefined || m[4] !== undefined) {
+      node = document.createElement('strong');
+      mdInlineNested(node, m[3] ?? m[4]);
+    } else if (m[5] !== undefined) {
+      node = document.createElement('del');
+      mdInlineNested(node, m[5]);
+    } else if (m[6] !== undefined || m[7] !== undefined) {
+      node = document.createElement('em');
+      mdInlineNested(node, m[6] ?? m[7]);
+    } else {
+      node = document.createElement('a');
+      node.href = m[9];
+      node.target = '_blank';
+      node.rel = 'noopener noreferrer';
+      node.title = m[9];
+      mdInlineNested(node, m[8]);
+    }
+    parent.appendChild(node);
+  }
+  if (last < source.length) parent.appendChild(document.createTextNode(source.slice(last)));
+}
+
+// The inline regex is global and shared, so nested calls save its position.
+function mdInlineNested(parent, text) {
+  const saved = MD_INLINE.lastIndex;
+  mdInline(parent, text);
+  MD_INLINE.lastIndex = saved;
 }
 
 let logRenderTimer = null;
@@ -3663,7 +3948,7 @@ function updatePin() {
 }
 
 function thinkPreview(text) {
-  return String(text || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+  return mdToText(text).replace(/\s+/g, ' ').trim().slice(0, 80);
 }
 
 function groupSummary(calls) {
@@ -3895,7 +4180,7 @@ function renderLog() {
       sum.textContent = `thinking · ${thinkPreview(item.text)}`;
       details.appendChild(sum);
       const body = document.createElement('div');
-      body.textContent = item.text || '';
+      renderMarkdown(body, item.text || '');
       details.appendChild(body);
       log.appendChild(details);
       continue;
@@ -3988,6 +4273,7 @@ window.__layout = {
   toggleTree,
   toggleChat,
   toggleBottom,
+  toggleChatSide,
   setBottom(h) { layout.bottomH = h; applyLayout(); saveLayout(); },
   setChat(w) { layout.chatW = w; applyLayout(); saveLayout(); },
 };
