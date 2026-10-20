@@ -54,7 +54,7 @@ function writeWorkspace() {
   fs.writeFileSync(path.join(WORKSPACE, 'README.md'), [
     '# demo-calculator',
     '',
-    'A tiny sample project used by the agenttail demo. It is completely synthetic.',
+    'A tiny calculator project.',
     '',
     'Run `npm test` to execute the checks.',
   ].join('\n') + '\n');
@@ -113,7 +113,7 @@ function initialHistory() {
         message: {
           role: 'assistant',
           content: [
-            { type: 'reasoning', text: 'This is a synthetic demo session; no real transcript is used.' },
+            { type: 'reasoning', text: 'Checking the project layout before changing anything.' },
             { type: 'text', text: `Working on demo step ${turn}.` },
           ],
         },
@@ -151,6 +151,29 @@ const result = (seq, turn, step, callId, text, isError = false) => append({
 async function play() {
   let seq = 100;
   await sleep(DELAY);
+  // The build starts first and keeps running in the background, so the
+  // console streams progress while the agent thinks and types its edit.
+  call(seq++, 4, 1, 'pwsh', 'call_demo_build', {
+    command: `$log='${BUILD_LOG}'; cmake --build build *> $log`,
+    description: 'build the demo project and stream progress',
+    workdir: WORKSPACE,
+  });
+  append({
+    type: 'job/registered', seq: seq++, time: Date.now(),
+    data: {
+      jobId: 'pwsh-demo-build', owner: SESSION_ID, kind: 'pwsh',
+      label: 'cmake --build build', startedAt: Date.now(),
+      toolCall: { callId: 'call_demo_build', rootCallId: 'call_demo_build' },
+    },
+  });
+  const buildStarted = Date.now();
+  const build = (async () => {
+    for (let i = 1; i <= 24; i++) {
+      fs.appendFileSync(BUILD_LOG, `[${i}/24] compiling calculator module ${i}\n`);
+      await sleep(320);
+    }
+  })();
+  await sleep(500);
   append({
     type: 'assistant/message', seq: seq++, time: Date.now(),
     data: {
@@ -158,22 +181,42 @@ async function play() {
       message: {
         role: 'assistant',
         content: [
-          { type: 'reasoning', text: 'I will make the smallest possible change, then run the test suite and a build with visible progress.' },
-          { type: 'text', text: 'I will fix the demo function, run the tests, then show the build progress.' },
+          { type: 'reasoning', text: 'The build is running in the background. While it compiles I will fix add() with the smallest possible change, document it, and then run the test suite.' },
         ],
       },
       usage: { inputTokens: 1200, outputTokens: 60, cacheReadTokens: 1600, cacheWriteTokens: 0, totalTokens: 2860 },
     },
   });
-  await sleep(1200);
+  await sleep(700);
   call(seq++, 4, 1, 'edit', 'call_demo_edit', {
     file_path: path.join(WORKSPACE, 'src', 'calculator.js'),
     old_string: 'export function add(a, b) {\n  return a + b;\n}',
-    new_string: 'export function add(a, b) {\n  return a + b; // returns the sum\n}',
+    new_string: [
+      '/**',
+      ' * Adds two numbers.',
+      ' * @param {number} a first operand',
+      ' * @param {number} b second operand',
+      ' * @returns {number} the sum of a and b',
+      ' */',
+      'export function add(a, b) {',
+      '  return Number(a) + Number(b);',
+      '}',
+    ].join('\n'),
   });
   await sleep(300);
   result(seq++, 4, 1, 'call_demo_edit', 'Edited src/calculator.js');
-  await sleep(1200);
+  await build;
+  append({
+    type: 'job/settled', seq: seq++, time: Date.now(),
+    data: {
+      jobId: 'pwsh-demo-build', owner: SESSION_ID, kind: 'pwsh',
+      label: 'cmake --build build', startedAt: buildStarted,
+      finishedAt: Date.now(), status: 'completed', cause: 'producer', producerReported: true,
+      detail: 'exit code: 0', toolCall: { callId: 'call_demo_build', rootCallId: 'call_demo_build' },
+    },
+  });
+  result(seq++, 4, 1, 'call_demo_build', 'Build completed: 24/24 targets\n[exit code: 0]');
+  await sleep(800);
   call(seq++, 4, 1, 'pwsh', 'call_demo_test', {
     command: 'node --test',
     description: 'run the demo test suite',
@@ -188,34 +231,6 @@ async function play() {
     'not ok 2 - multiply',
     '[exit code: 1]',
   ].join('\n'), true);
-  await sleep(1000);
-  call(seq++, 4, 1, 'pwsh', 'call_demo_build', {
-    command: `$log='${BUILD_LOG}'; cmake --build build *> $log`,
-    description: 'build the demo project and stream progress',
-    workdir: WORKSPACE,
-  });
-  append({
-    type: 'job/registered', seq: seq++, time: Date.now(),
-    data: {
-      jobId: 'pwsh-demo-build', owner: SESSION_ID, kind: 'pwsh',
-      label: 'cmake --build build', startedAt: Date.now() - 180000,
-      toolCall: { callId: 'call_demo_build', rootCallId: 'call_demo_build' },
-    },
-  });
-  for (let i = 1; i <= 12; i++) {
-    fs.appendFileSync(BUILD_LOG, `[${i}/12] compiling demo module ${i}\n`);
-    await sleep(250);
-  }
-  append({
-    type: 'job/settled', seq: seq++, time: Date.now(),
-    data: {
-      jobId: 'pwsh-demo-build', owner: SESSION_ID, kind: 'pwsh',
-      label: 'cmake --build build', startedAt: Date.now() - 180000,
-      finishedAt: Date.now(), status: 'completed', cause: 'producer', producerReported: true,
-      detail: 'exit code: 0', toolCall: { callId: 'call_demo_build', rootCallId: 'call_demo_build' },
-    },
-  });
-  result(seq++, 4, 1, 'call_demo_build', 'Build completed: 12/12 targets\n[exit code: 0]');
   await sleep(900);
   append({
     type: 'assistant/message', seq: seq++, time: Date.now(),
@@ -223,7 +238,7 @@ async function play() {
       turn: 4, step: 1,
       message: {
         role: 'assistant',
-        content: [{ type: 'text', text: 'The demo change is in place. The build finished cleanly; the failing test is intentional and shows how errors are rendered.' }],
+        content: [{ type: 'text', text: 'add() is fixed and documented, and the build finished cleanly. The failing multiply test is intentional and shows how errors are rendered.' }],
       },
       usage: { inputTokens: 900, outputTokens: 45, cacheReadTokens: 1400, cacheWriteTokens: 0, totalTokens: 2345 },
     },

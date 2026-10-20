@@ -62,8 +62,10 @@ A zero-runtime-dependency Node 24 server plus a single-page UI. It reads local l
 1. **Get agenttail.** Download the Windows exe from [Releases](https://github.com/ionut27001/agenttail/releases), or run:
 
    ```bash
-   npx agenttail
+   npx github:ionut27001/agenttail
    ```
+
+   agenttail is not on the npm registry yet; `npx agenttail` comes later.
 
    From a clone instead:
 
