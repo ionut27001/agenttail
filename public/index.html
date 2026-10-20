@@ -863,6 +863,27 @@
   #fxIntensityVal { width: 30px; text-align: right; color: var(--green-soft); }
   #replayBtn { width: 100%; }
   #fxIntensityVal, #speedVal { text-align: right; }
+
+  /* ---------- keyboard shortcuts ---------- */
+  #helpBtn { padding: 4px 8px; font-size: 12px; line-height: 1; }
+  #helpBackdrop { position: fixed; inset: 0; z-index: 210; background: rgba(0,0,0,.6); }
+  #helpBackdrop.hidden { display: none; }
+  #helpPanel {
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 220;
+    background: var(--bg-modal-99); border: 1px solid var(--line);
+    padding: 0 16px 14px; border-radius: 6px;
+    box-shadow: 0 16px 48px rgba(0,0,0,.7); width: min(560px, calc(100vw - 32px));
+    max-height: calc(100vh - 48px); overflow: auto;
+  }
+  #helpPanel.hidden { display: none; }
+  #helpPanel .help-head { display: flex; align-items: center; gap: 8px; margin: 0 -16px 8px; padding: 10px 16px; border-bottom: 1px solid var(--line); color: var(--green); font-size: 12px; letter-spacing: .14em; }
+  #helpPanel .help-head button { margin-left: auto; padding: 2px 8px; font-size: 13px; line-height: 1; }
+  #helpTable { width: 100%; border-collapse: collapse; }
+  #helpTable td { padding: 5px 4px; border-bottom: 1px solid var(--line-soft); color: var(--green-soft); font-size: 11px; vertical-align: top; }
+  #helpTable tr:last-child td { border-bottom: none; }
+  #helpTable td:first-child { width: 44%; white-space: nowrap; color: var(--text); }
+  #helpTable kbd { display: inline-block; padding: 1px 5px; margin: 0 1px 2px 0; border: 1px solid var(--line); border-bottom-color: var(--border-strong); border-radius: 3px; background: var(--bg-2); color: var(--text); font-family: var(--mono); font-size: 10px; line-height: 1.5; }
+  #helpPanel .help-note { margin-top: 8px; color: var(--muted); font-size: 10px; }
   #topbar { position: relative; }
 
   /* ---------- job bar ---------- */
@@ -1267,9 +1288,29 @@
       <span id="sysChip" title="System usage">SYS</span>
       <span class="live"><span id="liveDot" class="dot"></span><span id="liveText">CONNECTING</span></span>
       <span class="stream" id="streamBadge" title="Server-side stream mode"><span class="sdot"></span><span id="streamText">SAFE</span></span>
+      <button id="helpBtn" type="button" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts" aria-haspopup="dialog" aria-controls="helpPanel">?</button>
       <button id="fxBtn" type="button" title="Settings: speed, effects, replay, show system" aria-label="Settings" aria-haspopup="dialog">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
       </button>
+      <div id="helpBackdrop" class="hidden"></div>
+      <div id="helpPanel" class="hidden" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
+        <div class="help-head"><span id="helpTitle">KEYBOARD SHORTCUTS</span><button id="helpClose" type="button" title="Close (Esc)">✕</button></div>
+        <table id="helpTable">
+          <tbody>
+            <tr><td><kbd>Ctrl</kbd>+<kbd>B</kbd></td><td>Toggle the workspace tree</td></tr>
+            <tr><td><kbd>Ctrl</kbd>+<kbd>J</kbd></td><td>Toggle the console / bottom area</td></tr>
+            <tr><td><kbd>Ctrl</kbd>+<kbd>.</kbd></td><td>Toggle the agent chat pane</td></tr>
+            <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>.</kbd></td><td>Dock the agent pane to the right / back</td></tr>
+            <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>A</kbd></td><td>Open the agents overview</td></tr>
+            <tr><td><kbd>Enter</kbd></td><td>Send the message (owned sessions)</td></tr>
+            <tr><td><kbd>Shift</kbd>+<kbd>Enter</kbd></td><td>Insert a newline in the message box</td></tr>
+            <tr><td><kbd>Enter</kbd> (approval reason)</td><td>Reject the approval with the typed reason</td></tr>
+            <tr><td><kbd>Esc</kbd></td><td>Close dialogs and menus</td></tr>
+            <tr><td><kbd>?</kbd></td><td>Open this keyboard shortcuts help</td></tr>
+          </tbody>
+        </table>
+        <div class="help-note">The <kbd>?</kbd> shortcut is ignored while typing in an input, textarea, select or the Monaco editor.</div>
+      </div>
       <div id="fxBackdrop" class="hidden"></div>
       <div id="fxPanel" class="hidden" role="dialog" aria-modal="true" aria-label="Settings">
         <div class="fx-head"><span>SETTINGS</span><button id="fxClose" type="button" title="Close (Esc)">✕</button></div>
@@ -1369,6 +1410,7 @@
         <span class="chat-views"><button id="chatViewChat" type="button">Chat</button><button id="chatViewLog" class="active" type="button">Log</button></span>
         <span class="chat-spacer"></span>
         <canvas id="turnSpark" class="hidden" width="144" height="32" title="cost per turn"></canvas>
+        <button id="chatExport" type="button" title="Export this session as Markdown">MD</button>
         <button id="chatDock" type="button" title="Dock the agent to the right side (Ctrl+Shift+.)" aria-pressed="false">⇥</button>
         <button id="chatPin" type="button" title="Pin auto-scroll">📌</button>
         <button id="chatClose" type="button" title="Collapse chat (Ctrl+.)">▸</button>
@@ -3972,6 +4014,44 @@ $('fxBackdrop').addEventListener('click', () => setSettingsOpen(false));
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && !$('fxPanel').classList.contains('hidden')) setSettingsOpen(false);
 });
+
+function isTypingFocus(el) {
+  return !!el && el.nodeType === 1 && !!el.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"], .monaco-editor');
+}
+let helpReturnFocus = null;
+function setHelpOpen(open) {
+  const panel = $('helpPanel');
+  if (!panel) return;
+  const wasOpen = !panel.classList.contains('hidden');
+  panel.classList.toggle('hidden', !open);
+  $('helpBackdrop').classList.toggle('hidden', !open);
+  if (open) {
+    if (!wasOpen) helpReturnFocus = document.activeElement;
+    $('helpClose').focus({ preventScroll: true });
+  } else if (wasOpen && helpReturnFocus && document.contains(helpReturnFocus)) {
+    const target = helpReturnFocus;
+    helpReturnFocus = null;
+    try { target.focus({ preventScroll: true }); } catch { /* ignore */ }
+  }
+}
+$('helpBtn').addEventListener('click', (e) => {
+  e.stopPropagation();
+  setHelpOpen(true);
+});
+$('helpClose').addEventListener('click', () => setHelpOpen(false));
+$('helpBackdrop').addEventListener('click', () => setHelpOpen(false));
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !$('helpPanel').classList.contains('hidden')) {
+    e.preventDefault();
+    setHelpOpen(false);
+    return;
+  }
+  if (e.defaultPrevented || e.key !== '?' || e.ctrlKey || e.altKey || e.metaKey) return;
+  if (isTypingFocus(e.target) || isTypingFocus(document.activeElement)) return;
+  e.preventDefault();
+  setHelpOpen(true);
+});
+window.__help = { open: () => setHelpOpen(true), close: () => setHelpOpen(false) };
 $('fxIntensity').addEventListener('input', (e) => {
   fx.intensity = Number(e.target.value);
   applyFx();
@@ -5109,6 +5189,135 @@ function turnRow(item) {
   return row;
 }
 
+function exportToolLine(tool) {
+  const name = tool.name || 'tool';
+  const full = String(tool.full || tool.text || '').replace(/\s+/g, ' ').trim();
+  let label;
+  if (name === 'pwsh') label = `$ ${full}`;
+  else if (EDIT_TOOLS.has(name)) label = `✎ ${tool.path || full || name}`;
+  else if (tool.path) label = `${name} ${tool.path}`;
+  else label = name;
+  const result = tool.result;
+  let status = 'running';
+  if (result) {
+    if (result.exitCode !== null && result.exitCode !== undefined) status = `exit ${result.exitCode}${result.isError ? ' (error)' : ''}`;
+    else if (result.isError) {
+      const detail = String(result.text || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+      status = detail ? `error: ${detail}` : 'error';
+    } else status = 'done';
+  }
+  return `- ${label} — ${status}`;
+}
+
+function exportTurnSummary(item, index) {
+  const number = item && item.turn !== undefined && item.turn !== null ? item.turn : index + 1;
+  if (!item) return `TURN ${number}`;
+  const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+  const parts = [`TURN ${number}`];
+  if (item.model) parts.push(item.model);
+  parts.push(plural(item.steps || 0, 'step'));
+  if (item.tools) {
+    const kinds = [];
+    if (item.commands) kinds.push(`$ ${item.commands}`);
+    if (item.edits) kinds.push(`✎ ${item.edits}`);
+    if (item.reads) kinds.push(`👁 ${item.reads}`);
+    const other = item.tools - item.commands - item.edits - item.reads;
+    if (other > 0) kinds.push(`⚙ ${other}`);
+    parts.push(`${plural(item.tools, 'tool')}${kinds.length ? ' (' + kinds.join(' · ') + ')' : ''}`);
+  }
+  const files = item.files ? item.files.size : 0;
+  if (files) parts.push(`${plural(files, 'file')} changed`);
+  if (item.errors) parts.push(plural(item.errors, 'failure'));
+  parts.push(`${tokenTotal(item.usage)} tokens`);
+  const turnCost = Number(item.cost) || 0;
+  if (turnCost > 0) parts.push(`$${turnCost.toFixed(4)}`);
+  parts.push(item.startedAt && item.endedAt ? fmtActivityTime(item.endedAt - item.startedAt) : 'running');
+  return parts.join(' · ');
+}
+
+function exportMarkdown() {
+  const session = state.session || {};
+  const stats = state.stats || {};
+  const id = state.sessionId || session.id || '';
+  const title = String(session.title || id || 'agenttail session').replace(/\s+/g, ' ').trim() || 'agenttail session';
+  const source = state.source || session.source || 'dsh';
+  const provider = (state.route && state.route.provider) || session.provider || '';
+  const model = (state.route && state.route.model) || session.model || '';
+  const preset = state.preset || session.preset || '';
+  const input = Number(stats.input) || 0;
+  const output = Number(stats.output) || 0;
+  const cacheRead = Number(stats.cacheRead) || 0;
+  const cacheWrite = Number(stats.cacheWrite) || 0;
+  const totalTokens = input + output + cacheRead + cacheWrite;
+  const cost = Number(stats.cost) || 0;
+  const out = [];
+  out.push(`# ${title}`, '');
+  out.push(`- Session ID: ${id || '—'}`);
+  out.push(`- Source: ${source}`);
+  out.push(`- Model: ${model ? `${provider ? provider + '/' : ''}${model}` : '—'}`);
+  out.push(`- Permission preset: ${preset || '—'}`);
+  out.push(`- Steps: ${Number(stats.steps) || 0}`);
+  out.push(`- Tokens: ${totalTokens}${totalTokens ? ` (input ${input} · output ${output} · cache read ${cacheRead} · cache write ${cacheWrite})` : ''}`);
+  out.push(`- Cost: $${cost.toFixed(4)}`);
+  out.push('');
+
+  const turns = [];
+  let current = null;
+  const pending = [];
+  const addBlock = (turn, item) => {
+    if (item.kind === 'user' || item.kind === 'agent') {
+      const text = String(item.text || '');
+      if (text.trim()) turn.blocks.push(`**${item.kind === 'user' ? 'User' : 'Agent'}**\n\n${text}`);
+      return;
+    }
+    if (item.kind === 'tool') turn.blocks.push(exportToolLine(item));
+  };
+
+  for (const item of chat.log) {
+    if (!item) continue;
+    if (item.kind === 'turn') {
+      current = { item, blocks: [] };
+      turns.push(current);
+      for (const early of pending) addBlock(current, early);
+      pending.length = 0;
+      continue;
+    }
+    if (!['user', 'agent', 'tool'].includes(item.kind)) continue;
+    if (current) addBlock(current, item);
+    else pending.push(item);
+  }
+  if (!turns.length && pending.length) {
+    current = { item: null, blocks: [] };
+    turns.push(current);
+    for (const early of pending) addBlock(current, early);
+  }
+  if (!turns.length) {
+    out.push('_No turns recorded yet._');
+    return out.join('\n').replace(/\n+$/, '\n');
+  }
+
+  turns.forEach((turn, index) => {
+    const number = turn.item && turn.item.turn !== undefined && turn.item.turn !== null ? turn.item.turn : index + 1;
+    out.push(`## Turn ${number}`, '');
+    for (const block of turn.blocks) out.push(block, '');
+    out.push(`**Turn summary:** ${exportTurnSummary(turn.item, index)}`, '');
+  });
+  return out.join('\n').replace(/\n+$/, '\n');
+}
+
+function downloadMarkdown() {
+  const markdown = exportMarkdown();
+  const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = `agenttail-${shortId(state.sessionId || state.session?.id) || 'session'}.md`;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
 function chatJump(item) {
   const marker = state.termMarkers.get(item.callId);
   if (marker && !marker.isDisposed) {
@@ -5126,6 +5335,7 @@ $('chatPin').addEventListener('click', () => {
     if (log) log.scrollTop = log.scrollHeight;
   }
 });
+$('chatExport').addEventListener('click', downloadMarkdown);
 $('chatLog').addEventListener('scroll', () => {
   const log = $('chatLog');
   const atBottom = log.scrollTop + log.clientHeight >= log.scrollHeight - 12;
@@ -5144,6 +5354,7 @@ $('chatViewChat').classList.toggle('active', chat.view === 'chat');
 $('chatViewLog').classList.toggle('active', chat.view === 'log');
 chatEmpty();
 window.__chat = { state: chat, layout, setOpen: setChatOpen, reset: chatReset, closeThinking: closeStreamingThinking };
+window.__exportMarkdown = exportMarkdown;
 window.__layout = {
   state: layout,
   apply: applyLayout,
