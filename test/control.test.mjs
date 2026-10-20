@@ -139,6 +139,13 @@ async function readSse(url, stop, timeoutMs = 10000) {
   }
 }
 
+// The turn is over once the run state reports idle with a stop reason, either
+// in the initial meta snapshot or in a later control event.
+function turnEnded({ event, data }) {
+  const state = event === 'meta' ? data.control : event === 'control' ? data : null;
+  return !!state && state.running === false && !!state.lastStopReason;
+}
+
 let controlServer;
 try {
   console.log('\nopt-in gate');
@@ -236,8 +243,39 @@ try {
   check(stopped.status === 200, 'stop endpoint responds', JSON.stringify(stopped.data));
   const closed = await post(controlServer.base, controlServer.token, '/api/control/close', { id });
   check(closed.status === 200 && closed.data?.closed === true, 'close endpoint responds');
+  const afterClose = await post(controlServer.base, controlServer.token, '/api/control/message', { id, text: 'after end' });
+  check(afterClose.status === 404, 'an ended session no longer accepts input', String(afterClose.status));
+  const listed = await jsonRequest(controlServer.base, 'GET', '/api/sessions?source=dsh', {});
+  const listedSession = (listed.data?.sessions || listed.data || []).find?.((s) => s.id === id);
+  check(!listedSession || listedSession.owned === false, 'an ended session is listed as view-only', JSON.stringify(listedSession));
 
-  console.log('\nqueue');
+  console.log('\nreject');
+  const beginReject = await post(controlServer.base, controlServer.token, '/api/control/session/begin', {
+    cwd: workspace,
+    preset: 'workspace-write',
+  });
+  const idReject = beginReject.data?.session?.id;
+  await post(controlServer.base, controlServer.token, '/api/control/session/start', {
+    id: idReject,
+    message: 'Please run the fake command again',
+  });
+  const rejectEvents = await readSse(`${controlServer.base}/api/stream?source=dsh&id=${encodeURIComponent(idReject)}`, (event) => event.event === 'approval');
+  const rejectApproval = rejectEvents.find((event) => event.event === 'approval');
+  check(!!rejectApproval, 'a second turn asks for approval again');
+  const rejectDone = readSse(`${controlServer.base}/api/stream?source=dsh&id=${encodeURIComponent(idReject)}`, turnEnded);
+  await sleep(250);
+  const rejected = await post(controlServer.base, controlServer.token, '/api/control/approval', {
+    id: idReject,
+    approvalId: rejectApproval?.data?.approvalId,
+    decision: 'reject',
+    reason: 'secret-reason-text',
+  });
+  check(rejected.status === 200 && rejected.data?.decision === 'reject' && rejected.data?.optionId === 'reject-once', 'reject selects the reject option', JSON.stringify(rejected.data));
+  const rejectAfter = await rejectDone;
+  check(rejectAfter.some(turnEnded), 'a rejected command ends the turn', JSON.stringify(rejectAfter.slice(-2)));
+  await post(controlServer.base, controlServer.token, '/api/control/close', { id: idReject });
+
+  console.log('\nqueue and stop');
   const begin2 = await post(controlServer.base, controlServer.token, '/api/control/session/begin', {
     cwd: workspace,
     preset: 'workspace-write',
@@ -254,7 +292,16 @@ try {
     text: 'Queued fake message',
   });
   check(queued.status === 200 && queued.data?.queued === true, 'a message sent during a turn is queued');
-  await post(controlServer.base, controlServer.token, '/api/control/stop', { id: id2 });
+  const stopDone = readSse(`${controlServer.base}/api/stream?source=dsh&id=${encodeURIComponent(id2)}`, turnEnded);
+  await sleep(250);
+  const stop2 = await post(controlServer.base, controlServer.token, '/api/control/stop', { id: id2 });
+  check(stop2.status === 200 && stop2.data?.cancelled === true, 'stop cancels the running turn', JSON.stringify(stop2.data));
+  check(stop2.data?.session?.queued === false, 'stop drops the queued message');
+  const stopAfter = await stopDone;
+  const stopState = stopAfter.find(turnEnded);
+  check(!!stopState, 'the turn ends after stop', JSON.stringify(stopAfter.slice(-2)));
+  check((stopState?.data?.control || stopState?.data)?.lastStopReason === 'cancelled', 'the turn ends as cancelled', JSON.stringify(stopState?.data));
+  check(stopAfter.some((event) => event.event === 'approvalDone' && event.data.decision === 'cancelled'), 'stop cancels the pending approval');
   await post(controlServer.base, controlServer.token, '/api/control/close', { id: id2 });
 
   console.log('\naudit');
@@ -263,9 +310,14 @@ try {
   check(actions.includes('start'), 'audit records start');
   check(actions.includes('message'), 'audit records message');
   check(actions.includes('approve'), 'audit records approve');
+  const rejectRecord = audit.find((entry) => entry.action === 'reject');
+  check(!!rejectRecord && rejectRecord.hadReason === true && rejectRecord.reasonLength === 'secret-reason-text'.length, 'audit records reject with the reason length only', JSON.stringify(rejectRecord));
   check(actions.includes('stop'), 'audit records stop');
   check(actions.includes('close'), 'audit records close');
-  check(!fs.readFileSync(auditFile, 'utf8').includes('Please run the fake command'), 'audit never stores message bodies');
+  check(audit.every((entry) => entry.ts && entry.action && (entry.sessionId || entry.action === 'start')), 'every audit record has a timestamp and session id');
+  const auditText = fs.readFileSync(auditFile, 'utf8');
+  check(!auditText.includes('Please run the fake command') && !auditText.includes('Queued fake message'), 'audit never stores message bodies');
+  check(!auditText.includes('secret-reason-text'), 'audit never stores reject reasons');
 } finally {
   for (const proc of servers) {
     try { proc.kill(); } catch { /* ignore */ }
