@@ -1,0 +1,17 @@
+node_modules/
+dist/
+test/.tmp*/
+test/.demo*/
+test/.sea-*/
+test/_*
+test/*.log
+test/*.png
+test/*.gif
+*.log
+roots.json
+redact.json
+nicknames.json
+.env
+.DS_Store
+Thumbs.db
+*.tgz

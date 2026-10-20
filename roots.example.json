@@ -1,0 +1,27 @@
+{
+  "roots": [
+    {
+      "path": "/path/to/another-project",
+      "as": "example",
+      "label": "another project (optional, read-only)"
+    }
+  ],
+  "privateRoots": [],
+  "ignore": [
+    ".git",
+    ".dsh",
+    ".tmp",
+    "node_modules",
+    ".cache",
+    "__pycache__",
+    ".venv",
+    "venv",
+    ".turbo",
+    ".next",
+    "build",
+    "build-*",
+    "dist",
+    "target",
+    "_*"
+  ]
+}

@@ -1,0 +1,53 @@
+{
+  "name": "agenttail",
+  "version": "0.1.0",
+  "description": "A local, read-only live viewer for AI coding agent sessions (DeepSeek Harness, Claude Code, Antigravity CLI).",
+  "keywords": [
+    "ai-agents",
+    "claude-code",
+    "deepseek",
+    "developer-tools",
+    "dashboard",
+    "observability"
+  ],
+  "author": "ionut27001",
+  "license": "MIT",
+  "engines": {
+    "node": ">=24"
+  },
+  "bin": {
+    "agenttail": "server.js"
+  },
+  "files": [
+    "server.js",
+    "lib/",
+    "public/",
+    "roots.example.json",
+    "redact.example.json",
+    "README.md",
+    "LICENSE",
+    "SECURITY.md",
+    "CONTRIBUTING.md",
+    "docs/hero.gif",
+    "docs/screenshot-dark.png",
+    "docs/stream-mode.png",
+    "docs/chat-log.png",
+    "docs/logo.svg",
+    "docs/logo-light.svg",
+    "docs/wordmark.svg",
+    "docs/loading.png"
+  ],
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test/smoke.test.mjs && node test/roots.test.mjs && node test/redact.test.mjs && node test/sources.test.mjs && node test/ui.test.mjs",
+    "demo": "node scripts/demo-session.mjs",
+    "capture": "node scripts/capture.mjs",
+    "build:sea": "node scripts/build-sea.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "gifenc": "^1.0.3",
+    "pngjs": "^7.0.0",
+    "postject": "^1.0.0-alpha.6"
+  }
+}

@@ -1,0 +1,12 @@
+test/
+scripts/
+dist/
+node_modules/
+.git/
+.gitignore
+*.log
+*.tgz
+roots.json
+redact.json
+nicknames.json
+.env
