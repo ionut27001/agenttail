@@ -828,7 +828,6 @@
   }
   #chatHeader button { padding: 0 4px; background: transparent; border: none; color: var(--muted); font-size: 11px; }
   #chatHeader button:hover { color: var(--green); }
-  #chatPin.pinned { color: var(--green); }
   .chat-state { color: var(--muted); font-size: 11px; letter-spacing: .06em; }
   .chat-spacer { flex: 1; }
   #chatLog {
@@ -1091,7 +1090,12 @@
   .ag-overlaps { border: 1px solid var(--border-warn); background: var(--bg-warn); border-radius: 4px; padding: 6px 9px; margin-bottom: 8px; color: var(--amber); font-size: 11px; display: grid; gap: 3px; }
   .ag-overlaps .row { display: flex; align-items: center; gap: 6px; min-width: 0; }
   .ag-overlaps .p { color: var(--text-amber-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .ag-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 8px; }
+  /* The overview is a launcher: one compact row per agent; the wall shows detail. */
+  .ag-grid { display: flex; flex-direction: column; gap: 4px; }
+  #agentsPanel .ag-card { grid-template-columns: minmax(150px, auto) minmax(0, 1.4fr) minmax(0, 1fr) auto; align-items: center; gap: 4px 14px; padding: 5px 10px 5px 12px; }
+  #agentsPanel .ag-card > .ag-files { display: none; }
+  #agentsPanel .ag-card .ag-title, #agentsPanel .ag-card .ag-act { white-space: nowrap; }
+  #agentsPanel .ag-card .ag-meta { flex-wrap: nowrap; overflow: hidden; }
   .ag-card {
     --c: var(--green); display: grid; gap: 5px; text-align: left; min-width: 0;
     padding: 8px 10px 8px 12px; border: 1px solid var(--line); border-left: 3px solid var(--c);
@@ -1199,6 +1203,12 @@
   #wallStrip { flex: none; display: grid; grid-template-rows: auto auto; border-top: 1px solid var(--line); background: var(--panel); }
   #wallStrip .ws-slot { position: relative; min-width: 0; overflow: hidden; }
   #wallStrip .ws-slot:empty { display: none; }
+  #wallStrip { position: relative; }
+  #wallStripToggle { position: absolute; top: 4px; right: 10px; z-index: 3; padding: 0 7px; font-size: 11px; line-height: 1.4; }
+  /* Compact: one row of file tiles, no timeline — the panes get the height. */
+  #wallStrip.compact .ws-timeline { display: none; }
+  #wallStrip.compact .wm-board { max-height: 30px; }
+  #wallStrip.compact .wm-legend { display: none; }
   #wallStrip .ws-map { border-bottom: 1px solid var(--line-soft); }
   .wall-pane { --c: var(--green); display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: var(--bg); border-top: 3px solid var(--c); }
   .wall-pane.live { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 35%, transparent); }
@@ -1622,6 +1632,7 @@
         <label title="Print the agent's replies in the console too; by default the console keeps to commands and their output"><input type="checkbox" data-fx="consoleSay" /> agent replies in console</label>
         <label title="CPU, RAM and GPU usage in the header"><input type="checkbox" data-fx="meters" /> system meters</label>
         <label><input type="checkbox" data-fx="heat" checked /> tree heat</label>
+        <label title="Wrap long lines in the editor instead of scrolling sideways"><input type="checkbox" data-fx="wrap" checked /> word wrap</label>
         <label title="Notify when an agent waits for an approval or stops working while this tab is in the background"><input type="checkbox" id="notifyBox" /> desktop notifications</label>
         </div>
         <div class="fx-section">EFFECTS</div>
@@ -1683,7 +1694,6 @@
       <div id="editor"></div>
       <div id="editorEmpty">SELECT A FILE TO INSPECT</div>
       <div id="fileBadge" class="hidden"></div>
-      <span id="editorActive" class="pane-tag editor-tag hidden">● active</span>
       <div id="blockCursor" class="hidden"></div>
       <div id="editorSkeleton" class="skeleton-pane editor-skeleton">
         <i style="width:88%"></i><i style="width:62%"></i><i style="width:76%"></i><i style="width:54%"></i><i style="width:81%"></i><i style="width:47%"></i><i style="width:69%"></i><i style="width:58%"></i>
@@ -1699,7 +1709,6 @@
       <canvas id="matrix"></canvas>
       <div class="panel-title">
         <span>CONSOLE</span>
-        <span id="consoleActive" class="pane-tag hidden">● active</span>
         <span class="dim">click a truncated block to expand</span>
         <span id="runStatus" class="hidden"><i class="spinner"></i><span id="runLabel"></span><span id="runElapsed"></span><span id="runProgress"><b></b></span></span>
       </div>
@@ -1713,14 +1722,11 @@
     <aside id="chatPane">
       <div id="chatHeader">
         <span class="chat-title">AGENT</span>
-        <span id="chatHeadState" class="chat-state">idle</span>
-        <span id="chatActive" class="pane-tag hidden">● active</span>
-        <span class="chat-views"><button id="chatViewChat" type="button">Chat</button><button id="chatViewLog" class="active" type="button">Log</button></span>
+        <span class="chat-views"><button id="chatViewChat" type="button" title="Replies and your messages; actions grouped">Conversation</button><button id="chatViewLog" class="active" type="button" title="Every step in order: actions, results, turns">Every step</button></span>
         <span class="chat-spacer"></span>
         <span id="turnSparkWrap" class="hidden"><span id="turnSparkLabel">$/TURN</span><canvas id="turnSpark" width="144" height="32" title="cost per turn"></canvas></span>
         <button id="chatExport" type="button" title="Export this session as Markdown">MD</button>
         <button id="chatDock" type="button" title="Dock the agent to the right side (Ctrl+Shift+.)" aria-pressed="false">⇥</button>
-        <button id="chatPin" type="button" title="Pin auto-scroll">📌</button>
         <button id="chatClose" type="button" title="Collapse chat (Ctrl+.)">▸</button>
       </div>
       <div id="chatLog"></div>
@@ -1763,6 +1769,7 @@
     <button id="wallClose" type="button" title="Close (Esc)">✕</button></div>
   <div id="wallGrid"></div>
   <div id="wallStrip">
+    <button id="wallStripToggle" type="button" title="Show or hide the timeline under the repo map">▾</button>
     <div class="ws-slot ws-map"></div>
     <div class="ws-slot ws-timeline"></div>
   </div>
@@ -2205,6 +2212,22 @@ window.MonacoEnvironment = {
   },
 };
 
+/**
+ * Edits near the end of a long line scroll the editor sideways. When the
+ * typing has been quiet for a moment, scroll back to the start of the line
+ * (only matters without word wrap).
+ */
+function snapBackAfterEdits(ed, enabled) {
+  let timer = null;
+  ed.onDidChangeModelContent(() => {
+    if (!enabled()) return;
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      try { if (ed.getScrollLeft() > 0) ed.setScrollLeft(0); } catch { /* disposed */ }
+    }, 2500);
+  });
+}
+
 function initMonaco() {
   return new Promise((resolve) => {
     require.config({ paths: { vs: '/vendor/monaco/vs' } });
@@ -2226,7 +2249,9 @@ function initMonaco() {
         cursorBlinking: 'smooth',
         padding: { top: 8, bottom: 8 },
         scrollbar: { verticalScrollbarSize: 9, horizontalScrollbarSize: 9 },
+        wordWrap: fx.wrap === false ? 'off' : 'on',
       });
+      snapBackAfterEdits(editor, () => fx.wrap === false);
       resolve();
     });
   });
@@ -4266,7 +4291,7 @@ window.addEventListener('resize', () => {
 });
 
 /* ---------- visual effects (all behind toggles) ---------- */
-const FX_DEFAULTS = { boot: true, crt: false, matrix: false, cursor: true, glitch: false, spark: true, heat: true, sys: false, follow: true, consoleSay: false, meters: false, intensity: 40 };
+const FX_DEFAULTS = { boot: true, crt: false, matrix: false, cursor: true, glitch: false, spark: true, heat: true, sys: false, follow: true, consoleSay: false, meters: false, wrap: true, intensity: 40 };
 const fx = { ...FX_DEFAULTS };
 try { Object.assign(fx, JSON.parse(localStorage.getItem('agenttail-fx') || '{}')); } catch { /* ignore */ }
 if (typeof fx.intensity !== 'number') fx.intensity = 40;
@@ -4427,6 +4452,9 @@ function applyFx(save = true) {
     document.body.classList.toggle(`fx-${key}`, !!fx[key]);
     const box = document.querySelector(`[data-fx="${key}"]`);
     if (box) box.checked = !!fx[key];
+  }
+  if (typeof editor !== 'undefined' && editor) {
+    try { editor.updateOptions({ wordWrap: fx.wrap === false ? 'off' : 'on' }); } catch { /* not ready */ }
   }
   if (fx.matrix) startMatrix(); else stopMatrix();
   if (fx.spark) startSpark(); else stopSpark();
@@ -4824,16 +4852,10 @@ function fmtAgo(ms) {
 }
 
 function setActivePane(pane) {
-  const map = {
-    console: ['terminalPane', 'consoleActive'],
-    editor: ['editorWrap', 'editorActive'],
-    chat: ['chatPane', 'chatActive'],
-  };
-  for (const [key, [paneId, tagId]] of Object.entries(map)) {
+  const map = { console: 'terminalPane', editor: 'editorWrap', chat: 'chatPane' };
+  for (const [key, paneId] of Object.entries(map)) {
     const el = $(paneId);
-    const tag = $(tagId);
     if (el) el.classList.toggle('active', pane === key);
-    if (tag) tag.classList.toggle('hidden', pane !== key);
   }
 }
 
@@ -5040,8 +5062,6 @@ window.__ui = { get scale() { return uiScale; }, set: applyUiScale };
 /* ---------- agent chat ---------- */
 const CHAT_WINDOW = 250;
 const chat = { pinned: true, unread: 0, items: [], log: [], view: 'chat', window: CHAT_WINDOW };
-try { chat.pinned = JSON.parse(localStorage.getItem('agenttail-chat-pin') || 'true'); } catch { /* ignore */ }
-if (typeof chat.pinned !== 'boolean') chat.pinned = true;
 try { chat.view = localStorage.getItem('agenttail-chat-view') === 'chat' ? 'chat' : 'log'; } catch { /* ignore */ }
 
 function chatEmpty() {
@@ -5354,8 +5374,6 @@ function updateChatRail() {
     const busy = state.state === 'live' && Date.now() - (state.stats.lastTime || 0) < 20_000;
     typing.classList.toggle('hidden', !busy);
   }
-  const head = $('chatHeadState');
-  if (head) head.textContent = !state.historyDone ? 'loading history…' : state.state === 'live' ? 'streaming' : 'idle';
 }
 
 function updateChatPill() {
@@ -5912,24 +5930,11 @@ function chatJump(item) {
   if (item.path) showFile(item.path, item.key);
 }
 
-$('chatPin').addEventListener('click', () => {
-  chat.pinned = !chat.pinned;
-  updatePin();
-  try { localStorage.setItem('agenttail-chat-pin', JSON.stringify(chat.pinned)); } catch { /* ignore */ }
-  if (chat.pinned) {
-    const log = $('chatLog');
-    if (log) log.scrollTop = log.scrollHeight;
-  }
-});
 $('chatExport').addEventListener('click', downloadMarkdown);
 $('chatLog').addEventListener('scroll', () => {
   const log = $('chatLog');
-  const atBottom = log.scrollTop + log.clientHeight >= log.scrollHeight - 12;
-  if (!atBottom && chat.pinned) {
-    chat.pinned = false;
-    updatePin();
-    try { localStorage.setItem('agenttail-chat-pin', JSON.stringify(chat.pinned)); } catch { /* ignore */ }
-  }
+  // Stick to the newest row while the reader is at the bottom.
+  chat.pinned = log.scrollTop + log.clientHeight >= log.scrollHeight - 12;
 });
 
 applyUiScale(uiScale, false);
@@ -6697,6 +6702,7 @@ termObserver.observe($('term'));
             lineHeight: 17,
             fontFamily: '"Cascadia Mono", "JetBrains Mono", Consolas, monospace',
             lineNumbersMinChars: 3,
+            wordWrap: 'on',
             renderLineHighlight: 'none',
             scrollBeyondLastLine: false,
             smoothScrolling: true,
@@ -7390,7 +7396,7 @@ termObserver.observe($('term'));
   // Panes open before the strip; their events (history tail first) arrive after.
   window.__wallStripHooks = window.__wallStripHooks || [];
   const WALL_PREFS_KEY = 'agenttail-wall';
-  const wallPrefs = { chatInline: false, shrinkQuiet: true, focus: true };
+  const wallPrefs = { chatInline: false, shrinkQuiet: true, focus: true, strip: 'auto' };
   try { Object.assign(wallPrefs, JSON.parse(localStorage.getItem(WALL_PREFS_KEY) || '{}')); } catch { /* ignore */ }
   // The console widget asks this to decide whether chat lines go to the console.
   window.__wallChatInline = () => !!wallPrefs.chatInline;
@@ -7804,6 +7810,7 @@ termObserver.observe($('term'));
       $a('wall').classList.toggle('chat-inline', wallPrefs.chatInline);
       $a('wall').classList.toggle('focus', wallPrefs.focus);
       $a('wallLayoutMode').textContent = wallPrefs.focus ? 'LAYOUT: FOCUS' : 'LAYOUT: SPLIT';
+      applyStrip();
     }
 
     function savePrefs() {
@@ -7818,6 +7825,19 @@ termObserver.observe($('term'));
       const agentsNow = panes.map((p) => p.agent);
       if (agentsNow.length) open(agentsNow);
     });
+    /** 'auto' is compact on short windows; a click picks full or compact for good. */
+    function applyStrip() {
+      const compact = wallPrefs.strip === 'compact' || (wallPrefs.strip === 'auto' && window.innerHeight < 820);
+      $a('wallStrip').classList.toggle('compact', compact);
+      $a('wallStripToggle').textContent = compact ? '▸' : '▾';
+      $a('wallStripToggle').title = compact ? 'Show the timeline' : 'Hide the timeline';
+    }
+    $a('wallStripToggle').addEventListener('click', () => {
+      wallPrefs.strip = $a('wallStrip').classList.contains('compact') ? 'full' : 'compact';
+      savePrefs();
+      applyStrip();
+    });
+    window.addEventListener('resize', () => { if (wallPrefs.strip === 'auto') applyStrip(); });
     $a('wallLayoutMode').addEventListener('click', () => {
       wallPrefs.focus = !wallPrefs.focus;
       savePrefs();
@@ -7873,10 +7893,12 @@ termObserver.observe($('term'));
     function defaultList() {
       const data = agents.data;
       if (!data) return [];
-      const { group } = findMe();
-      const mine = group ? group.agents.filter((a) => a.state === 'live') : [];
-      if (mine.length >= 2) return mine;
-      return data.groups.flatMap((g) => g.agents).filter((a) => a.state === 'live');
+      const { group, me } = findMe();
+      const mine = group ? group.agents.filter((a) => a.state === 'live' && a !== me) : [];
+      const others = mine.length >= 1 ? mine
+        : data.groups.flatMap((g) => g.agents).filter((a) => a.state === 'live' && a !== me);
+      // The session being viewed is always the first pane (it shrinks if quiet).
+      return me ? [me, ...others] : others;
     }
 
     $a('wallClose').addEventListener('click', close);

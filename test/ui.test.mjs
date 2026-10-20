@@ -377,6 +377,12 @@ try {
   await evalExpr(`document.getElementById('sessionSearch').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); true`);
   check(await evalExpr(`document.getElementById('sessionMenu').classList.contains('hidden')`), 'Esc closes the picker');
 
+  console.log('\nword wrap');
+  check(await evalExpr(`editor.getRawOptions().wordWrap === 'on'`), 'the editor wraps long lines by default');
+  await evalExpr(`(() => { const b = document.querySelector('[data-fx="wrap"]'); b.checked = false; b.dispatchEvent(new Event('change')); return true; })()`);
+  check(await evalExpr(`editor.getRawOptions().wordWrap === 'off'`), 'word wrap can be turned off in Settings');
+  await evalExpr(`(() => { const b = document.querySelector('[data-fx="wrap"]'); b.checked = true; b.dispatchEvent(new Event('change')); return true; })()`);
+
   console.log('\nshortcuts and export');
   await evalExpr(`document.body.focus(); document.dispatchEvent(new KeyboardEvent('keydown', { key: '?', bubbles: true })); true`);
   check(await waitFor(`!document.getElementById('helpPanel').classList.contains('hidden')`, 3000), '? opens the keyboard shortcuts');
@@ -516,12 +522,13 @@ try {
   check(await evalExpr(`document.body.classList.contains('chat-collapsed')`), 'Ctrl+. collapses the chat');
   await evalExpr(`document.dispatchEvent(new KeyboardEvent('keydown', { key: '.', ctrlKey: true, bubbles: true })); true`);
   check(!(await evalExpr(`document.body.classList.contains('chat-collapsed')`)), 'Ctrl+. expands the chat');
-  const pinnedBefore = await evalExpr(`window.__chat.state.pinned`);
-  await evalExpr(`document.getElementById('chatPin').click(); true`);
-  const pinnedAfter = await evalExpr(`window.__chat.state.pinned`);
-  const pinnedStored = await evalExpr(`JSON.parse(localStorage.getItem('agenttail-chat-pin'))`);
-  check(pinnedAfter === !pinnedBefore && pinnedStored === pinnedAfter, 'pin toggle persists', JSON.stringify({ pinnedBefore, pinnedAfter, pinnedStored }));
-  await evalExpr(`document.getElementById('chatPin').click(); true`);
+  // No pin button: the chat sticks to the newest row while you are at the bottom.
+  check(!(await evalExpr(`!!document.getElementById('chatPin')`)), 'there is no separate pin button');
+  await evalExpr(`(() => { const l = document.getElementById('chatLog'); l.scrollTop = 0; l.dispatchEvent(new Event('scroll')); return true; })()`);
+  const pinnedUp = await evalExpr(`window.__chat.state.pinned`);
+  await evalExpr(`(() => { const l = document.getElementById('chatLog'); l.scrollTop = l.scrollHeight; l.dispatchEvent(new Event('scroll')); return true; })()`);
+  const pinnedDown = await evalExpr(`window.__chat.state.pinned`);
+  check(pinnedDown === true && (pinnedUp === false || await evalExpr(`document.getElementById('chatLog').scrollHeight <= document.getElementById('chatLog').clientHeight + 12`)), 'scrolling up stops auto-scroll and the bottom resumes it', JSON.stringify({ pinnedUp, pinnedDown }));
   check(await evalExpr(`!!document.getElementById('chatTyping')`), 'chat has a typing indicator element');
   check(await evalExpr(`!!document.querySelector('.chat-think summary')`), 'thinking blocks are collapsible',
     await evalExpr(`(document.querySelector('.chat-think') || {}).outerHTML || 'none'`));
@@ -677,6 +684,11 @@ try {
   await evalExpr(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'w', code: 'KeyW', altKey: true, bubbles: true })); true`);
   check(await waitFor(`window.__wall.open_ && window.__wall.panes >= 1`, 5000), 'Alt+W opens the watch wall');
   check(await evalExpr(`[...document.querySelectorAll('#wallGrid .wall-pane')].every((p) => window.__agents.data.groups.flatMap((g) => g.agents).find((a) => a.key === p.dataset.key)?.state === 'live')`), 'by default the wall shows only agents that are working right now');
+  check(await evalExpr(`document.querySelector('#wallGrid .wall-pane').dataset.key === 'dsh:${fixture.liveId}'`), 'the session being viewed leads the wall');
+  const stripBefore = await evalExpr(`document.getElementById('wallStrip').classList.contains('compact')`);
+  await evalExpr(`document.getElementById('wallStripToggle').click(); true`);
+  check(await evalExpr(`document.getElementById('wallStrip').classList.contains('compact')`) === !stripBefore, 'the team strip folds and unfolds');
+  await evalExpr(`document.getElementById('wallStripToggle').click(); true`);
   // Watch three agents of this workspace explicitly to check the layout.
   await evalExpr(`window.__wall.open(window.__agents.data.groups.flatMap((g) => g.agents).filter((a) => a.state !== 'finished').slice(0, 3)); true`);
   check(await waitFor(`window.__wall.open_ && window.__wall.panes >= 2 && document.querySelectorAll('#wallGrid .wall-pane').length === window.__wall.panes`, 5000), 'several agents are watched side by side', String(await evalExpr(`window.__wall.panes`)));
@@ -800,7 +812,7 @@ try {
   check(running, 'activity bar shows RUNNING for a job', await evalExpr(`document.getElementById('activityText').textContent`));
   check(await evalExpr(`document.getElementById('activityBar').classList.contains('running') && document.getElementById('activityBar').classList.contains('working')`), 'RUNNING uses the amber animated indicator');
   check(await evalExpr(`!document.getElementById('runStatus').classList.contains('hidden') && !!document.querySelector('#runStatus .spinner')`), 'console shows a spinner next to the running command');
-  check(await evalExpr(`document.getElementById('terminalPane').classList.contains('active') && !document.getElementById('consoleActive').classList.contains('hidden')`), 'console pane is marked active');
+  check(await evalExpr(`document.getElementById('terminalPane').classList.contains('active')`), 'console pane is marked active');
   fs.appendFileSync(fixture.liveLog, frame([
     ev('tool/call', 62, {
       turn: 1, step: 3, callId: 'call_edit_live2', name: 'edit',
@@ -814,7 +826,7 @@ try {
   const editing = await waitFor(`document.getElementById('activityText').textContent.includes('EDITING')`, 8000);
   check(editing, 'activity bar shows EDITING for an edit', await evalExpr(`document.getElementById('activityText').textContent`));
   check(await evalExpr(`document.getElementById('activityBar').classList.contains('editing') && document.getElementById('activityBar').classList.contains('working')`), 'EDITING uses the green animated indicator');
-  check(await evalExpr(`document.getElementById('editorWrap').classList.contains('active') && !document.getElementById('editorActive').classList.contains('hidden')`), 'editor pane is marked active');
+  check(await evalExpr(`document.getElementById('editorWrap').classList.contains('active')`), 'editor pane is marked active');
   const barReady = await waitFor(`!document.getElementById('jobBar').classList.contains('hidden') && /running/.test(document.getElementById('jobBarText').textContent)`, 12000);
   check(barReady, 'running job line appears in the console');
   await waitFor(`(() => { const s = document.querySelector('.xterm-screen').getBoundingClientRect(); const v = document.querySelector('.xterm-viewport').getBoundingClientRect(); return s.height <= v.height + 1 && s.bottom <= v.bottom + 1; })()`, 5000);
@@ -860,7 +872,7 @@ try {
   check(await waitFor(`document.getElementById('activityText').textContent.includes('THINKING')`, 5000), 'activity bar shows THINKING while reasoning streams');
   const thinkIndicator = await waitFor(`document.getElementById('activityBar').classList.contains('thinking') && document.querySelectorAll('#activityText .tdots i').length === 3 && /\\d+ s/.test(document.getElementById('activityText').textContent)`, 4000);
   check(thinkIndicator, 'THINKING shows three dots and elapsed seconds', await evalExpr(`JSON.stringify({ cls: document.getElementById('activityBar').className, dots: document.querySelectorAll('#activityText .tdots i').length, text: document.getElementById('activityText').textContent })`));
-  check(await evalExpr(`document.getElementById('chatPane').classList.contains('active') && !document.getElementById('chatActive').classList.contains('hidden')`), 'chat pane is marked active');
+  check(await evalExpr(`document.getElementById('chatPane').classList.contains('active')`), 'chat pane is marked active');
   check(await evalExpr(`(() => { const rows = [...document.querySelectorAll('.chat-think summary')]; return rows.every((s) => !s.textContent.includes('▸')); })()`), 'thinking rows never show a double caret');
   await evalExpr(`document.getElementById('chatViewLog').click(); true`);
   const liveLog = await waitFor(`document.getElementById('chatLog').textContent.includes('Live chat message while the rail') && document.querySelectorAll('#chatLog .log-tool').length > 0`, 10000);
