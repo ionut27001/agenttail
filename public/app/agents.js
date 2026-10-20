@@ -15,6 +15,12 @@
     return `${Math.round(s / 3600)} h ago`;
   }
 
+  /** 2m 05s */
+  function clock(ms) {
+    const s = Math.floor(ms / 1000);
+    return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`;
+  }
+
   function hashFor(agent) {
     return agent.source === 'dsh' ? agent.id : `${agent.source}:${agent.id}`;
   }
@@ -278,6 +284,8 @@
   // The console widget asks this to decide whether chat lines go to the console.
   window.__wallChatInline = () => wallPrefs.chat === 'console';
   const DORMANT_MS = 60_000;
+  const MODEL_WAIT_MS = 20_000;
+  const STALL_MS = 5 * 60_000;
   const CONSOLE_LINGER_MS = 3000; // a finished command keeps the console up this long
   const CAPTION_MS = 9000;        // reasoning captions fade after this
   const wall = (() => {
@@ -308,12 +316,35 @@
       if (pane.stick) pane.feed.scrollTop = pane.feed.scrollHeight;
     }
 
-    function setAction(pane, glyph, text) {
-      pane.action = { glyph, text, at: Date.now() };
+    function setAction(pane, glyph, text, at) {
+      pane.action = { glyph, text, at: at || Date.now() };
       drawAction(pane);
     }
 
+    /** How long a running step has produced nothing, or 0. */
+    function modelWait(pane) {
+      // A tool still running is not the model: the console shows that.
+      if (pane.state !== 'live' || !pane.stepOpen || !pane.lastEvAt || pane.openCalls.size || pane.jobs.size) return 0;
+      const quiet = Date.now() - pane.lastEvAt;
+      return quiet > MODEL_WAIT_MS ? quiet : 0;
+    }
+
+    /** Minutes without a word usually means the model or the agent process hung. */
+    function waitText(pane, wait) {
+      return wait > STALL_MS
+        ? `stalled? no output for ${clock(wait)} · step ${pane.stepOpen}`
+        : `waiting on the model · ${clock(wait)} · step ${pane.stepOpen}`;
+    }
+
     function drawAction(pane) {
+      const wait = modelWait(pane);
+      pane.root.classList.toggle('model-wait', !!wait);
+      if (wait) {
+        pane.act.textContent = '';
+        pane.act.appendChild(el('span', 'k', '⏳'));
+        pane.act.appendChild(document.createTextNode(waitText(pane, wait)));
+        return;
+      }
       const a = pane.action;
       pane.act.textContent = '';
       pane.act.appendChild(el('span', 'k', a ? a.glyph : '·'));
@@ -334,6 +365,7 @@
     /** One message in a pane's conversation drawer (kept to the last 120). */
     function addConversation(pane, who, text) {
       const list = pane.focus.thinkReply;
+      const atBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 40;
       const item = el('div', `th-msg ${who}`);
       item.appendChild(el('span', 'th-who', who === 'user' ? '▸ you' : '✦'));
       const body = el('div', 'th-text');
@@ -342,7 +374,7 @@
       item.appendChild(body);
       list.appendChild(item);
       while (list.childElementCount > 120) list.firstElementChild.remove();
-      list.scrollTop = list.scrollHeight;
+      if (atBottom) list.scrollTop = list.scrollHeight;
     }
 
     /** What the agent is doing decides the stage: console, editor or thoughts. */
@@ -476,6 +508,13 @@
     }
 
     function onEvent(pane, ev) {
+      // Replayed events count from their own time, live ones from their arrival.
+      pane.lastEvAt = pane.history ? Math.max(pane.lastEvAt || 0, ev.time || 0) : Date.now();
+      if (ev.t === 'step') { pane.stepOpen = ev.step || true; pane.openCalls.clear(); }
+      else if (ev.t === 'stepEnd') { pane.stepOpen = 0; pane.openCalls.clear(); }
+      else if (ev.t === 'call' && ev.callId) pane.openCalls.add(ev.callId);
+      else if (ev.t === 'result' && ev.callId) pane.openCalls.delete(ev.callId);
+      if (ev.t === 'step' || ev.t === 'stepEnd') pane.root.classList.toggle('stepping', !!pane.stepOpen);
       followView(pane, ev);
       if (!pane.history && ['call', 'result', 'say', 'user', 'job', 'jobEnd', 'jobOutput'].includes(ev.t)) {
         pane.lastActiveAt = Date.now();
@@ -490,16 +529,16 @@
       const feed = pane.feed;
       if (ev.t === 'user' && !ev.system && ev.text) {
         feed.appendChild(el('div', 'wf-user', String(ev.text).slice(0, 600)));
-        setAction(pane, '▸', 'new user message');
+        setAction(pane, '▸', 'new user message', ev.time);
       } else if (ev.t === 'say') {
         if (ev.thinking) feed.appendChild(el('div', 'wf-think', `thinking · ${mdToText(ev.thinking).replace(/\s+/g, ' ').slice(0, 160)}`));
         if (ev.text) {
           const say = el('div', 'wf-say');
           renderMarkdown(say, ev.text);
           feed.appendChild(say);
-          setAction(pane, '✦', `replying · ${mdToText(ev.text).replace(/\s+/g, ' ').slice(0, 90)}`);
+          setAction(pane, '✦', `replying · ${mdToText(ev.text).replace(/\s+/g, ' ').slice(0, 90)}`, ev.time);
         } else if (ev.thinking) {
-          setAction(pane, '…', 'thinking');
+          setAction(pane, '…', 'thinking', ev.time);
         }
       } else if (ev.t === 'call') {
         const args = ev.args || {};
@@ -512,7 +551,7 @@
         addAction(feed, row);
         if (ev.callId) pane.calls.set(ev.callId, row);
         if (isEdit) addFile(pane, args.file_path);
-        setAction(pane, glyph, `${ev.name === 'pwsh' ? 'running' : isEdit ? 'editing' : ev.name} ${String(label).replace(/\s+/g, ' ').slice(0, 120)}`);
+        setAction(pane, glyph, `${ev.name === 'pwsh' ? 'running' : isEdit ? 'editing' : ev.name} ${String(label).replace(/\s+/g, ' ').slice(0, 120)}`, ev.time);
       } else if (ev.t === 'result') {
         const row = pane.calls.get(ev.callId);
         if (row) {
@@ -526,7 +565,7 @@
         }
       } else if (ev.t === 'job') {
         feed.appendChild(el('div', 'wf-job', `▶ job running · ${String(ev.label || '').replace(/\s+/g, ' ').slice(0, 140)}`));
-        setAction(pane, '▶', `job running · ${String(ev.label || '').slice(0, 100)}`);
+        setAction(pane, '▶', `job running · ${String(ev.label || '').slice(0, 100)}`, ev.time);
       } else if (ev.t === 'jobEnd') {
         feed.appendChild(el('div', 'wf-job', `■ job ${ev.status || 'ended'}${ev.detail ? ' · ' + ev.detail : ''}`));
       } else {
@@ -620,7 +659,7 @@
       const pane = {
         agent, root, act, feed, filesEl, stateEl, calls: new Map(), files: [], stick: true, history: true, action: null,
         dormantText, lastActiveAt: 0, state: agent.state, pinned: false,
-        view: 'editor', pinnedView: null, jobs: new Set(), lastView: 'editor',
+        view: 'editor', pinnedView: null, jobs: new Set(), openCalls: new Set(), lastView: 'editor',
         focus: { thinkTitle, thinkReason, thinkReply, dkEditor, dkConsole, dkConsoleText, dkJob, dkThink, dkThinkText, caption, captionKind, captionText },
         consoleTimer: null, captionTimer: null,
         slots: { editor: editorSlot, console: consoleSlot },
@@ -678,6 +717,12 @@
           stateEl.classList.toggle('live', st.state === 'live');
           root.classList.toggle('live', st.state === 'live');
           pane.state = st.state;
+          if (Array.isArray(st.jobs)) {
+            pane.jobs = new Set(st.jobs.map((j) => j.jobId));
+            pane.focus.dkJob.classList.toggle('hidden', pane.jobs.size === 0);
+            pane.focus.dkJob.textContent = pane.jobs.size > 1 ? `▶ ${pane.jobs.size} jobs` : '▶ job';
+          }
+          drawAction(pane);
           updateDormant(pane);
         } catch { /* ignore */ }
       });
@@ -696,7 +741,7 @@
       pane.quiet = quiet;
       const label = pane.state !== 'live'
         ? (pane.state === 'idle' ? 'waiting for you' : 'finished')
-        : `thinking quietly · ${ago(pane.lastActiveAt)}`;
+        : modelWait(pane) ? waitText(pane, modelWait(pane)) : `thinking quietly · ${ago(pane.lastActiveAt)}`;
       pane.dormantText.textContent = label;
       applyDormant();
     }
@@ -714,7 +759,7 @@
       $a('wallChatMode').textContent = `CHAT: ${{ caption: 'CAPTION', side: 'SIDE', console: 'IN CONSOLE' }[wallPrefs.chat]}`;
       $a('wallDormantMode').textContent = wallPrefs.shrinkQuiet ? 'QUIET AGENTS: SHRINK' : 'QUIET AGENTS: KEEP';
       // Only SIDE keeps the feed column; the others give editor and console the width.
-      $a('wall').classList.toggle('chat-inline', wallPrefs.chat !== 'side');
+      $a('wall').classList.toggle('chat-inline', wallPrefs.chat === 'console' || (wallPrefs.chat === 'caption' && wallPrefs.focus));
       $a('wall').classList.toggle('chat-console', wallPrefs.chat === 'console');
       $a('wall').classList.toggle('focus', wallPrefs.focus);
       $a('wallLayoutMode').textContent = wallPrefs.focus ? 'LAYOUT: FOCUS' : 'LAYOUT: SPLIT';

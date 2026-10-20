@@ -188,7 +188,9 @@
       dot.className = 'ws-tl-dot';
       const text = doc.createElement('span');
       text.className = 'ws-tl-label-text';
-      text.textContent = branch ? `${source} · ${branch}` : source;
+      // Agents of one workspace often share a source and have no branch: name them by task.
+      const title = agent.title ? String(agent.title).replace(/\s+/g, ' ').slice(0, 60) : '';
+      text.textContent = branch ? `${source} · ${branch}` : title ? `${source} · ${title}` : source;
       label.title = agent.title ? `${text.textContent} — ${agent.title}` : text.textContent;
       label.appendChild(dot);
       label.appendChild(text);

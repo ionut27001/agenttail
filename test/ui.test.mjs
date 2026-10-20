@@ -775,6 +775,10 @@ try {
   await evalExpr(`document.querySelector('#wallGrid .wall-pane[data-key="dsh:${fixture.liveId}"] .dk-think').click(); true`);
   await evalExpr(`document.getElementById('wallChatMode').click(); true`);
   check(await waitFor(`/CAPTION/.test(document.getElementById('wallChatMode').textContent)`, 5000), 'and back to captions');
+  // SPLIT has no drawer or dock, so captions there keep the feed column.
+  await evalExpr(`document.getElementById('wallLayoutMode').click(); true`);
+  check(await waitFor(`!document.getElementById('wall').classList.contains('focus') && getComputedStyle(document.querySelector('#wallGrid .wall-pane:not(.dormant) .wp-side')).display !== 'none' && getComputedStyle(document.querySelector('#wallGrid .wp-caption')).display === 'none'`, 3000), 'in split the replies stay in the feed column, with no caption on top');
+  await evalExpr(`document.getElementById('wallLayoutMode').click(); true`);
   await evalExpr(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); true`);
   check(await evalExpr(`!window.__wall.open_ && window.__wall.panes === 0`), 'Esc closes the wall and its streams');
 

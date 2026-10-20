@@ -29,6 +29,7 @@
       loading: new Map(),     // display path -> Promise
       current: null,
       lastEdit: null,         // { path, key, args } during history replay
+      lastRead: null,         // { path, key } during history replay
       animation: null,
       decorations: [],
       disposed: false,
@@ -195,10 +196,14 @@
       }
     }
 
-    /** After history: open the last edited file and mark the last change. */
+    /** After history: open the last edited file and mark the last change, else the last file read. */
     async function showLast() {
       const last = state.lastEdit;
-      if (!last) return;
+      if (!last) {
+        const read = state.lastRead;
+        if (read && await show(read.path, read.key)) setLabel('last read', read.path);
+        return;
+      }
       const model = await show(last.path, last.key);
       if (!model) return;
       setLabel('last edit', last.path);
@@ -222,7 +227,9 @@
         if (EDIT_TOOLS.has(ev.name)) {
           if (pane.history) state.lastEdit = { path: p, key, args: ev.args };
           else enqueue(() => playEdit(p, key, ev.args));
-        } else if (ev.name === 'read' && !pane.history) {
+        } else if (ev.name === 'read' && pane.history) {
+          state.lastRead = { path: p, key };
+        } else if (ev.name === 'read') {
           enqueue(async () => {
             if (state.animation) return;
             await show(p, key);

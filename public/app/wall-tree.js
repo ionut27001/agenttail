@@ -292,9 +292,11 @@
           last: 0,
           lastKind: '',
           fileKey: null,
+          rawPath: '',
         };
         file.agents.set(key, agent);
       }
+      agent.rawPath = String(rawPath);
       if (fileKey !== undefined && fileKey !== null && fileKey !== '') agent.fileKey = fileKey;
       if (kind === 'edit') agent.edits += 1;
       else agent.reads += 1;
@@ -391,7 +393,7 @@
     }
 
     function fileRow(file, depth, cursorsNow) {
-      const row = node('div', 'wt-row tree-row wt-file file');
+      const row = node('div', 'wt-row wt-file');
       row.dataset.path = file.path;
       row.dataset.clash = '0';
       row.tabIndex = 0;
@@ -399,8 +401,8 @@
       row.style.paddingLeft = `${4 + depth * 11}px`;
       const cursorEl = node('span', 'wt-cursors');
       cursorEl.setAttribute('aria-hidden', 'true');
-      const name = node('span', 'wt-name nm', file.displayName);
-      const count = node('span', 'wt-count cnt');
+      const name = node('span', 'wt-name', file.displayName);
+      const count = node('span', 'wt-count');
       const dots = node('span', 'wt-dots');
       const bolt = node('span', 'wt-bolt');
       bolt.setAttribute('aria-hidden', 'true');
@@ -414,33 +416,23 @@
         ev.preventDefault();
         openFile(file);
       });
-      const onHover = (ev) => showTip(file, ev);
-      row.addEventListener('mouseenter', onHover);
-      row.addEventListener('mouseover', onHover);
-      row.addEventListener('mousemove', (ev) => {
-        if (tipFile !== file) showTip(file, ev);
-        else placeTip(ev);
-      });
+      row.addEventListener('mousemove', (ev) => showTip(file, ev));
       row.addEventListener('mouseleave', hideTip);
-      row.addEventListener('mouseout', (ev) => {
-        const to = ev.relatedTarget;
-        if (!to || to.nodeType !== 1 || !row.contains(to)) hideTip();
-      });
 
       paintFile(file, info, cursorsNow);
       return row;
     }
 
     function folderRow(chain, depth, collapsedSet, kids) {
-      const row = node('div', 'wt-row tree-row wt-dir dir');
+      const row = node('div', 'wt-row wt-dir');
       row.dataset.folder = chain.id;
       row.tabIndex = 0;
       row.setAttribute('role', 'button');
       row.style.paddingLeft = `${4 + depth * 11}px`;
       const collapsed = collapsedSet.has(chain.id);
-      const caret = node('span', 'wt-caret tw', collapsed ? '▸' : '▾');
+      const caret = node('span', 'wt-caret', collapsed ? '▸' : '▾');
       caret.setAttribute('aria-hidden', 'true');
-      const name = node('span', 'wt-name nm', chain.label);
+      const name = node('span', 'wt-name', chain.label);
       name.title = chain.id;
       row.append(caret, name);
       row.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
@@ -471,7 +463,7 @@
         if (child.type === 'folder') {
           const chain = folderChain(child);
           const collapsed = collapsedSet.has(chain.id);
-          const kids = node('div', 'wt-kids tree-kids' + (collapsed ? ' hidden' : ''));
+          const kids = node('div', 'wt-kids' + (collapsed ? ' hidden' : ''));
           container.appendChild(folderRow(chain, depth, collapsedSet, kids));
           container.appendChild(kids);
           renderChildren(group, kids, chain.node.children, depth + 1, cursorsNow, collapsedSet);
@@ -566,7 +558,8 @@
       }
       clashes.sort((a, b) => (b.at || 0) - (a.at || 0));
       const first = clashes[0].file;
-      const text = `⚡ ${first.displayName} — both agents here`;
+      const many = cursorsNow.get(first).length;
+      const text = `⚡ ${first.displayName} — ${many === 2 ? 'both' : many} agents here`;
       if (clashLine.textContent !== text) clashLine.textContent = text;
       clashLine.classList.remove('hidden');
     }
@@ -576,6 +569,7 @@
       const agentKey = file.lastAgentKey;
       const lastAgent = agentKey ? file.agents.get(agentKey) : null;
       const fileKey = lastAgent ? lastAgent.fileKey : null;
+      const openPath = (lastAgent && lastAgent.rawPath) || file.path;
       let pane = file.lastPane;
       if (!pane && agentKey) pane = paneByKey.get(agentKey);
       if (!pane || typeof pane.showFile !== 'function') {
@@ -587,7 +581,7 @@
         }
       }
       if (!pane || typeof pane.showFile !== 'function') return;
-      try { pane.showFile(file.path, fileKey == null ? null : fileKey); } catch { /* ignore */ }
+      try { pane.showFile(openPath, fileKey == null ? null : fileKey); } catch { /* ignore */ }
     }
 
     function buildTip(file) {
@@ -763,7 +757,6 @@
       onPaneEvent,
       dispose,
       snapshot,
-      _files: () => snapshot().files,
     };
 
     function markUserScroll() {
