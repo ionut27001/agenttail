@@ -1138,6 +1138,15 @@
   #composerSend { border-color: var(--green-dim); color: var(--green); }
   #composerStop { border-color: var(--border-danger-soft); color: var(--text-reject); }
   #composerStop:disabled, #composerEnd:disabled { opacity: .5; }
+  #composerModel { max-width: 190px; font-size: 11px; padding: 3px 4px; background: var(--bg-3); color: var(--green-soft); border: 1px solid var(--line); font-family: var(--mono); }
+  #composerModel:disabled { opacity: .5; }
+  #composerAttachments { display: flex; flex-wrap: wrap; gap: 6px; }
+  #composerAttachments.hidden { display: none; }
+  .attach { position: relative; display: flex; align-items: center; gap: 6px; padding: 3px 22px 3px 3px; border: 1px solid var(--line); border-radius: 4px; background: var(--bg-2); color: var(--muted); font-size: 10px; max-width: 220px; }
+  .attach img { width: 40px; height: 40px; object-fit: cover; border-radius: 2px; flex: none; }
+  .attach span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .attach button { position: absolute; top: 2px; right: 2px; padding: 0 4px; font-size: 11px; line-height: 1.2; border: none; background: transparent; color: var(--muted); }
+  .attach button:hover { color: var(--red); }
   #composerStatus { color: var(--muted); font-size: 10px; letter-spacing: .04em; min-height: 12px; }
   #composerStatus.warn { color: var(--amber); }
   #composerStatus.err { color: var(--red); }
@@ -1374,8 +1383,10 @@
         </div>
       </div>
       <div id="composer" class="hidden">
+        <div id="composerAttachments" class="hidden"></div>
         <div id="composerRow">
           <textarea id="composerInput" rows="1" placeholder="Message the agent…  (Enter sends, Shift+Enter newline)"></textarea>
+          <select id="composerModel" title="Model for the next turn"></select>
           <button id="composerStop" type="button" title="Cancel the running turn">Stop</button>
           <button id="composerEnd" type="button" title="Close this owned session">End</button>
           <button id="composerSend" type="button" title="Send">Send</button>
@@ -5187,7 +5198,12 @@ termObserver.observe($('term'));
     dialogCancelled: false,
     starting: false,
     lastError: '',
+    attachments: [],
+    modelBusy: false,
   };
+  const MAX_ATTACHMENTS = 4;
+  const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;
+  const ATTACHMENT_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
 
   const $c = (id) => document.getElementById(id);
 
@@ -5252,6 +5268,7 @@ termObserver.observe($('term'));
     hint.textContent = text;
     hint.className = `control-hint${text ? '' : ' hidden'}${kind ? ' ' + kind : ''}`;
 
+    renderModelPicker(canType ? c : null);
     const stop = $c('composerStop');
     const end = $c('composerEnd');
     if (stop) stop.disabled = !(canType && c && c.running);
@@ -5260,10 +5277,120 @@ termObserver.observe($('term'));
       if (c.running) setStatus('turn running · Stop cancels it · a message sent now will be queued');
       else if (control.queued) setStatus('queued — sends when the current turn ends');
       else if (control.lastError) setStatus(control.lastError, 'err');
-      else setStatus('Enter sends · Shift+Enter newline');
+      else setStatus(`Enter sends · Shift+Enter newline${c.model ? ` · ${c.provider ? c.provider + '/' : ''}${c.model}` : ''}`);
     }
     const badge = $c('approvalBadge');
     if (badge) badge.classList.toggle('hidden', control.approvals.length === 0 || control.locked || !control.enabled);
+  }
+
+  /** The live dsh catalog for this session; switching applies to the next turn. */
+  function renderModelPicker(session) {
+    const select = $c('composerModel');
+    if (!select) return;
+    const models = session && Array.isArray(session.models) ? session.models : [];
+    select.classList.toggle('hidden', models.length < 2);
+    const signature = models.map((m) => m.value).join('|');
+    if (select.dataset.signature !== signature) {
+      select.textContent = '';
+      const groups = new Map();
+      for (const model of models) {
+        const key = model.provider || 'other';
+        if (!groups.has(key)) {
+          const group = document.createElement('optgroup');
+          group.label = key;
+          groups.set(key, group);
+          select.appendChild(group);
+        }
+        const opt = document.createElement('option');
+        opt.value = model.value;
+        opt.textContent = model.name || model.value;
+        groups.get(key).appendChild(opt);
+      }
+      select.dataset.signature = signature;
+    }
+    if (session && session.modelValue && document.activeElement !== select) select.value = session.modelValue;
+    select.disabled = control.modelBusy;
+  }
+
+  async function switchModel() {
+    const select = $c('composerModel');
+    const value = select.value;
+    if (!value || !control.current || value === control.current.modelValue) return;
+    control.modelBusy = true;
+    select.disabled = true;
+    try {
+      const data = await controlFetch('/api/control/model', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: state.sessionId, model: value }),
+      });
+      if (data && data.session) control.current = { ...control.current, ...data.session };
+      setStatus(`model → ${data?.session?.provider ? data.session.provider + '/' : ''}${data?.session?.model || value}`);
+    } catch (err) {
+      setStatus(err.message, 'err');
+    } finally {
+      control.modelBusy = false;
+      updateControlChrome();
+    }
+  }
+
+  /* ---------- pasted images ---------- */
+  function renderAttachments() {
+    const box = $c('composerAttachments');
+    if (!box) return;
+    box.textContent = '';
+    box.classList.toggle('hidden', control.attachments.length === 0);
+    control.attachments.forEach((item, index) => {
+      const chip = document.createElement('div');
+      chip.className = 'attach';
+      const img = document.createElement('img');
+      img.src = `data:${item.mimeType};base64,${item.data}`;
+      img.alt = '';
+      chip.appendChild(img);
+      const label = document.createElement('span');
+      label.textContent = `${item.name} · ${Math.max(1, Math.round(item.size / 1024))} KB`;
+      chip.appendChild(label);
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.title = 'Remove';
+      remove.textContent = '✕';
+      remove.addEventListener('click', () => {
+        control.attachments.splice(index, 1);
+        renderAttachments();
+      });
+      chip.appendChild(remove);
+      box.appendChild(chip);
+    });
+  }
+
+  function readImage(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result).replace(/^data:[^,]*,/, ''));
+      reader.onerror = () => reject(reader.error || new Error('could not read the image'));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function addImages(files) {
+    if (!files.length) return false;
+    if (!control.current || control.current.images !== true) {
+      setStatus('this agent does not accept images (dsh ACP has no image prompts)', 'warn');
+      return true;
+    }
+    for (const file of files) {
+      if (control.attachments.length >= MAX_ATTACHMENTS) { setStatus(`at most ${MAX_ATTACHMENTS} images per message`, 'warn'); break; }
+      if (!ATTACHMENT_TYPES.includes(file.type)) { setStatus('images must be PNG, JPEG, GIF or WebP', 'warn'); continue; }
+      if (file.size > MAX_ATTACHMENT_BYTES) { setStatus('an image is larger than 5 MB', 'warn'); continue; }
+      try {
+        const data = await readImage(file);
+        control.attachments.push({ name: file.name || 'pasted image', mimeType: file.type, size: file.size, data });
+      } catch (err) {
+        setStatus(err.message, 'err');
+      }
+    }
+    renderAttachments();
+    return true;
   }
 
   function handleControlState(next) {
@@ -5291,6 +5418,8 @@ termObserver.observe($('term'));
     control.approvals = [];
     control.queued = false;
     control.lastError = '';
+    control.attachments = [];
+    renderAttachments();
     updateControlChrome();
 
     es.addEventListener('meta', (event) => {
@@ -5404,15 +5533,18 @@ termObserver.observe($('term'));
   async function sendMessage() {
     const input = $c('composerInput');
     const text = input.value;
-    if (!text.trim()) return;
+    const images = control.attachments.map(({ mimeType, data }) => ({ mimeType, data }));
+    if (!text.trim() && !images.length) return;
     try {
       const result = await controlFetch('/api/control/message', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: state.sessionId, text }),
+        body: JSON.stringify({ id: state.sessionId, text, images }),
       });
       input.value = '';
       input.style.height = 'auto';
+      control.attachments = [];
+      renderAttachments();
       control.queued = !!result.queued;
       control.lastError = '';
       setStatus(result.queued ? 'queued — sends when the current turn ends' : 'sent');
@@ -5660,6 +5792,16 @@ termObserver.observe($('term'));
   $c('composerSend').addEventListener('click', sendMessage);
   $c('composerStop').addEventListener('click', stopTurn);
   $c('composerEnd').addEventListener('click', endSession);
+  $c('composerModel').addEventListener('change', switchModel);
+  $c('composerInput').addEventListener('paste', (event) => {
+    const files = [...(event.clipboardData?.items || [])]
+      .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
+      .map((item) => item.getAsFile())
+      .filter(Boolean);
+    if (!files.length) return;
+    event.preventDefault();
+    addImages(files);
+  });
   $c('composerInput').addEventListener('keydown', (event) => {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();

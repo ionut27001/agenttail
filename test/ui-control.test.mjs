@@ -190,6 +190,24 @@ try {
   await evalExpr(`document.getElementById('composerStop').click(); true`);
   check(await waitFor(`${hidden('approvalPanel')} && document.getElementById('composerStop').disabled === true`, 8000), 'Stop ends the turn and clears the card');
 
+  console.log('\nmodel and images');
+  check(await waitFor(`!document.getElementById('composerModel').classList.contains('hidden') && document.getElementById('composerModel').options.length === 2`, 5000), 'the composer offers the session models');
+  await evalExpr(`(() => { const sel = document.getElementById('composerModel'); sel.value = JSON.stringify(['deepseek-official', 'deepseek-v4-flash']); sel.dispatchEvent(new Event('change')); return true; })()`);
+  check(await waitFor(`/deepseek-official\\/deepseek-v4-flash/.test(${text('composerStatus')}) && document.getElementById('composerModel').value.includes('deepseek-v4-flash')`, 5000), 'switching the model applies it to the session', await evalExpr(text('composerStatus')));
+  await evalExpr(`(() => {
+    const bytes = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='), (c) => c.charCodeAt(0));
+    const dt = new DataTransfer();
+    dt.items.add(new File([bytes], 'shot.png', { type: 'image/png' }));
+    document.getElementById('composerInput').dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+    return true;
+  })()`);
+  check(await waitFor(`document.querySelectorAll('#composerAttachments .attach img').length === 1`, 5000), 'a pasted image shows as an attachment thumbnail');
+  await evalExpr(enter('What does this screenshot show?'));
+  check(await waitFor(`document.querySelectorAll('#composerAttachments .attach').length === 0 && !${hidden('approvalPanel')}`, 8000), 'sending clears the attachment and starts the turn');
+  check(await waitFor(`document.getElementById('chatLog').textContent.includes('[images: 1]')`, 8000), 'the image reaches the agent with the message');
+  await evalExpr(`document.getElementById('composerStop').click(); true`);
+  await waitFor(`document.getElementById('composerStop').disabled === true`, 8000);
+
   console.log('\nend');
   await evalExpr(`window.confirm = () => true; document.getElementById('composerEnd').click(); true`);
   check(await waitFor(hidden('composer'), 8000), 'End removes the input box');

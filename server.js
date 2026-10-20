@@ -1383,7 +1383,8 @@ async function handleControlPost(req, res, p) {
   }
   let body;
   try {
-    body = await readJsonBody(req, 64 * 1024);
+    // Messages may carry pasted images (4 × 5 MB, base64); everything else is small.
+    body = await readJsonBody(req, p === '/api/control/message' ? 32 * 1024 * 1024 : 64 * 1024);
   } catch (err) {
     sendJson(res, 400, { error: String(err.message || err) });
     return;
@@ -1414,7 +1415,7 @@ async function handleControlPost(req, res, p) {
       return;
     }
     if (p === '/api/control/message') {
-      const result = await control.message(String(body.id || ''), String(body.text ?? ''));
+      const result = await control.message(String(body.id || ''), String(body.text ?? ''), body.images);
       sendJson(res, 200, result);
       return;
     }
@@ -1427,6 +1428,11 @@ async function handleControlPost(req, res, p) {
         decision,
         reason,
       );
+      sendJson(res, 200, result);
+      return;
+    }
+    if (p === '/api/control/model') {
+      const result = await control.setModel(String(body.id || ''), body.model);
       sendJson(res, 200, result);
       return;
     }

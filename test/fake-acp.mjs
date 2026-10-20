@@ -8,6 +8,8 @@ import zlib from 'node:zlib';
 
 const SESSION_ID = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
 const MODEL_VALUE = JSON.stringify(['ollama', 'fake-model']);
+const OTHER_MODEL = JSON.stringify(['deepseek-official', 'deepseek-v4-flash']);
+let currentModel = MODEL_VALUE;
 const SESSIONS_ROOT = process.env.DSH_SESSIONS_ROOT || path.join(process.cwd(), 'sessions');
 let session = null;
 let pendingPrompt = null;
@@ -38,11 +40,15 @@ function modelOptions() {
     name: 'Model',
     category: 'model',
     type: 'select',
-    currentValue: MODEL_VALUE,
+    currentValue: currentModel,
     options: [{
       group: 'ollama',
       name: 'Ollama',
       options: [{ value: MODEL_VALUE, name: 'fake-model' }],
+    }, {
+      group: 'deepseek-official',
+      name: 'DeepSeek',
+      options: [{ value: OTHER_MODEL, name: 'deepseek-v4-flash' }],
     }],
   }, {
     id: 'reasoning_effort',
@@ -143,7 +149,7 @@ rl.on('line', (line) => {
       protocolVersion: 1,
       agentInfo: { name: 'fake-acp', version: '0.0.0' },
       agentCapabilities: {
-        promptCapabilities: { image: false, audio: false, embeddedContext: false },
+        promptCapabilities: { image: process.env.FAKE_ACP_NO_IMAGES ? false : true, audio: false, embeddedContext: false },
         sessionCapabilities: { close: {}, list: {}, resume: {} },
       },
       authMethods: [],
@@ -156,12 +162,16 @@ rl.on('line', (line) => {
     return;
   }
   if (message.method === 'session/set_config_option') {
+    if (message.params.configId === 'model') currentModel = message.params.value;
     respond(message.id, { configOptions: modelOptions() });
     return;
   }
   if (message.method === 'session/prompt') {
     if (pendingPrompt) { fail(message.id, -32602, 'a prompt is already in flight'); return; }
-    startTurn(message.params.sessionId, message.params.prompt.map((b) => b.text || '').join(''));
+    const blocks = message.params.prompt || [];
+    const pictures = blocks.filter((b) => b.type === 'image').length;
+    const text = blocks.map((b) => b.text || '').join('');
+    startTurn(message.params.sessionId, pictures ? `${text} [images: ${pictures}]` : text);
     // The request id is kept on the pending prompt; the permission reply
     // finishes it.
     if (pendingPrompt) pendingPrompt.requestId = message.id;

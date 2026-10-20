@@ -5,6 +5,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
+import zlib from 'node:zlib';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const tmp = path.join(__dirname, '.tmp-control');
@@ -304,6 +305,38 @@ try {
   check(stopAfter.some((event) => event.event === 'approvalDone' && event.data.decision === 'cancelled'), 'stop cancels the pending approval');
   await post(controlServer.base, controlServer.token, '/api/control/close', { id: id2 });
 
+  console.log('\nmodel switch and images');
+  const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+  const OTHER = JSON.stringify(['deepseek-official', 'deepseek-v4-flash']);
+  const begin3 = await post(controlServer.base, controlServer.token, '/api/control/session/begin', { cwd: workspace, preset: 'workspace-write' });
+  const id3 = begin3.data?.session?.id;
+  check(begin3.data?.session?.models?.length === 2 && begin3.data.session.images === true, 'session state lists the models and the image capability', JSON.stringify(begin3.data?.session));
+  const switched = await post(controlServer.base, controlServer.token, '/api/control/model', { id: id3, model: OTHER });
+  check(switched.status === 200 && switched.data?.session?.model === 'deepseek-v4-flash' && switched.data.session.provider === 'deepseek-official', 'the model can be switched mid-session', JSON.stringify(switched.data));
+  const unknownModel = await post(controlServer.base, controlServer.token, '/api/control/model', { id: id3, model: '["x","y"]' });
+  check(unknownModel.status === 400, 'an unknown model is refused', String(unknownModel.status));
+  await post(controlServer.base, controlServer.token, '/api/control/session/start', { id: id3, message: 'First turn' });
+  const a3 = await readSse(`${controlServer.base}/api/stream?source=dsh&id=${encodeURIComponent(id3)}`, (event) => event.event === 'approval');
+  const turn1Done = readSse(`${controlServer.base}/api/stream?source=dsh&id=${encodeURIComponent(id3)}`, turnEnded);
+  await sleep(250);
+  await post(controlServer.base, controlServer.token, '/api/control/approval', { id: id3, approvalId: a3.find((e) => e.event === 'approval')?.data?.approvalId, decision: 'approve' });
+  await turn1Done;
+  const badType = await post(controlServer.base, controlServer.token, '/api/control/message', { id: id3, text: 'look', images: [{ mimeType: 'image/svg+xml', data: PNG }] });
+  check(badType.status === 400, 'only PNG, JPEG, GIF and WebP images are accepted', String(badType.status));
+  const tooMany = await post(controlServer.base, controlServer.token, '/api/control/message', { id: id3, text: 'look', images: Array.from({ length: 5 }, () => ({ mimeType: 'image/png', data: PNG })) });
+  check(tooMany.status === 400, 'at most four images per message', String(tooMany.status));
+  const withImage = await post(controlServer.base, controlServer.token, '/api/control/message', { id: id3, text: 'What is in this picture?', images: [{ mimeType: 'image/png', data: PNG }] });
+  check(withImage.status === 200 && withImage.data?.images === 1, 'a message with a pasted image is accepted', JSON.stringify(withImage.data));
+  await sleep(400);
+  const fakeLog = (() => {
+    const find = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((d) => d.isDirectory() ? find(path.join(dir, d.name)) : [path.join(dir, d.name)]);
+    const file = find(sessions).find((f) => f.endsWith('.zstd'));
+    return file ? zlib.zstdDecompressSync(fs.readFileSync(file)).toString('utf8') : '';
+  })();
+  check(fakeLog.includes('What is in this picture? [images: 1]'), 'the image reaches the agent as an ACP image block');
+  await post(controlServer.base, controlServer.token, '/api/control/stop', { id: id3 });
+  await post(controlServer.base, controlServer.token, '/api/control/close', { id: id3 });
+
   console.log('\naudit');
   const audit = fs.readFileSync(auditFile, 'utf8').trim().split('\n').map((line) => JSON.parse(line));
   const actions = audit.map((entry) => entry.action);
@@ -318,6 +351,8 @@ try {
   const auditText = fs.readFileSync(auditFile, 'utf8');
   check(!auditText.includes('Please run the fake command') && !auditText.includes('Queued fake message'), 'audit never stores message bodies');
   check(!auditText.includes('secret-reason-text'), 'audit never stores reject reasons');
+  check(audit.some((entry) => entry.action === 'model' && entry.model === 'deepseek-v4-flash'), 'audit records model switches');
+  check(audit.some((entry) => entry.action === 'message' && entry.images === 1) && !auditText.includes(PNG.slice(0, 24)), 'audit counts images and never stores their data');
 } finally {
   for (const proc of servers) {
     try { proc.kill(); } catch { /* ignore */ }
