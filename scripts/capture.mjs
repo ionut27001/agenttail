@@ -77,7 +77,10 @@ async function cdp(method, params = {}) {
 
 async function evaluate(expression) {
   const result = await cdp('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
-  if (result.exceptionDetails) throw new Error(result.exceptionDetails.text || 'page evaluation failed');
+  if (result.exceptionDetails) {
+    const detail = result.exceptionDetails;
+    throw new Error(detail.exception?.description || detail.text || 'page evaluation failed');
+  }
   return result.result.value;
 }
 
@@ -171,6 +174,7 @@ async function captureHero() {
   // Start recording mid-action: the build is streaming in the console, the
   // chat shows the agent thinking and the editor is typing the change.
   await waitEval(`/EDITING/.test(document.getElementById('activityText').textContent) && !document.getElementById('jobBar').classList.contains('hidden')`, 20000);
+  await framePng(); // the first screenshot after a navigation can be a stale frame
   const frames = [];
   let streamShot = null;
   for (let i = 0; i < 52; i++) {
@@ -211,6 +215,25 @@ async function captureStills() {
   fs.writeFileSync(path.join(OUT, 'chat-log.png'), Buffer.from(shot.data, 'base64'));
 }
 
+/** The watch wall with the lead and two teammates, caught while two of them share a file. */
+async function captureWall() {
+  await setViewport(1600, 1000);
+  const team = spawn(process.execPath, [
+    path.join(ROOT, 'scripts', 'demo-session.mjs'),
+    '--dir', DEMO, '--team-append', '--delay', '900',
+  ], { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+  team.stdout.on('data', (chunk) => process.stdout.write(`  [team] ${chunk}`));
+  team.stderr.on('data', (chunk) => process.stderr.write(`  [team:err] ${chunk}`));
+  await evaluate(`fetch('/api/agents').then((r) => r.json()).then((d) => { window.__wall.open(d.groups.flatMap((g) => g.agents)); return true; })`);
+  await waitEval(`window.__wallTree().files.some((f) => f.clash)`, 20000);
+  // Then wait for the teammate's editor to type its change in.
+  await waitEval(`[...document.querySelectorAll('#wallGrid .wall-pane')].some((p) => /divide/.test((window.__wallEditor(p) || {}).text || ''))`, 15000);
+  await sleep(500);
+  const shot = await cdp('Page.captureScreenshot', { format: 'png' });
+  fs.writeFileSync(path.join(OUT, 'wall.png'), Buffer.from(shot.data, 'base64'));
+  if (team.exitCode === null) await new Promise((resolve) => team.once('exit', resolve));
+}
+
 async function cleanup() {
   try { ws?.close(); } catch { /* ignore */ }
   if (browser?.pid) {
@@ -230,7 +253,8 @@ async function cleanup() {
 
 (async () => {
   fs.mkdirSync(OUT, { recursive: true });
-  execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'demo-session.mjs'), '--dir', DEMO, '--history-turns', '3'], { cwd: ROOT, stdio: 'ignore' });
+  execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'demo-session.mjs'), '--dir', DEMO, '--history-turns', '3', '--team'], { cwd: ROOT, stdio: 'ignore' });
+  for (const dir of ['claude', 'antigravity', 'config']) fs.mkdirSync(path.join(DEMO, dir), { recursive: true });
   server = spawn(process.execPath, [path.join(ROOT, 'server.js')], {
     cwd: ROOT,
     env: {
@@ -238,6 +262,11 @@ async function cleanup() {
       PORT: String(PORT),
       AGENTTAIL_NO_OPEN: '1',
       DSH_SESSIONS_ROOT: path.join(DEMO, 'sessions'),
+      // Empty roots for the other sources and the config, so no real session
+      // or setting of the person running the capture can reach the images.
+      CLAUDE_PROJECTS_ROOT: path.join(DEMO, 'claude'),
+      ANTIGRAVITY_ROOT: path.join(DEMO, 'antigravity'),
+      AGENTTAIL_CONFIG_DIR: path.join(DEMO, 'config'),
       DSH_ROOTS_FILE: path.join(DEMO, 'roots.json'),
       DSH_REDACT_FILE: path.join(DEMO, 'redact.json'),
       DSH_NICKNAMES_FILE: path.join(DEMO, 'nicknames.json'),
@@ -263,6 +292,9 @@ async function cleanup() {
     await sleep(100);
   }
   await connect();
+  // A fresh profile below 1000 px starts with the tree and chat collapsed and
+  // remembers it, so the first load must already have the capture width.
+  await setViewport(1600, 1000);
   // Turn off the boot overlay so the loading skeleton, not a black boot screen,
   // is what the loading capture shows.
   await cdp('Page.navigate', { url: `${BASE}/` });
@@ -275,8 +307,10 @@ async function cleanup() {
   await captureHero();
   console.log('capturing stills');
   await captureStills();
+  console.log('capturing wall.png');
+  await captureWall();
 
-  const files = ['hero.gif', 'loading.png', 'screenshot-dark.png', 'stream-mode.png', 'chat-log.png'];
+  const files = ['hero.gif', 'loading.png', 'screenshot-dark.png', 'stream-mode.png', 'chat-log.png', 'wall.png'];
   for (const name of files) {
     const stat = await fsp.stat(path.join(OUT, name));
     console.log(`${name.padEnd(20)} ${(stat.size / 1024).toFixed(0)} KiB`);

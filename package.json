@@ -37,6 +37,7 @@
     "docs/logo-light.svg",
     "docs/wordmark.svg",
     "docs/loading.png",
+    "docs/wall.png",
     "docs/dev/input-design.md"
   ],
   "scripts": {

@@ -86,9 +86,10 @@ Requirements: Node 24+, Windows, macOS or Linux. Windows is the tested platform;
 - 🌡️ **Edit heat** — the tree tracks edits, failures and deleted files; hover reports `N edits · last … · M failed`. `.tmp`, `_*`, `node_modules`, `.git` and build directories are hidden unless **show hidden files** is enabled.
 - ⌨️ **Console and job progress** — running spinner, elapsed time, collapsible multi-line commands, `(+N lines)` outputs, a live job bar and a `[n/N]` mini progress bar. Failed commands flash red and show `✗ COMMAND FAILED` for three seconds.
 - 💬 **Chat and Log** — Chat groups tool calls and thinking for reading; Log is the full trajectory for auditing (the **MD** button exports it as Markdown), with a summary per turn (model, tools by kind, files changed, failures, tokens, cost, duration). Agent replies render as markdown: headings, lists, tables, quotes, code and links.
-- 👥 **Several agents at once** — an overview of every agent active in the last 30 minutes (dsh, Claude Code, Antigravity), grouped by git repository; worktrees of one repository count as the same repo. Each agent gets its own colour and shows its branch, model and current action; files edited by more than one agent are flagged. The activity bar names the other agents on the repo you are viewing, and the tree marks files they edited. **Watch side by side** (`Alt+W`) splits the screen into one live pane per working agent, each with its own editor (edits are typed in as they happen), console (commands, output, exit status), feed and scoreboard (edits, commands, failures, green streak). The stage follows the agent: the console pops up while a command runs, the editor returns when it edits, and reasoning runs as a caption. Quiet agents shrink to a slim column. A file tree on the left shows every file the agents touch, with each agent's current file marked in its colour (two agents on one file flash as a clash; click a file to open it), and a timeline underneath lays out every action per agent.
+- 👥 **Several agents at once** — an overview of every agent active in the last 30 minutes (dsh, Claude Code, Antigravity), grouped by git repository (worktrees count as the same repo), each with its own colour, branch, model and current action. The activity bar names the other agents on the repo you are viewing, and the tree marks the files they edited. `Alt+W` opens the [watch wall](#watching-several-agents).
 - 🎨 **Themes** — matrix (default), amber, red, ice, dracula and a light paper theme, from Settings.
 - ◉ **One activity state** — RUNNING, EDITING, THINKING, REPLYING, IDLE or DONE, with a colour-coded stripe and dot; a settled job shows a checkmark briefly, then returns to the current state.
+- 🧮 **Context** — how much of the model's context window the session uses, in the activity bar and on every wall pane.
 - 📊 **Meters and layout** — CPU, RAM, GPU, steps, tokens, throughput and estimated cost; console/chat side by side, or the agent pane docked as a full-height column on the right (`Ctrl+Shift+.`); collapsible rails and 90/100/115/130% UI scale (115% on wide fresh profiles). Repeated identical actions collapse into one console line with a counter.
 - ⏪ **Replay** — finished sessions replay through the same pipeline, typing animation included, at a chosen speed.
 - 🔒 **Stream mode** — server-side redaction with fail-closed behaviour; add your own rules in `redact.json`.
@@ -116,6 +117,21 @@ Requirements: Node 24+, Windows, macOS or Linux. Windows is the tested platform;
     </td>
   </tr>
 </table>
+
+## Watching several agents
+
+<p align="center">
+  <a href="docs/wall.png"><img src="docs/wall.png" width="100%" alt="The watch wall: three agents side by side, a shared file tree and a timeline"></a>
+</p>
+
+`Alt+W` (or **Watch live** in the agents overview) splits the screen into one pane per live agent:
+
+- **Each pane is a small agenttail**: an editor that types edits in as they happen, a console with commands, output and exit status, a scoreboard (edits, commands, failures, green streak) and the context meter.
+- **The stage follows the agent.** The console comes up while a command runs and makes way for the editor afterwards; reasoning and replies run as a caption. The dock under each pane switches or pins the view, and 💬 opens the conversation: your messages and the agent's replies.
+- **Waiting is visible.** A step with no output yet says `waiting on the model` with a running clock, and after five minutes `stalled?`. Quiet agents shrink to a slim column so the working ones get the space.
+- **One file tree for the team.** The left column lists every file the agents touched, per repository, with edit counts, one dot per agent and each agent's current file marked in its colour. Two agents on the same file flash as a clash. Click a file to open it in that agent's editor.
+- **A timeline** underneath lays out every action per agent.
+- **Layouts**: FOCUS (one stage per pane) or SPLIT (editor and console stacked); replies as captions, in a side column or inside the console.
 
 <details>
 <summary><b>Live states, follow mode and layout details</b></summary>
@@ -320,7 +336,8 @@ The control design and the dsh ACP evidence are recorded in [docs/dev/input-desi
 - `redact` — every redaction category, IP:port/UUID/opaque-id rules, network boundaries, live `redact.json`, fail-closed and off mode.
 - `sources` — Claude custom titles/subagents/thinking/pending live, Antigravity normalization, tokens, deletes and live tail.
 - `control` — opt-in gate (404), token (401), stream-mode lockout (403), foreign Origin (403), ACP start/message/approve/stop/close, queueing, audit-without-bodies.
-- `ui` — headless Edge: header, compact picker, meters, activity states, follow, tree legend/tooltips/show-hidden, skeleton/loading bar, chat Chat|Log and grouped tools, replay, splitter persistence, vendored assets, reduced motion and 900/720 px layouts.
+- `agents` — the agents overview API, repository and worktree grouping, colours, `/app/` asset security, stream tail and lite mode.
+- `ui` — headless Edge: header, compact picker, meters, activity states, follow, tree legend/tooltips/show-hidden, skeleton/loading bar, chat Chat|Log and grouped tools, replay, splitter persistence, themes, the watch wall (panes, focus stage, chat modes, team tree, timeline, quiet agents), vendored assets, reduced motion and 900/720 px layouts.
 
 Build a standalone Windows exe and the package/portable archives with `node scripts/build-sea.mjs`. Artifacts go to `dist/` (git-ignored).
 

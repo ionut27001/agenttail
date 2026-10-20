@@ -510,7 +510,8 @@
     function onEvent(pane, ev) {
       // Replayed events count from their own time, live ones from their arrival.
       pane.lastEvAt = pane.history ? Math.max(pane.lastEvAt || 0, ev.time || 0) : Date.now();
-      if (ev.t === 'step') { pane.stepOpen = ev.step || true; pane.openCalls.clear(); }
+      // Only numbered steps (dsh) have a matching end; other sources mark starts only.
+      if (ev.t === 'step' && typeof ev.step === 'number') { pane.stepOpen = ev.step; pane.openCalls.clear(); }
       else if (ev.t === 'stepEnd') { pane.stepOpen = 0; pane.openCalls.clear(); }
       else if (ev.t === 'call' && ev.callId) pane.openCalls.add(ev.callId);
       else if (ev.t === 'result' && ev.callId) pane.openCalls.delete(ev.callId);

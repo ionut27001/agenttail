@@ -2,11 +2,12 @@
 /**
  * Generate a synthetic demo session for screenshots and local testing.
  *
- *   node scripts/demo-session.mjs [--dir <dir>] [--play] [--delay <ms>]
+ *   node scripts/demo-session.mjs [--dir <dir>] [--play] [--delay <ms>] [--team]
  *
  * The demo workspace, session log and configs contain no real user data. With
  * --play the remaining events are appended live so the dashboard animations can
- * be captured.
+ * be captured. --team adds two teammate sessions in the same workspace for the
+ * watch wall; --team-append plays their live part.
  */
 'use strict';
 
@@ -34,10 +35,17 @@ const SESSION_DIR = path.join(SESSIONS, '--demo-workspace--', SESSION_ID);
 const LOG = path.join(SESSION_DIR, 'session.v4.jsonl.zstd');
 const BUILD_LOG = path.join(WORKSPACE, 'build.log');
 const NOW = Date.now();
+const TEAM = args.includes('--team');
+// Two teammates in the same workspace, so the watch wall has agents to show.
+const TEAMMATES = [
+  { id: 'session-66666666-7777-8888-9999-000000000001', title: 'Add divide() with tests' },
+  { id: 'session-66666666-7777-8888-9999-000000000002', title: 'Document the calculator API' },
+].map((mate) => ({ ...mate, log: path.join(SESSIONS, '--demo-workspace--', mate.id, 'session.v4.jsonl.zstd') }));
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const frame = (event) => zlib.zstdCompressSync(Buffer.from(JSON.stringify(event) + '\n'));
 const append = (event) => fs.appendFileSync(LOG, frame(event));
+const appendTo = (log, event) => fs.appendFileSync(log, frame(event));
 const event = (type, seq) => ({ type, seq, time: Date.now() });
 
 function writeWorkspace() {
@@ -148,6 +156,101 @@ const result = (seq, turn, step, callId, text, isError = false) => append({
   },
 });
 
+function teamHistory() {
+  for (const [i, mate] of TEAMMATES.entries()) {
+    fs.mkdirSync(path.dirname(mate.log), { recursive: true });
+    const at = NOW - 90000 + i * 5000;
+    let seq = 1;
+    const put = (type, data, extra = {}) => appendTo(mate.log, { type, seq: seq++, time: at + seq * 400, ...extra, ...(data ? { data } : {}) });
+    put('session', null, { id: mate.id, version: 4, cwd: WORKSPACE, createdAt: at, isSeeded: false, delegationDepth: 0, agentPreset: 'standard' });
+    put('session/title', { title: mate.title });
+    put('turn/start', { turn: 1 });
+    put('user/message', { role: 'user', content: [{ type: 'text', text: `${mate.title}.` }], source: { kind: 'user' } });
+    put('step/start', { turn: 1, step: 1 });
+    const file = i === 0 ? 'test/calculator.test.js' : 'package.json';
+    const callId = `call_team_${i}_read`;
+    put('tool/call', { turn: 1, step: 1, callId, name: 'read', arguments: JSON.stringify({ file_path: path.join(WORKSPACE, file) }) });
+    put('tool/result', { turn: 1, step: 1, message: { role: 'tool', toolCallId: callId, content: [{ type: 'text', text: fs.readFileSync(path.join(WORKSPACE, file), 'utf8') }], isError: false } });
+  }
+}
+
+/** The teammates' live part: one adds divide() next to the lead's fix, one writes docs. */
+async function playTeam() {
+  const [math, docs] = TEAMMATES;
+  let seq = 200;
+  const usage = { inputTokens: 900, outputTokens: 40, cacheReadTokens: 1500, cacheWriteTokens: 0, totalTokens: 2440 };
+  const think = (mate, text) => appendTo(mate.log, {
+    type: 'assistant/message', seq: seq++, time: Date.now(),
+    data: { turn: 1, step: 1, message: { role: 'assistant', content: [{ type: 'reasoning', text }] }, usage },
+  });
+  const use = (mate, name, callId, input) => appendTo(mate.log, {
+    type: 'tool/call', seq: seq++, time: Date.now(),
+    data: { turn: 1, step: 1, callId, name, arguments: JSON.stringify(input) },
+  });
+  const done = (mate, callId, text) => appendTo(mate.log, {
+    type: 'tool/result', seq: seq++, time: Date.now(),
+    data: { turn: 1, step: 1, message: { role: 'tool', toolCallId: callId, content: [{ type: 'text', text }], isError: false } },
+  });
+  const mathPart = (async () => {
+    await sleep(DELAY / 2);
+    think(math, 'The lead is fixing add(); divide() goes after multiply(), with a guard for zero.');
+    await sleep(DELAY);
+    use(math, 'edit', 'call_math_test', {
+      file_path: path.join(WORKSPACE, 'test', 'calculator.test.js'),
+      old_string: "test('multiply', () => assert.equal(multiply(6, 7), 42));",
+      new_string: [
+        "test('multiply', () => assert.equal(multiply(6, 7), 42));",
+        "test('divide', () => assert.equal(divide(84, 2), 42));",
+      ].join('\n'),
+    });
+    done(math, 'call_math_test', 'Edited test/calculator.test.js');
+    await sleep(DELAY);
+    use(math, 'edit', 'call_math_src', {
+      file_path: path.join(WORKSPACE, 'src', 'calculator.js'),
+      old_string: 'export function multiply(a, b) {\n  return a * b;\n}',
+      new_string: [
+        'export function multiply(a, b) {',
+        '  return a * b;',
+        '}',
+        '',
+        'export function divide(a, b) {',
+        "  if (b === 0) throw new RangeError('divide by zero');",
+        '  return a / b;',
+        '}',
+      ].join('\n'),
+    });
+    done(math, 'call_math_src', 'Edited src/calculator.js');
+    await sleep(DELAY);
+    use(math, 'pwsh', 'call_math_run', { command: 'node --test test/calculator.test.js', description: 'run the calculator tests', workdir: WORKSPACE });
+    await sleep(DELAY / 2);
+    done(math, 'call_math_run', ['✔ add (1.1ms)', '✔ multiply (0.6ms)', '✔ divide (0.5ms)', '# pass 3', '[exit code: 0]'].join('\n'));
+  })();
+  const docsPart = (async () => {
+    await sleep(DELAY);
+    think(docs, 'Reading the sources first so the API section matches the exports.');
+    use(docs, 'read', 'call_docs_src', { file_path: path.join(WORKSPACE, 'src', 'calculator.js') });
+    done(docs, 'call_docs_src', fs.readFileSync(path.join(WORKSPACE, 'src', 'calculator.js'), 'utf8'));
+    await sleep(DELAY * 1.5);
+    use(docs, 'edit', 'call_docs_readme', {
+      file_path: path.join(WORKSPACE, 'README.md'),
+      old_string: 'Run `npm test` to execute the checks.',
+      new_string: [
+        'Run `npm test` to execute the checks.',
+        '',
+        '## API',
+        '',
+        '- `add(a, b)` returns the sum.',
+        '- `multiply(a, b)` returns the product.',
+        '- `divide(a, b)` returns the quotient and throws on zero.',
+      ].join('\n'),
+    });
+    done(docs, 'call_docs_readme', 'Edited README.md');
+    await sleep(DELAY);
+    think(docs, 'The README now lists every export; I will check the wording once divide() lands.');
+  })();
+  await Promise.all([mathPart, docsPart]);
+}
+
 async function play() {
   let seq = 100;
   await sleep(DELAY);
@@ -248,6 +351,12 @@ async function play() {
 }
 
 (async () => {
+  if (args.includes('--team-append')) {
+    console.log('appending the teammates\' live part…');
+    await playTeam();
+    console.log('team demo finished');
+    return;
+  }
   if (args.includes('--append')) {
     console.log('appending the synthetic live turn…');
     await play();
@@ -256,6 +365,7 @@ async function play() {
   }
   writeWorkspace();
   initialHistory();
+  if (TEAM) teamHistory();
   console.log(`demo workspace  ${WORKSPACE}`);
   console.log(`demo sessions   ${SESSIONS}`);
   console.log(`session         ${SESSION_ID}`);

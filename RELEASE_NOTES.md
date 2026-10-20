@@ -1,41 +1,61 @@
 # agenttail v0.2.0
 
-**Several agents at once, opt-in control for DeepSeek Harness, and a deeper read
-side.** The default is
-still a local, read-only viewer; control is off unless you pass
-`--allow-control --no-stream-mode`.
+**Watch several agents at once, opt-in control for DeepSeek Harness, and a
+deeper read side.** The default is still a local, read-only viewer; control is
+off unless you pass `--allow-control --no-stream-mode`.
+
+![The watch wall](docs/wall.png)
 
 ## Highlights
+
+**Several agents**
+
+- Agents overview (`Alt+A`): every agent active in the last 30 minutes across
+  dsh, Claude Code and Antigravity, grouped by git repository (worktrees
+  included), each with its own colour, branch, model and current action. The
+  activity bar and tree show the other agents on the repo you are viewing.
+- Watch wall (`Alt+W`): one live pane per agent with its own editor, console,
+  scoreboard and context meter. The stage follows the agent, replies run as
+  captions, and a conversation drawer keeps your messages and the replies.
+- A shared file tree for the team, with edit counts, a dot per agent, each
+  agent's current file, clash warnings and click-to-open; a timeline of every
+  action per agent underneath.
+- Quiet agents shrink to a slim column; a step with no output says
+  `waiting on the model` with a clock, and `stalled?` after five minutes.
+
+**Control (opt-in)**
 
 - Start and own `dsh --profile acp` sessions: workspace allowlist, live model
   catalog (including custom providers such as Ollama), permission preset and a
   first message.
 - Message input with queueing, exact-command approval cards, reject reason,
   Stop and End, all backed by ACP permissions and cancellation.
-- Owned sessions are marked ✎; sessions started elsewhere stay view-only.
-- Read side: model/provider, permission preset and approval-policy history,
-  per-turn tokens and cost in Log, a cost-per-turn sparkline, and a background
-  job list that jumps to console output.
+- Owned sessions are marked ◈; sessions started elsewhere stay view-only.
 - Switch the model between turns from the input row; pasted images are sent
   only to agents that declare image prompts (dsh does not).
-- Agents overview: every agent active in the last 30 minutes across dsh,
-  Claude Code and Antigravity, grouped by git repository (worktrees included),
-  each with its own colour, branch, model and current action. Files edited by
-  more than one agent are flagged; the activity bar and tree show the other
-  agents on the repo you are viewing. Owned sessions waiting on an approval say
-  so.
-- Agent replies render as markdown in Chat and Log; each turn in Log has a
-  summary (model, tools, files changed, failures, tokens, cost, duration).
+
+**Read side**
+
+- Model/provider, permission preset and approval-policy history, per-turn
+  tokens and cost in Log, a cost-per-turn sparkline, and a background job list
+  that jumps to console output.
+- Context meter: how much of the context window the session uses.
+- Agent replies render as markdown; each turn in Log has a summary (model,
+  tools, files changed, failures, tokens, cost, duration).
 - The agent pane can dock as a full-height column on the right
-  (`Ctrl+Shift+.`); repeated identical actions collapse into one console line.
-- Five colour themes (matrix, amber, ice, dracula, paper), a Settings modal
+  (`Ctrl+Shift+.`); repeated identical actions collapse into one console line;
+  editors wrap long lines.
+- Six colour themes (matrix, amber, red, ice, dracula, paper), a Settings modal
   behind a gear, and the agenttail wordmark in the header.
-- Security: per-start bearer token, `--allow-control` gate, stream-mode lockout,
-  no auto-approve, workspace allowlist and an audit log without message bodies.
-  Stream mode now also redacts file paths outside the workspace (they could
+
+**Security**
+
+- Per-start bearer token, `--allow-control` gate, stream-mode lockout, no
+  auto-approve, workspace allowlist and an audit log without message bodies.
+- Stream mode now also redacts file paths outside the workspace (they could
   carry the Windows user name).
-- New `control`, `agents` and control-UI test suites; all existing suites still
-  pass.
+- New `control`, `agents` and control-UI test suites; all existing suites
+  still pass.
 
 ## Compatibility
 
