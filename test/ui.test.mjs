@@ -925,6 +925,9 @@ try {
   failures.push(String(err && err.stack || err));
 } finally {
   try { if (targetId) await send('Target.closeTarget', { targetId }); } catch {}
+  // Killing the launcher alone can leave headless Edge running and holding
+  // the profile folder, so ask the browser to exit first.
+  try { if (browser) await Promise.race([send('Browser.close'), sleep(2000)]); } catch {}
   try { browser?.close(); } catch {}
   try { edge?.kill(); } catch {}
   server.kill();
