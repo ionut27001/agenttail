@@ -692,7 +692,13 @@
   #composerStatus.err { color: var(--red); }
   .control-hint { color: var(--muted); font-size: 10px; padding: 4px 2px; display: flex; gap: 6px; align-items: center; }
   .control-hint.hidden { display: none; }
-  .log-turn { border-top: 1px dashed #173a27; color: var(--amber); font-size: 10px; padding: 3px 2px; letter-spacing: .04em; }
+  .log-turn { border-top: 1px dashed #173a27; color: var(--amber); font-size: 10px; padding: 3px 2px; letter-spacing: .04em; display: flex; flex-wrap: wrap; gap: 3px 0; }
+  .log-turn > span + span::before { content: '·'; margin: 0 6px; color: #6b5420; }
+  .log-turn .lt-n { font-weight: 700; }
+  .log-turn .lt-model { color: var(--cyan); }
+  .log-turn .lt-files { color: var(--green-soft); }
+  .log-turn .lt-err { color: var(--red); }
+  .log-turn .lt-run { color: var(--green); }
   #newSessionDialog {
     width: min(620px, calc(100vw - 24px)); border: 1px solid var(--green-dim); border-radius: 4px;
     background: #050c09; color: var(--text); padding: 0; box-shadow: 0 20px 60px rgba(0,0,0,.75);
@@ -2089,6 +2095,13 @@ async function applyEvent(ev) {
         cost: 0,
         startedAt: ev.time || Date.now(),
         endedAt: null,
+        model: state.route ? state.route.model : (state.session && state.session.model) || null,
+        tools: 0,
+        commands: 0,
+        edits: 0,
+        reads: 0,
+        errors: 0,
+        files: new Set(),
       };
       state.currentTurnItem = item;
       chat.log.push(item);
@@ -2249,6 +2262,15 @@ async function applyEvent(ev) {
           text: shortLabel(logText),
           full: logText,
         });
+        const turnItem = state.currentTurnItem;
+        if (turnItem) {
+          turnItem.tools += 1;
+          if (ev.name === 'pwsh') turnItem.commands += 1;
+          else if (EDIT_TOOLS.has(ev.name)) {
+            turnItem.edits += 1;
+            if (p) turnItem.files.add(p);
+          } else if (ev.name === 'read') turnItem.reads += 1;
+        }
         if (ev.name === 'pwsh' || EDIT_TOOLS.has(ev.name)) {
           const full = ev.name === 'pwsh' ? (ev.args && ev.args.command) || '' : p || ev.name;
           chatPush({
@@ -2275,6 +2297,7 @@ async function applyEvent(ev) {
         isError: !!ev.isError,
         exitCode: exitMatch ? Number(exitMatch[1]) : null,
       });
+      if (state.currentTurnItem && (ev.isError || (exitMatch && Number(exitMatch[1]) !== 0))) state.currentTurnItem.errors += 1;
       if (ev.isError) {
         activity.kind = 'thinking';
         activity.startedAt = Date.now();
@@ -4352,13 +4375,7 @@ function renderLog() {
       continue;
     }
     if (item.kind === 'turn') {
-      const row = document.createElement('div');
-      row.className = 'log-turn';
-      const tok = tokenTotal(item.usage);
-      const dur = item.startedAt && item.endedAt ? ` · ${fmtActivityTime(item.endedAt - item.startedAt)}` : ' · running';
-      const cost = item.cost > 0 ? ` · $${item.cost.toFixed(4)}` : '';
-      row.textContent = `TURN ${item.turn} · ${item.steps} step${item.steps === 1 ? '' : 's'} · ${fmtInt(tok)} tokens${cost}${dur}`;
-      log.appendChild(row);
+      log.appendChild(turnRow(item));
       continue;
     }
     if (item.kind === 'meta') {
@@ -4374,6 +4391,41 @@ function renderLog() {
     log.appendChild(row);
   }
   if (followActive() || chat.pinned) log.scrollTop = log.scrollHeight;
+}
+
+/** One turn's summary: what the agent did, what it changed, what failed. */
+function turnRow(item) {
+  const row = document.createElement('div');
+  row.className = 'log-turn';
+  const part = (text, cls) => {
+    const span = document.createElement('span');
+    if (cls) span.className = cls;
+    span.textContent = text;
+    row.appendChild(span);
+  };
+  const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+  part(`TURN ${item.turn}`, 'lt-n');
+  if (item.model) part(item.model, 'lt-model');
+  part(plural(item.steps, 'step'));
+  if (item.tools) {
+    const kinds = [];
+    if (item.commands) kinds.push(`$ ${item.commands}`);
+    if (item.edits) kinds.push(`✎ ${item.edits}`);
+    if (item.reads) kinds.push(`👁 ${item.reads}`);
+    const other = item.tools - item.commands - item.edits - item.reads;
+    if (other > 0) kinds.push(`⚙ ${other}`);
+    part(`${plural(item.tools, 'tool')}${kinds.length ? ' (' + kinds.join(' · ') + ')' : ''}`);
+  }
+  const files = item.files ? item.files.size : 0;
+  if (files) part(plural(files, 'file') + ' changed', 'lt-files');
+  if (item.errors) part(plural(item.errors, 'failure'), 'lt-err');
+  part(`${fmtInt(tokenTotal(item.usage))} tokens`);
+  if (item.cost > 0) part(`${item.cost.toFixed(4)}`);
+  part(item.startedAt && item.endedAt ? fmtActivityTime(item.endedAt - item.startedAt) : 'running', item.endedAt ? '' : 'lt-run');
+  const lines = [`Turn ${item.turn}`];
+  if (item.files && item.files.size) lines.push('', 'Files changed:', ...[...item.files].slice(0, 20).map((f) => `  ${f}`));
+  row.title = lines.join('\n');
+  return row;
 }
 
 function chatJump(item) {
