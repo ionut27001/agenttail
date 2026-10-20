@@ -594,8 +594,22 @@
     background: var(--bg-menu); border: 1px solid var(--line); border-radius: 4px;
     box-shadow: 0 10px 34px rgba(0,0,0,.65);
   }
-  .session-item { padding: 6px 9px; border-bottom: 1px solid var(--line-soft); cursor: pointer; }
+  .session-search {
+    position: sticky; top: 0; z-index: 2; padding: 6px;
+    background: var(--bg-menu); border-bottom: 1px solid var(--line);
+  }
+  #sessionSearch {
+    display: block; width: 100%; box-sizing: border-box;
+    background: var(--bg-3); color: var(--text); border: 1px solid var(--line);
+    border-radius: 3px; padding: 4px 7px; font-family: var(--mono); font-size: 12px;
+  }
+  #sessionSearch::placeholder { color: var(--muted); }
+  #sessionSearch:focus { outline: 1px solid var(--green-dim); outline-offset: -1px; border-color: var(--green-dim); }
+  .session-item { padding: 6px 9px; border-bottom: 1px solid var(--line-soft); cursor: pointer; scroll-margin-top: 40px; }
   .session-item:hover, .session-item.active { background: var(--bg-3); }
+  .session-item.kbd-active { background: var(--bg-3); box-shadow: inset 2px 0 0 var(--green); }
+  .session-item.kbd-active .t { color: var(--green); }
+  .session-empty { padding: 10px 9px; color: var(--muted); font-size: 12px; font-style: italic; }
   .session-item .t { display: block; color: var(--green-soft); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .session-item .meta { display: block; color: var(--muted); font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
   #nickBtn { padding: 3px 6px; font-size: 13px; line-height: 1; }
@@ -1296,7 +1310,12 @@
           <span id="sessionIdText"></span>
         </button>
         <select id="sessionSelect" class="native-select" tabindex="-1" aria-hidden="true"><option value="">loading…</option></select>
-        <div id="sessionMenu" class="hidden"></div>
+        <div id="sessionMenu" class="hidden">
+          <div class="session-search">
+            <input id="sessionSearch" type="search" placeholder="filter sessions…" autocomplete="off" spellcheck="false" aria-label="Filter sessions" />
+          </div>
+          <div id="sessionEmpty" class="session-empty hidden" role="status">no matching sessions</div>
+        </div>
       </div>
       <button id="nickBtn" title="Set a local nickname for this session">✎</button>
       <button id="newSessionBtn" class="hidden" type="button" title="New controlled session">＋</button>
@@ -3600,9 +3619,97 @@ function updateSessionButton() {
   }
 }
 
+function sessionMenuSearchText(s) {
+  const ws = s.cwd
+    ? s.cwd.replace(/[\\/]+$/, '').split(/[\\/]/).filter(Boolean).pop()
+    : (s.workspace || s.workspaceName || '');
+  return [
+    s.title,
+    s.nickname,
+    s.sessionTitle,
+    ws,
+    s.model,
+    s.provider && s.model ? `${s.provider}/${s.model}` : '',
+    shortId(s.id),
+    s.id,
+    s.state,
+    s.stateDetail,
+  ].filter(Boolean).join(' ').toLowerCase();
+}
+
+function setSessionMenuActive(row, scroll) {
+  const menu = $('sessionMenu');
+  for (const el of menu.querySelectorAll('.session-item.kbd-active')) el.classList.remove('kbd-active');
+  if (!row) return;
+  row.classList.add('kbd-active');
+  if (scroll !== false && typeof row.scrollIntoView === 'function') {
+    try { row.scrollIntoView({ block: 'nearest' }); } catch { /* ignore */ }
+  }
+}
+
+function visibleSessionRows() {
+  return [...$('sessionMenu').querySelectorAll('.session-item[data-session-id]:not(.hidden)')];
+}
+
+function applySessionFilter(text) {
+  const input = $('sessionSearch');
+  const value = text === undefined ? (input ? input.value : '') : String(text);
+  if (input && input.value !== value) input.value = value;
+  const terms = value.toLowerCase().split(/\s+/).filter(Boolean);
+  let first = null;
+  for (const row of $('sessionMenu').querySelectorAll('.session-item')) {
+    if (!row.dataset.sessionId) {
+      row.classList.remove('hidden');
+      continue;
+    }
+    const hit = terms.every((term) => (row._searchText || '').includes(term));
+    row.classList.toggle('hidden', !hit);
+    if (hit && !first) first = row;
+  }
+  const empty = $('sessionEmpty');
+  if (empty) empty.classList.toggle('hidden', !!first);
+  setSessionMenuActive(first, true);
+}
+
+function moveSessionMenuActive(delta) {
+  const rows = visibleSessionRows();
+  if (!rows.length) {
+    setSessionMenuActive(null);
+    return;
+  }
+  let index = rows.findIndex((row) => row.classList.contains('kbd-active'));
+  if (index < 0) index = delta > 0 ? -1 : 0;
+  const next = Math.max(0, Math.min(rows.length - 1, index + delta));
+  setSessionMenuActive(rows[next], true);
+}
+
+function activeSessionRow() {
+  return visibleSessionRows().find((row) => row.classList.contains('kbd-active')) || null;
+}
+
+function openSessionMenu() {
+  const menu = $('sessionMenu');
+  menu.classList.remove('hidden');
+  const input = $('sessionSearch');
+  applySessionFilter(input ? input.value : '');
+  if (input) input.focus();
+}
+
+function closeSessionMenu() {
+  const menu = $('sessionMenu');
+  const wasOpen = !menu.classList.contains('hidden');
+  menu.classList.add('hidden');
+  if (wasOpen) {
+    const input = $('sessionSearch');
+    if (input) input.value = '';
+    applySessionFilter('');
+  }
+  setSessionMenuActive(null);
+}
+
 function buildSessionMenu(list, emptyCount) {
   const menu = $('sessionMenu');
-  menu.innerHTML = '';
+  for (const row of [...menu.querySelectorAll('.session-item')]) row.remove();
   const addRow = (text, meta, title, onPick, active) => {
     const row = document.createElement('div');
     row.className = `session-item${active ? ' active' : ''}`;
@@ -3617,6 +3724,7 @@ function buildSessionMenu(list, emptyCount) {
     row.addEventListener('mousedown', (e) => e.preventDefault());
     row.addEventListener('click', onPick);
     menu.appendChild(row);
+    return row;
   };
   for (const s of list) {
     const ws = s.cwd ? s.cwd.replace(/[\\/]+$/, '').split(/[\\/]/).filter(Boolean).pop() : '';
@@ -3632,13 +3740,17 @@ function buildSessionMenu(list, emptyCount) {
       s.cost !== null && s.cost !== undefined ? `$${s.cost.toFixed(3)}` : '',
       s.stateDetail || '',
     ].filter(Boolean).join(' · ');
-    addRow(`${dotChar(s.state)} ${s.owned ? '✎ ' : ''}${s.title || s.id}`, meta, sessionFullTitle(s), () => {
+    const row = addRow(`${dotChar(s.state)} ${s.owned ? '✎ ' : ''}${s.title || s.id}`, meta, sessionFullTitle(s), () => {
       $('sessionSelect').value = s.id;
       $('sessionSelect').dispatchEvent(new Event('change'));
-      $('sessionMenu').classList.add('hidden');
+      closeSessionMenu();
       updateSessionButton();
     }, s.id === $('sessionSelect').value);
+    row.dataset.sessionId = s.id;
+    row._searchText = sessionMenuSearchText(s);
   }
+  const empty = $('sessionEmpty');
+  if (empty) menu.appendChild(empty);
   if (emptyCount) {
     addRow(
       state.showEmpty ? '⌃ hide empty sessions' : `⌄ show empty sessions (${emptyCount})`,
@@ -3647,11 +3759,12 @@ function buildSessionMenu(list, emptyCount) {
       () => {
         $('sessionSelect').value = state.showEmpty ? '__hide_empty__' : '__show_empty__';
         $('sessionSelect').dispatchEvent(new Event('change'));
-        $('sessionMenu').classList.add('hidden');
+        closeSessionMenu();
       },
       false,
     );
   }
+  applySessionFilter();
 }
 
 async function loadSessions(initial) {
@@ -3736,17 +3849,53 @@ $('sessionSelect').addEventListener('change', (e) => {
   if (value) openSession(value);
 });
 
+$('sessionSearch').addEventListener('input', (e) => applySessionFilter(e.target.value));
+$('sessionSearch').addEventListener('search', (e) => applySessionFilter(e.target.value));
 $('sessionButton').addEventListener('click', (e) => {
   e.stopPropagation();
-  $('sessionMenu').classList.toggle('hidden');
+  if ($('sessionMenu').classList.contains('hidden')) openSessionMenu();
+  else closeSessionMenu();
 });
-$('sessionMenu').addEventListener('mousedown', (e) => e.preventDefault());
+$('sessionMenu').addEventListener('mousedown', (e) => {
+  if (!e.target.closest('#sessionSearch')) e.preventDefault();
+});
 document.addEventListener('click', (e) => {
-  if (!e.target.closest('#sessionPicker')) $('sessionMenu').classList.add('hidden');
+  if (!e.target.closest('#sessionPicker')) closeSessionMenu();
 });
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') $('sessionMenu').classList.add('hidden');
+  if ($('sessionMenu').classList.contains('hidden')) return;
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    closeSessionMenu();
+    return;
+  }
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    moveSessionMenuActive(e.key === 'ArrowDown' ? 1 : -1);
+    return;
+  }
+  if (e.key === 'Enter') {
+    const row = activeSessionRow();
+    if (!row) return;
+    e.preventDefault();
+    row.click();
+  }
 });
+
+window.__picker = {
+  open() {
+    openSessionMenu();
+  },
+  filter(text) {
+    const value = text === null || text === undefined ? '' : String(text);
+    const input = $('sessionSearch');
+    if (input) input.value = value;
+    applySessionFilter(value);
+  },
+  visibleIds() {
+    return visibleSessionRows().map((row) => row.dataset.sessionId);
+  },
+};
 
 $('nickBtn').addEventListener('click', async () => {
   if (!state.sessionId) return;
