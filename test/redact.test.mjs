@@ -299,6 +299,14 @@ try {
   for (const sample of [`C:\\Users\\${uname}\\x.txt`, `/c/Users/${uname}/x`, `c:\\users\\${uname}\\y`]) {
     check(!r.text(sample).toLowerCase().includes(uname.toLowerCase()), `path form redacted: ${sample}`, r.text(sample));
   }
+  for (const outside of [`C:/Users/${uname}/AppData/Local/Temp/x.cjs`, `C:\\Users\\${uname}\\notes.md`]) {
+    const call = r.event({ t: 'call', name: 'edit', args: { file_path: outside, old_string: 'a', new_string: 'b' } });
+    check(!call.args.file_path.toLowerCase().includes(uname.toLowerCase()), `file paths outside the workspace are redacted: ${outside}`, call.args.file_path);
+    const result = r.event({ t: 'result', text: 'ok', meta: { path: outside } });
+    check(!result.meta.path.toLowerCase().includes(uname.toLowerCase()), `result paths outside the workspace are redacted: ${outside}`, result.meta.path);
+  }
+  const inside = r.event({ t: 'call', name: 'edit', args: { file_path: 'src/app.js', old_string: 'a', new_string: 'b' } });
+  check(inside.args.file_path === 'src/app.js', 'workspace-relative file paths stay as they are');
   check(!r.text('S-1-5-21-1-2-3-1001').includes('S-1-5-21'), 'SID redacted');
   check(!r.text('10.0.0.5').includes('10.0.0.5'), 'IPv4 redacted');
   check(!r.text('http://127.0.0.1:8787').includes('127.0.0.1') && r.text('http://127.0.0.1:8787').includes(':8787'), 'IPv4 in a URL is redacted but the port remains');
