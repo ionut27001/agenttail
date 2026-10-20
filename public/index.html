@@ -569,6 +569,7 @@
   #jobsMenu .job { display: flex; align-items: center; gap: 6px; padding: 3px 5px; color: var(--green-soft); font-size: 11px; }
   #jobsMenu .job .lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
   #jobsMenu .job .t { color: var(--muted); flex: none; }
+  #jobsMenu .job-head { margin: 4px 5px 2px; padding-top: 5px; border-top: 1px solid var(--line-soft); color: var(--muted); font-size: 9px; letter-spacing: .12em; }
   .tdots { display: inline-flex; gap: 2px; margin-left: 3px; vertical-align: middle; }
   .tdots i { width: 3px; height: 3px; border-radius: 50%; background: var(--act-color); animation: tdot 1s infinite; }
   .tdots i:nth-child(2) { animation-delay: .15s; }
@@ -692,15 +693,13 @@
   .dot.off, .dot.finished { background: var(--bg-dot); }
   .dot.idle { background: var(--amber); box-shadow: 0 0 6px color-mix(in srgb, var(--amber) 50%, transparent); }
   @keyframes pulse { 50% { opacity: .35; } }
-  .fx-speed, .fx-intensity { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 9.5px; letter-spacing: .1em; }
-  .fx-speed input, .fx-intensity input { width: 96px; }
+  .fx-speed { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 9.5px; letter-spacing: .1em; }
+  .fx-speed input { width: 96px; }
   input[type=range] { width: 92px; accent-color: var(--green); height: 14px; }
   #speedVal { color: var(--green-soft); width: 34px; display: inline-block; font-variant-numeric: tabular-nums; }
   .fx-scale { display: flex; align-items: center; gap: 6px; color: var(--green); font-size: 11px; padding-bottom: 5px; border-bottom: 1px solid var(--line-soft); }
   #uiScale, #themeSelect, #currencySelect { background: var(--bg-3); color: var(--green-soft); border: 1px solid var(--line); font-family: var(--mono); font-size: 11px; padding: 1px 4px; }
   .fx-sep { height: 1px; background: var(--line-soft); margin: 3px 0; }
-  .menu-stats, .menu-session { color: var(--muted); font-size: 9px; letter-spacing: .04em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  #mSession { color: var(--green-soft); }
   button {
     font-family: var(--mono); font-size: 10px; letter-spacing: .1em;
     background: var(--bg-3); color: var(--green-soft); border: 1px solid var(--line);
@@ -899,13 +898,14 @@
   #fxPanel .fx-section { color: var(--muted); font-size: 10px; letter-spacing: .12em; margin-top: 4px; }
   #fxPanel .fx-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px 14px; }
   #fxPanel label { display: flex; align-items: center; gap: 7px; color: var(--green-soft); font-size: 11px; cursor: pointer; }
-  #fxPanel .fx-speed input, #fxPanel .fx-intensity input { flex: 1; }
+  #fxPanel .fx-speed input { flex: 1; }
   #fxPanel input { accent-color: var(--green); }
-  #fxPanel .fx-intensity { gap: 6px; color: var(--green); border-bottom: 1px solid var(--line-soft); padding-bottom: 6px; }
   #fxPanel .fx-speed { gap: 6px; color: var(--green); }
-  #fxIntensityVal { width: 30px; text-align: right; color: var(--green-soft); }
+  #fxPanel .fx-more { border-top: 1px solid var(--line-soft); padding-top: 5px; }
+  #fxPanel .fx-more summary { color: var(--muted); font-size: 10px; letter-spacing: .1em; cursor: pointer; }
+  #fxPanel .fx-more .fx-grid { margin-top: 7px; }
   #replayBtn, #fxHelp { width: 100%; }
-  #fxIntensityVal, #speedVal { text-align: right; }
+  #speedVal { text-align: right; }
 
   /* ---------- keyboard shortcuts ---------- */
   #helpBtn { padding: 4px 8px; font-size: 12px; line-height: 1; }
@@ -987,12 +987,9 @@
   #terminalPane.glitch { animation: glitch .45s steps(2, end); box-shadow: inset 0 0 34px color-mix(in srgb, var(--glitch) 35%, transparent); }
   body:not(.fx-glitch) #terminalPane.glitch { animation: none; box-shadow: none; }
 
-  /* ---------- FX: sparkline + odometer ---------- */
+  /* ---------- FX: sparkline ---------- */
   .metric.rate canvas { display: block; margin-top: 2px; }
   body:not(.fx-spark) .metric.rate { display: none; }
-  #mRon { color: var(--cyan); font-variant-numeric: tabular-nums; }
-  .odo.roll { animation: odo .4s ease-out; }
-  @keyframes odo { 0% { transform: translateY(5px); opacity: .35; } 100% { transform: translateY(0); opacity: 1; } }
 
   /* ---------- FX: tree heat ---------- */
   body.fx-heat .tree-row.touched { background: color-mix(in srgb, var(--heat, var(--green)) 15%, transparent); }
@@ -1559,7 +1556,7 @@
           <div id="sessionEmpty" class="session-empty hidden" role="status">no matching sessions</div>
         </div>
       </div>
-      <button id="nickBtn" title="Set a local nickname for this session">✎</button>
+      <button id="nickBtn" title="Set a local nickname for this session">🏷</button>
       <button id="newSessionBtn" class="hidden" type="button" title="New controlled session">＋</button>
     </div>
     <div class="hgroup hmiddle">
@@ -1625,20 +1622,22 @@
         <label title="Notify when an agent waits for an approval or stops working while this tab is in the background"><input type="checkbox" id="notifyBox" /> desktop notifications</label>
         </div>
         <div class="fx-section">EFFECTS</div>
-        <label class="fx-intensity">intensity <input id="fxIntensity" type="range" min="0" max="100" step="5" value="40" /><span id="fxIntensityVal">40%</span></label>
         <div class="fx-grid">
         <label><input type="checkbox" data-fx="boot" checked /> boot sequence</label>
-        <label><input type="checkbox" data-fx="spark" checked /> sparkline + odometer</label>
+        <label><input type="checkbox" data-fx="spark" checked /> sparkline</label>
         <label><input type="checkbox" data-fx="cursor" checked /> block cursor</label>
+        </div>
+        <details class="fx-more">
+        <summary>more effects</summary>
+        <div class="fx-grid">
         <label><input type="checkbox" data-fx="crt" /> CRT scanlines</label>
         <label><input type="checkbox" data-fx="glitch" /> error glitch</label>
         <label><input type="checkbox" data-fx="matrix" /> matrix rain</label>
         </div>
+        </details>
         <div class="fx-sep"></div>
         <button id="replayBtn" disabled title="Replay a finished session from the start">REPLAY</button>
         <button id="fxHelp" type="button" title="Keyboard shortcuts (?)">KEYBOARD SHORTCUTS (?)</button>
-        <div class="menu-stats"><span id="mElapsed">0:00:00</span> · <span id="mRon" class="odo">—</span></div>
-        <div class="menu-session"><span id="mSession">—</span></div>
       </div>
     </div>
   </header>
@@ -1697,10 +1696,9 @@
   <section id="bottomArea">
     <section id="terminalPane">
       <canvas id="matrix"></canvas>
-      <div class="panel-title">
+      <div class="panel-title" title="click a truncated block to expand">
         <span>CONSOLE</span>
         <span id="consoleActive" class="pane-tag hidden">● active</span>
-        <span class="dim">click a truncated block to expand</span>
         <span id="runStatus" class="hidden"><i class="spinner"></i><span id="runLabel"></span><span id="runElapsed"></span><span id="runProgress"><b></b></span></span>
       </div>
       <div id="jobBar" class="hidden"><span class="spin">▶</span><span id="jobBarText"></span></div>
@@ -2302,7 +2300,7 @@ function updateBadge(p, extra) {
   if (!p) { badge.classList.add('hidden'); return; }
   const meta = fileMeta.get(p);
   badge.classList.remove('hidden');
-  badge.textContent = `${p}${meta && meta.touched ? `  ·  ${meta.touched} edit${meta.touched === 1 ? '' : 's'}` : ''}${extra ? '  ·  ' + extra : ''}  ·  READ-ONLY`;
+  badge.textContent = `${p}${meta && meta.touched ? `  ·  ${meta.touched} edit${meta.touched === 1 ? '' : 's'}` : ''}${extra ? '  ·  ' + extra : ''}`;
 }
 
 async function showFile(p, key) {
@@ -2575,13 +2573,11 @@ function perUsd() {
   if (currency === 'RON') return state.prices?.ronPerUsd || CURRENCY_RATES.RON;
   return CURRENCY_RATES[currency] || 1;
 }
-function fmtCost(usd) {
+function approxCostLine(usd) {
+  if (currency === 'USD') return '';
   const value = usd * perUsd();
-  return currency === 'USD' ? `$${value.toFixed(2)}` : `${currency} ${value.toFixed(2)}`;
-}
-function costTitle(usd) {
-  const exact = `$${usd.toFixed(4)} estimated`;
-  return currency === 'USD' ? exact : `${exact} · approx. ${perUsd()} ${currency} per USD`;
+  const amount = currency === 'RON' ? `${value.toFixed(2)} RON` : `${currency === 'EUR' ? '€' : '£'}${value.toFixed(2)}`;
+  return `≈ ${amount} (approx. rate)`;
 }
 const currencySelect = $('currencySelect');
 if (currencySelect) {
@@ -2637,14 +2633,6 @@ function fmtInt(n) {
   if (n >= 10000) return (n / 1000).toFixed(1) + 'k';
   return n.toLocaleString('en-US');
 }
-function fmtDuration(ms) {
-  const s = Math.max(0, Math.floor(ms / 1000));
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const sec = s % 60;
-  return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
-}
-
 function renderStats() {
   const s = state.stats;
   $('mTokens').textContent = fmtInt(s.input + s.output + s.cacheRead + s.cacheWrite);
@@ -2668,26 +2656,14 @@ function renderStats() {
   }
   const spark = $('spark');
   if (spark) spark.title = 'tokens per second (recent activity)';
+  const approx = state.prices ? approxCostLine(s.cost) : '';
   if (!state.prices) {
     $('mCost').innerHTML = '—<span class="period" id="mPeriod">TOKENS ONLY</span>';
     $('mCost').title = 'No cost estimate for this source; token counts only.';
   } else {
     $('mCost').innerHTML = `$${s.cost < 0.0001 && s.cost > 0 ? s.cost.toFixed(6) : s.cost.toFixed(4)}<span class="period" id="mPeriod">${s.peak ? 'peak' : 'low'}</span>`;
-    $('mCost').title = `${state.prices.model} · $${s.cost.toFixed(4)} estimated · cache hit $${state.prices.offPeak.cacheHit}/M, cache miss $${state.prices.offPeak.cacheMiss}/M, output $${state.prices.offPeak.output}/M off-peak. DeepSeek charges 2× during peak hours; this estimate uses the band of each reply ("low" = off-peak).`;
+    $('mCost').title = `${state.prices.model} · $${s.cost.toFixed(4)} estimated · cache hit $${state.prices.offPeak.cacheHit}/M, cache miss $${state.prices.offPeak.cacheMiss}/M, output $${state.prices.offPeak.output}/M off-peak. DeepSeek charges 2× during peak hours; this estimate uses the band of each reply ("low" = off-peak).${approx ? '\n' + approx : ''}`;
   }
-  const ronEl = $('mRon');
-  if (ronEl) {
-    const text = state.prices ? fmtCost(s.cost) : '—';
-    if (ronEl.textContent !== text) {
-      ronEl.textContent = text;
-      ronEl.classList.remove('roll');
-      void ronEl.offsetWidth;
-      ronEl.classList.add('roll');
-    }
-    ronEl.title = state.prices ? costTitle(s.cost) : 'no cost estimate for this source';
-  }
-  $('mSession').textContent = shortId(state.sessionId) || '—';
-  $('mSession').title = [state.sessionId, state.session?.title, state.session?.cwd].filter(Boolean).join('\n') || '';
   updateStatsChip();
 }
 
@@ -2732,22 +2708,15 @@ function renderSys(s) {
   }
 }
 
-function updateStatsChip() {  const chip = $('statsChip');
+function updateStatsChip() {
+  const chip = $('statsChip');
   if (!chip) return;
   const s = state.stats;
-  const cost = state.prices ? `${fmtCost(s.cost)} ($${s.cost.toFixed(4)})` : 'no cost estimate';
-  const elapsed = $('mElapsed') ? $('mElapsed').textContent : '';
-  chip.title = `${s.steps} steps · ${(s.input + s.output + s.cacheRead + s.cacheWrite).toLocaleString('en-US')} tokens · ${cost} · ${elapsed}`;
+  const cost = state.prices ? `$${s.cost.toFixed(4)} estimated` : 'no cost estimate';
+  const approx = state.prices ? approxCostLine(s.cost) : '';
+  const base = [`${s.steps} steps`, `${(s.input + s.output + s.cacheRead + s.cacheWrite).toLocaleString('en-US')} tokens`, cost].join(' · ');
+  chip.title = approx ? `${base}\n${approx}` : base;
 }
-
-function tickElapsed() {
-  if (!state.session) return;
-  const start = state.session.createdAt || 0;
-  const end = state.live ? Date.now() : (state.stats.lastTime || Date.now());
-  $('mElapsed').textContent = fmtDuration(end - start);
-  updateStatsChip();
-}
-setInterval(tickElapsed, 1000);
 
 /* ---------- terminal rendering ---------- */
 function termPrompt(workdir, command, description, agent) {
@@ -3591,7 +3560,6 @@ async function openSession(id) {
   updateSessionButton();
   location.hash = state.source === 'dsh' ? (id || '') : `${state.source}:${id}`;
   $('wsPath').textContent = '';
-  $('mSession').textContent = shortId(id) || '—';
   statusLabel();
 
   const qs = new URLSearchParams({ source: state.source });
@@ -3636,10 +3604,7 @@ async function openSession(id) {
     state.stats.lastTime = data.session.createdAt || 0;
     $('wsPath').textContent = data.session.cwd || '';
     $('wsPath').title = data.session.cwd || '';
-    $('mSession').title = [data.session.id, data.session.title, data.session.cwd].filter(Boolean).join('\n');
-    $('mSession').textContent = shortId(data.session.id);
     renderStats();
-    tickElapsed();
     updateActivityBar();
   });
 
@@ -3846,7 +3811,7 @@ function shortId(id) {
 function sessionOption(s) {
   const title = String(s.title || '').replace(/\s+/g, ' ').trim().slice(0, 60) || s.id.slice(0, 8);
   const ws = s.cwd ? s.cwd.replace(/[\\/]+$/, '').split(/[\\/]/).filter(Boolean).pop() : '';
-  const bits = [`${dotChar(s.state)} ${title}${s.owned ? ' ✎' : ''}`];
+  const bits = [`${dotChar(s.state)} ${title}${s.owned ? ' ◈' : ''}`];
   if (ws) bits.push(ws);
   bits.push(shortId(s.id));
   bits.push(fmtRelative(s.lastEventAt || s.mtimeMs));
@@ -3863,7 +3828,7 @@ function sessionOption(s) {
     s.title || s.id,
     s.cwd || '',
     `id ${s.id}`,
-    s.owned ? 'owned by agenttail (✎)' : (s.source === 'dsh' ? 'started outside agenttail, view only' : ''),
+    s.owned ? 'owned by agenttail (◈)' : (s.source === 'dsh' ? 'started outside agenttail, view only' : ''),
     `state: ${s.state}${s.stateDetail ? ' — ' + s.stateDetail : ''}`,
     s.model ? `model: ${s.provider ? s.provider + '/' : ''}${s.model}` : '',
     s.preset ? `permission: ${s.preset}` : '',
@@ -3882,7 +3847,7 @@ function sessionFullTitle(s) {
     s.title || s.id,
     s.cwd || '',
     `id ${s.id}`,
-    s.owned ? 'owned by agenttail (✎)' : (s.source === 'dsh' ? 'started outside agenttail, view only' : ''),
+    s.owned ? 'owned by agenttail (◈)' : (s.source === 'dsh' ? 'started outside agenttail, view only' : ''),
     `state: ${s.state}${s.stateDetail ? ' — ' + s.stateDetail : ''}`,
     s.model ? `model: ${s.provider ? s.provider + '/' : ''}${s.model}` : '',
     s.preset ? `permission: ${s.preset}` : '',
@@ -3904,7 +3869,7 @@ function updateSessionButton() {
   if (s) {
     dot.textContent = dotChar(s.state);
     dot.style.color = s.state === 'live' ? 'var(--green)' : s.state === 'idle' ? 'var(--amber)' : 'var(--muted)';
-    title.textContent = `${s.owned ? '✎ ' : ''}${String(s.title || s.id).replace(/\s+/g, ' ').trim() || s.id}`;
+    title.textContent = `${s.owned ? '◈ ' : ''}${String(s.title || s.id).replace(/\s+/g, ' ').trim() || s.id}`;
     sid.textContent = shortId(s.id);
     $('sessionButton').title = sessionFullTitle(s);
   } else {
@@ -4027,7 +3992,7 @@ function buildSessionMenu(list, emptyCount) {
     const meta = [
       ws,
       shortId(s.id),
-      s.owned ? '✎ owned' : 'view only',
+      s.owned ? '◈ owned' : 'view only',
       s.model ? `${s.provider ? s.provider + '/' : ''}${s.model}` : '',
       s.preset || '',
       fmtRelative(s.lastEventAt || s.mtimeMs),
@@ -4036,7 +4001,7 @@ function buildSessionMenu(list, emptyCount) {
       s.cost !== null && s.cost !== undefined ? `$${s.cost.toFixed(3)}` : '',
       s.stateDetail || '',
     ].filter(Boolean).join(' · ');
-    const row = addRow(`${dotChar(s.state)} ${s.owned ? '✎ ' : ''}${s.title || s.id}`, meta, sessionFullTitle(s), () => {
+    const row = addRow(`${dotChar(s.state)} ${s.owned ? '◈ ' : ''}${s.title || s.id}`, meta, sessionFullTitle(s), () => {
       $('sessionSelect').value = s.id;
       $('sessionSelect').dispatchEvent(new Event('change'));
       closeSessionMenu();
@@ -4115,7 +4080,6 @@ async function loadSessions(initial) {
     closeStream();
     resetView();
     document.body.classList.remove('loading-session');
-    $('mSession').textContent = '—';
     return;
   }
 
@@ -4216,7 +4180,6 @@ $('sourceSelect').addEventListener('change', (e) => {
   sessionKey = '';
   closeStream();
   resetView();
-  $('mSession').textContent = '—';
   loadSessions(true);
 });
 
@@ -4418,10 +4381,6 @@ function triggerGlitch() {
 function applyFx(save = true) {
   const intensity = Math.max(0, Math.min(100, Number(fx.intensity) || 0));
   document.documentElement.style.setProperty('--fx', (intensity / 100).toFixed(2));
-  const slider = $('fxIntensity');
-  if (slider) slider.value = String(intensity);
-  const label = $('fxIntensityVal');
-  if (label) label.textContent = `${intensity}%`;
   for (const key of Object.keys(FX_DEFAULTS)) {
     if (typeof FX_DEFAULTS[key] !== 'boolean') continue;
     document.body.classList.toggle(`fx-${key}`, !!fx[key]);
@@ -4541,10 +4500,6 @@ document.addEventListener('keydown', (e) => {
   setHelpOpen(true);
 });
 window.__help = { open: () => setHelpOpen(true), close: () => setHelpOpen(false) };
-$('fxIntensity').addEventListener('input', (e) => {
-  fx.intensity = Number(e.target.value);
-  applyFx();
-});
 
 document.addEventListener('visibilitychange', () => {
   document.body.classList.toggle('tab-hidden', document.hidden);
@@ -4946,17 +4901,16 @@ function updateJobsChip() {
     .filter((job) => now - (job.endedAt || 0) < 5 * 60_000)
     .slice(-8)
     .reverse();
-  if (!running.length && !finished.length) {
+  if (!running.length) {
     btn.classList.add('hidden');
+    btn.textContent = '';
     menu.classList.add('hidden');
-    return;
+  } else {
+    btn.classList.remove('hidden');
+    btn.textContent = `${running.length} job${running.length === 1 ? '' : 's'} running`;
   }
-  btn.classList.remove('hidden');
-  btn.textContent = running.length
-    ? `${running.length} job${running.length === 1 ? '' : 's'} running · ${fmtActivityTime(Math.max(...running.map((j) => j.elapsed)))}`
-    : `${finished.length} recent job${finished.length === 1 ? '' : 's'}`;
   menu.innerHTML = '';
-  for (const job of [...running, ...finished]) {
+  const addJobRow = (job) => {
     const row = document.createElement('div');
     row.className = 'job';
     row.style.cursor = 'pointer';
@@ -4979,6 +4933,14 @@ function updateJobsChip() {
     row.append(icon, label, stateText);
     row.addEventListener('click', () => jumpToJob(job));
     menu.appendChild(row);
+  };
+  for (const job of running) addJobRow(job);
+  if (finished.length) {
+    const head = document.createElement('div');
+    head.className = 'job-head';
+    head.textContent = 'finished';
+    menu.appendChild(head);
+    for (const job of finished) addJobRow(job);
   }
 }
 
@@ -7296,7 +7258,7 @@ termObserver.observe($('term'));
         const meta = el('div', 'ag-meta');
         if (agent.repo && agent.repo.branch) meta.appendChild(el('span', 'br', `⎇ ${agent.repo.branch}${agent.repo.removed ? ' (worktree removed)' : agent.repo.worktree ? ' (worktree)' : ''}`));
         if (agent.model) meta.appendChild(el('span', '', agent.model));
-        if (agent.owned) meta.appendChild(el('span', '', '✎ owned'));
+        if (agent.owned) meta.appendChild(el('span', '', '◈ owned'));
         if (agent.approvals) meta.appendChild(el('span', 'ag-wait', `⚠ ${agent.approvals} approval${agent.approvals === 1 ? '' : 's'} waiting`));
         meta.appendChild(el('span', '', ago(agent.lastEventAt)));
         card.appendChild(meta);
@@ -7356,8 +7318,8 @@ termObserver.observe($('term'));
   $a('agentsBackdrop').addEventListener('click', () => setOpen(false));
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && agents.open) setOpen(false);
-    // Alt+A (Ctrl+Shift+A is the browser's tab search in Chrome and Edge).
-    if ((e.altKey && !e.ctrlKey && !e.metaKey && (e.code === 'KeyA' || e.key === 'a' || e.key === 'A')) || (e.ctrlKey && e.shiftKey && !e.altKey && (e.key === 'A' || e.key === 'a'))) {
+    // Alt+A opens the agents overview.
+    if (e.altKey && !e.ctrlKey && !e.metaKey && (e.code === 'KeyA' || e.key === 'a' || e.key === 'A')) {
       e.preventDefault();
       setOpen(!agents.open);
     }

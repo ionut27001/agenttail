@@ -189,7 +189,7 @@ Every control POST needs `Authorization: Bearer <token>` in addition to the exis
 - **Input** — Enter sends; Shift+Enter adds a newline. A message sent during a running turn is queued and sent when that turn ends. The model picker next to the input switches the model for the next turn (the live dsh catalog). Pasted images are sent only when the agent declares image prompts; dsh's ACP does not, so agenttail says so instead of sending them.
 - **Approvals** — the exact command or diff appears in the chat and the activity bar, with Approve and Reject. Reject accepts an optional short reason. agenttail never auto-approves.
 - **Stop** — cancels the running turn and kills the tool process. **End** closes the owned session; it becomes view-only.
-- **Owned vs view-only** — sessions started by agenttail are marked ✎. Sessions started by the Desktop app or another process are view-only: dsh does not expose a live attach surface, and a second process cannot resume an active session (`session … is already owned by an active write handle`).
+- **Owned vs view-only** — sessions started by agenttail are marked ◈. Sessions started by the Desktop app or another process are view-only: dsh does not expose a live attach surface, and a second process cannot resume an active session (`session … is already owned by an active write handle`).
 
 Sessions started by agenttail are ordinary dsh sessions under `~/.dsh/sessions`; after agenttail stops they remain visible as view-only sessions. The dsh log is still the read side's source of truth: model/provider, permission preset, approval-policy changes, per-turn tokens and cost, and background jobs come from the log.
 
