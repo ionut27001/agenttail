@@ -1,6 +1,12 @@
 // Minimal fake `dsh --profile acp` server for control tests.
 // Speaks newline-delimited JSON-RPC over stdio and writes a real dsh-shaped
 // session log so the viewer's read side is exercised too.
+//
+// FAKE_ACP_PROFILE is a comma list of behaviours the unit tests switch on:
+//   allow-always-first   permission options listed allow_always, allow_once, reject_once
+//   only-allow-always    permission options are allow_always and reject_once only
+//   reject-always-only   permission options are allow_once and reject_always only
+//   reject-always-first  permission options listed reject_always, reject_once, allow_once
 import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
@@ -10,6 +16,7 @@ const SESSION_ID = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
 const MODEL_VALUE = JSON.stringify(['ollama', 'fake-model']);
 const OTHER_MODEL = JSON.stringify(['deepseek-official', 'deepseek-v4-flash']);
 let currentModel = MODEL_VALUE;
+const PROFILE = new Set(String(process.env.FAKE_ACP_PROFILE || '').split(',').map((x) => x.trim()).filter(Boolean));
 const SESSIONS_ROOT = process.env.DSH_SESSIONS_ROOT || path.join(process.cwd(), 'sessions');
 let session = null;
 let pendingPrompt = null;
@@ -74,6 +81,18 @@ function createSession(cwd) {
   return { sessionId: SESSION_ID, configOptions: modelOptions() };
 }
 
+function permissionOptions() {
+  const allowOnce = { optionId: 'allow-once', name: 'Allow once', kind: 'allow_once' };
+  const allowAlways = { optionId: 'allow-always', name: 'Always allow', kind: 'allow_always' };
+  const rejectOnce = { optionId: 'reject-once', name: 'Reject', kind: 'reject_once' };
+  const rejectAlways = { optionId: 'reject-always', name: 'Always reject', kind: 'reject_always' };
+  if (PROFILE.has('allow-always-first')) return [allowAlways, allowOnce, rejectOnce];
+  if (PROFILE.has('only-allow-always')) return [allowAlways, rejectOnce];
+  if (PROFILE.has('reject-always-only')) return [allowOnce, rejectAlways];
+  if (PROFILE.has('reject-always-first')) return [rejectAlways, rejectOnce, allowOnce];
+  return [allowOnce, rejectOnce];
+}
+
 function startTurn(sessionId, text) {
   turn += 1;
   const callId = `call_fake_${turn}`;
@@ -102,10 +121,7 @@ function startTurn(sessionId, text) {
     params: {
       sessionId,
       toolCall: { toolCallId: callId },
-      options: [
-        { optionId: 'allow-once', name: 'Allow once', kind: 'allow_once' },
-        { optionId: 'reject-once', name: 'Reject', kind: 'reject_once' },
-      ],
+      options: permissionOptions(),
     },
   });
 }
