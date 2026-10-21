@@ -126,9 +126,19 @@
       }
       return pick;
     }
+    let human = false;
+    let queued = null;
+    /** Your move: the queued turn, or straight on; null when it runs into something. */
+    function humanStep() {
+      const d = queued || dir;
+      queued = null;
+      const n = { x: body[0].x + d.x, y: body[0].y + d.y };
+      const blocked = new Set(body.slice(0, -1).map(key));
+      return inside(n) && !blocked.has(key(n)) ? d : null;
+    }
     function tick() {
       if (dead) { dead -= 1; if (!dead) reset(); return; }
-      const d = choose();
+      const d = human ? humanStep() : choose();
       if (!d) { dead = 10; best = Math.max(best, eaten); return; }
       dir = d;
       const head = { x: body[0].x + d.x, y: body[0].y + d.y };
@@ -144,9 +154,19 @@
     const cx = (p) => p.x * CELL + CELL / 2;
     const cy = (p) => OY + p.y * CELL + CELL / 2;
     reset();
+    const KEYS = { ArrowRight: 0, d: 0, ArrowDown: 1, s: 1, ArrowLeft: 2, a: 2, ArrowUp: 3, w: 3 };
     return {
       name: 'snake',
-      step(dt) { timer += dt; while (timer > 0.1) { timer -= 0.1; tick(); } },
+      controls: '← ↑ → ↓',
+      set human(on) { human = !!on; queued = null; },
+      input(type, k) {
+        if (type !== 'down' || !(k in KEYS)) return false;
+        const d = DIRS[KEYS[k]];
+        if (d.x !== -dir.x || d.y !== -dir.y) queued = d;
+        return true;
+      },
+      score: () => eaten,
+      step(dt) { timer += dt; const every = human ? 0.12 : 0.1; while (timer > every) { timer -= every; tick(); } },
       draw(ctx, c, t) {
         ctx.strokeStyle = c.line;
         ctx.lineWidth = 1;
@@ -165,7 +185,7 @@
         const near = Math.abs(head.x - food.x) + Math.abs(head.y - food.y) <= 1;
         drawMascot(ctx, c, cx(head), cy(head), 11, { angle: Math.atan2(dir.y, dir.x), mouth: near ? 0.6 : 0, sleep: !!dead });
       },
-      caption: () => `snake · ${eaten} eaten · best ${best}`,
+      caption: () => `snake · ${eaten} eaten`,
     };
   }
 
@@ -240,9 +260,17 @@
       }
       return pick;
     }
+    let human = false;
+    let soft = false;
     function spawn() {
       const type = next;
       next = rand(SHAPES.length);
+      if (human) {
+        const vars = variants(SHAPES[type]);
+        piece = { type, vars, vi: 0, cells: vars[0], x: 3, y: 0, phase: 'human' };
+        if (!fits(board, piece.cells, piece.x, 0)) { piece = null; over = 1.4; best = Math.max(best, lines); }
+        return;
+      }
       const target = plan(type);
       if (!target) { over = 1.4; best = Math.max(best, lines); return; }
       piece = { type, cells: target.cells, x: 3, y: 0, tx: target.x, phase: 'aim' };
@@ -267,7 +295,9 @@
     }
     function tick() {
       if (!piece) return;
-      if (piece.phase === 'aim') {
+      if (piece.phase === 'human') {
+        if (fits(board, piece.cells, piece.x, piece.y + 1)) piece.y += 1; else lock();
+      } else if (piece.phase === 'aim') {
         if (piece.x !== piece.tx) {
           const nx = piece.x + Math.sign(piece.tx - piece.x);
           if (fits(board, piece.cells, nx, piece.y)) piece.x = nx; else piece.phase = 'drop';
@@ -280,9 +310,38 @@
         lock();
       }
     }
+    /** Move or turn the falling piece when it fits; turning tries a nudge sideways. */
+    function shift(dx) { if (piece && fits(board, piece.cells, piece.x + dx, piece.y)) piece.x += dx; }
+    function rotate() {
+      if (!piece || !piece.vars) return;
+      const vi = (piece.vi + 1) % piece.vars.length;
+      for (const dx of [0, -1, 1, -2, 2]) {
+        if (fits(board, piece.vars[vi], piece.x + dx, piece.y)) { piece.vi = vi; piece.cells = piece.vars[vi]; piece.x += dx; return; }
+      }
+    }
     reset();
     return {
       name: 'tetris',
+      controls: '← → move · ↑ turn · ↓ faster · space drop',
+      set human(on) {
+        human = !!on;
+        soft = false;
+        if (!piece) return;
+        if (human) { piece.vars = variants(SHAPES[piece.type]); piece.vi = 0; piece.phase = 'human'; }
+        else piece.phase = 'drop';
+      },
+      input(type, k) {
+        if (k === 'ArrowDown' || k === 's') { soft = type === 'down'; return true; }
+        if (type !== 'down') return ['ArrowLeft', 'ArrowRight', 'ArrowUp', ' ', 'a', 'd', 'w'].includes(k);
+        if (!piece || piece.phase !== 'human') return true;
+        if (k === 'ArrowLeft' || k === 'a') shift(-1);
+        else if (k === 'ArrowRight' || k === 'd') shift(1);
+        else if (k === 'ArrowUp' || k === 'w') rotate();
+        else if (k === ' ') { while (fits(board, piece.cells, piece.x, piece.y + 1)) piece.y += 1; lock(); }
+        else return false;
+        return true;
+      },
+      score: () => lines,
       step(dt) {
         if (over) { over -= dt; if (over <= 0) reset(); return; }
         if (flash) {
@@ -298,7 +357,7 @@
           return;
         }
         timer += dt;
-        const every = piece && piece.phase === 'aim' ? 0.07 : 0.035;
+        const every = !piece ? 0.035 : piece.phase === 'human' ? (soft ? 0.04 : 0.45) : piece.phase === 'aim' ? 0.07 : 0.035;
         while (timer > every) { timer -= every; tick(); }
       },
       draw(ctx, c, t) {
@@ -320,7 +379,7 @@
         const happy = !!flash;
         drawMascot(ctx, c, 150, 70 + Math.sin(t * 3) * 1.5 - (happy ? 4 : 0), 30, { lookX: -0.9, lookY: 0.1, mouth: happy ? 0.45 : 0, sleep: over > 0 });
       },
-      caption: () => `tetris · ${lines} lines · best ${best}`,
+      caption: () => `tetris · ${lines} lines`,
     };
   }
 
@@ -329,6 +388,8 @@
     const G = 100;
     const MX = 46;
     let speed; let dist; let coins; let y; let vy; let ents; let gap; let oops; let clouds; let best = 0;
+    let human = false;
+    let jumpQueued = false;
     function reset() {
       speed = 78; dist = 0; coins = 0; y = G; vy = 0; ents = []; gap = 60; oops = 0;
       clouds = [0, 1, 2].map((i) => ({ x: 40 + i * 90, y: 18 + rand(22), g: GLYPHS[rand(GLYPHS.length)] }));
@@ -352,8 +413,11 @@
       ents = ents.filter((e) => e.x > -20 && !e.gone);
       for (const cl of clouds) { cl.x -= dx * 0.25; if (cl.x < -30) { cl.x = W + 20; cl.y = 18 + rand(22); cl.g = GLYPHS[rand(GLYPHS.length)]; } }
       const ground = y >= G - 0.01;
-      // The AI: jump what is coming, sometimes a beat late.
-      if (ground) {
+      if (human) {
+        if (jumpQueued && ground) vy = -265;
+        jumpQueued = false;
+      } else if (ground) {
+        // The AI: jump what is coming, sometimes a beat late.
         const threat = ents.find((e) => (e.kind === 'block' || e.kind === 'bug') && e.x + e.w > MX - 6);
         if (threat) {
           const d = threat.x - (MX + 8);
@@ -382,6 +446,14 @@
     reset();
     return {
       name: 'runner',
+      controls: 'space jump',
+      set human(on) { human = !!on; jumpQueued = false; },
+      input(type, k) {
+        if (k !== ' ' && k !== 'ArrowUp' && k !== 'w') return false;
+        if (type === 'down') jumpQueued = true;
+        return true;
+      },
+      score: () => coins,
       step,
       draw(ctx, c, t) {
         for (const cl of clouds) { ctx.globalAlpha = 0.3; label(ctx, c, cl.g, cl.x, cl.y, c.muted, 10); }
@@ -504,23 +576,38 @@
     const EAT = 196;
     let items = []; let pops = []; let score = 0; let nextIn = 0; let chompAt = -9;
     let clock = 0;
+    let human = false;
+    let missed = 0;
     function food(x) {
       const glyph = Math.random() < 0.3;
       items.push({ x, glyph, g: GLYPHS[rand(GLYPHS.length)], r: 2.6 + Math.random() * 1.8, phase: Math.random() * TAU });
     }
     return {
       name: 'chomp',
-      feed() {
-        const lead = Math.min(-8, ...items.map((i) => i.x - 16));
-        for (let i = 0; i < 5; i++) food(lead - i * 16);
+      controls: 'space chomp, when it reaches the mouth',
+      set human(on) { human = !!on; missed = 0; },
+      input(type, k) {
+        if (k !== ' ') return false;
+        if (type !== 'down') return true;
+        // You chomp: whatever is at the mouth right now gets eaten.
+        chompAt = clock;
+        for (const it of items) if (it.x > EAT - 16 && it.x < EAT + 4) { it.eaten = true; score += 1; pops.push({ age: 0, text: '+1' }); }
+        items = items.filter((i) => !i.eaten);
+        return true;
       },
+      score: () => score,
       step(dt) {
         clock += dt;
         nextIn -= dt;
-        if (nextIn <= 0) { food(-8); nextIn = 0.65 + Math.random() * 0.6; }
-        for (const it of items) it.x += 52 * dt;
-        for (const it of items.filter((i) => i.x >= EAT)) { score += 1; chompAt = clock; pops.push({ age: 0 }); }
-        items = items.filter((i) => i.x < EAT);
+        if (nextIn <= 0) { food(-8); nextIn = (human ? 0.55 : 0.65) + Math.random() * 0.6; }
+        for (const it of items) it.x += (human ? 60 : 52) * dt;
+        if (human) {
+          for (const it of items.filter((i) => i.x >= EAT + 8)) { missed += 1; pops.push({ age: 0, text: 'miss', bad: true }); }
+          items = items.filter((i) => i.x < EAT + 8);
+        } else {
+          for (const it of items.filter((i) => i.x >= EAT)) { score += 1; chompAt = clock; pops.push({ age: 0, text: '+1' }); }
+          items = items.filter((i) => i.x < EAT);
+        }
         for (const p of pops) p.age += dt;
         pops = pops.filter((p) => p.age < 0.7);
       },
@@ -537,10 +624,10 @@
         const since = clock - chompAt;
         const mouth = since < 0.09 ? since / 0.09 : since < 0.25 ? 1 - (since - 0.09) / 0.16 : 0;
         drawMascot(ctx, c, 212, 66 + Math.sin(t * 3.4) * 1.5, 30, { mouth, lookX: -0.9, lookY: 0 });
-        for (const p of pops) { ctx.globalAlpha = 1 - p.age / 0.7; label(ctx, c, '+1', 196, 40 - p.age * 20, c.ok, 11, 'center'); }
+        for (const p of pops) { ctx.globalAlpha = 1 - p.age / 0.7; label(ctx, c, p.text, 196, 40 - p.age * 20, p.bad ? c.red : c.ok, 11, 'center'); }
         ctx.globalAlpha = 1;
       },
-      caption: () => `chomp · nom ×${score}`,
+      caption: () => `chomp · nom ×${score}${human ? ` · missed ${missed}` : ''}`,
     };
   }
 
@@ -574,9 +661,22 @@
       for (const a of alive()) if (!out.has(a.c) || out.get(a.c).r < a.r) out.set(a.c, a);
       return [...out.values()];
     }
+    let human = false;
+    const keys = { left: false, right: false, fire: false };
     reset();
     return {
       name: 'invaders',
+      controls: '← → move · space fire',
+      set human(on) { human = !!on; keys.left = keys.right = keys.fire = false; },
+      input(type, k) {
+        const down = type === 'down';
+        if (k === 'ArrowLeft' || k === 'a') keys.left = down;
+        else if (k === 'ArrowRight' || k === 'd') keys.right = down;
+        else if (k === ' ') keys.fire = down;
+        else return false;
+        return true;
+      },
+      score: () => score,
       step(dt) {
         if (hit) {
           hit -= dt;
@@ -596,19 +696,24 @@
             if (s) { const p = at(s); bombs.push({ x: p.x + AW / 2, y: p.y + AH }); }
           }
         }
-        // The AI: line up under the nearest front alien, sidestep falling bombs.
-        const targets = front();
-        let goal = cx;
-        if (targets.length) {
-          const t = targets.reduce((m, a) => (Math.abs(at(a).x + AW / 2 - cx) < Math.abs(at(m).x + AW / 2 - cx) ? a : m));
-          goal = at(t).x + AW / 2;
-        }
-        const danger = bombs.find((b) => Math.abs(b.x - cx) < 9 && b.y > Y0 - 45);
-        if (danger) goal = cx + (danger.x < cx ? 20 : -20);
-        cx += Math.max(-75 * dt, Math.min(75 * dt, goal - cx));
-        cx = Math.max(8, Math.min(W - 8, cx));
         cool -= dt;
-        if (cool <= 0 && !danger && Math.abs(goal - cx) < 3) { shots.push({ x: cx, y: Y0 - 9 }); cool = 0.42; }
+        if (human) {
+          cx += ((keys.right ? 1 : 0) - (keys.left ? 1 : 0)) * 90 * dt;
+          if (keys.fire && cool <= 0) { shots.push({ x: cx, y: Y0 - 9 }); cool = 0.35; }
+        } else {
+          // The AI: line up under the nearest front alien, sidestep falling bombs.
+          const targets = front();
+          let goal = cx;
+          if (targets.length) {
+            const t = targets.reduce((m, a) => (Math.abs(at(a).x + AW / 2 - cx) < Math.abs(at(m).x + AW / 2 - cx) ? a : m));
+            goal = at(t).x + AW / 2;
+          }
+          const danger = bombs.find((b) => Math.abs(b.x - cx) < 9 && b.y > Y0 - 45);
+          if (danger) goal = cx + (danger.x < cx ? 20 : -20);
+          cx += Math.max(-75 * dt, Math.min(75 * dt, goal - cx));
+          if (cool <= 0 && !danger && Math.abs(goal - cx) < 3) { shots.push({ x: cx, y: Y0 - 9 }); cool = 0.42; }
+        }
+        cx = Math.max(8, Math.min(W - 8, cx));
         for (const s of shots) {
           s.y -= 170 * dt;
           for (const a of alive()) {
@@ -673,9 +778,21 @@
       best = Math.max(best, Math.floor((dist / LEVEL) * 100));
       parts = Array.from({ length: 14 }, (_, i) => ({ a: (i / 14) * TAU, r: 0 }));
     }
+    let human = false;
+    let holding = false;
+    let jumpQueued = false;
     reset();
     return {
       name: 'dash',
+      controls: 'space jump · hold to keep jumping',
+      set human(on) { human = !!on; holding = false; jumpQueued = false; },
+      input(type, k) {
+        if (k !== ' ' && k !== 'ArrowUp' && k !== 'w') return false;
+        holding = type === 'down';
+        if (holding) jumpQueued = true;
+        return true;
+      },
+      score: () => best,
       step(dt) {
         if (dead) { dead -= dt; for (const p of parts) p.r += 60 * dt; if (dead <= 0) { attempt += 1; reset(); } return; }
         if (won) { won -= dt; if (won <= 0) { attempt = 1; reset(); } return; }
@@ -689,7 +806,11 @@
         const under = ents.filter((e) => e.k === 'block' && e.x < MX + S / 2 - 1 && e.x + e.w > MX - S / 2 + 1);
         const floor = under.length ? Math.min(...under.map((e) => G - e.h)) : G;
         const grounded = y >= floor - 0.5 && vy >= 0;
-        if (grounded) {
+        if (human) {
+          // Like the real thing: hold to keep jumping on every landing.
+          if (grounded && (holding || jumpQueued)) vy = -300;
+          jumpQueued = false;
+        } else if (grounded) {
           // The AI: jump when the next spike or wall is in reach. Now and then it is a frame late.
           const next = ents.find((e) => e.x + e.w > MX - S / 2 && (e.k === 'spike' || G - e.h < y - 1));
           if (next) {
@@ -749,7 +870,7 @@
         if (won) label(ctx, c, 'level complete', W / 2, 40, c.ok, 11, 'center');
         drawMascot(ctx, c, MX, y - S / 2, S + 3, { angle: rot, lookX: 0.8, lookY: 0 });
       },
-      caption: () => `dash · attempt ${attempt} · ${Math.floor((dist / LEVEL) * 100)}% · best ${best}%`,
+      caption: () => `dash · attempt ${attempt} · ${Math.floor((dist / LEVEL) * 100)}%`,
     };
   }
 

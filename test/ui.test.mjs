@@ -894,7 +894,7 @@ try {
   check(await waitFor(`document.getElementById('thinkCard').classList.contains('show') && /Live reasoning stream/.test(document.querySelector('#thinkCard .tc-line').textContent)`, 4000), 'stage: thinking opens the mascot window with the latest thought', JSON.stringify(await evalExpr(`window.__stage.state()`)));
   const glyph1 = await evalExpr(`window.__stage.state().glyph`);
   check(await waitFor(`window.__stage.state().glyph !== ${JSON.stringify(glyph1)}`, 3000), 'stage: the mascot thinks in changing code glyphs');
-  check(await evalExpr(`!!document.querySelector('#thinkCard .tm-chevron') && !!document.querySelector('#thinkCard .tm-eye') && document.querySelectorAll('#thinkCard .tm-dot').length === 3`), 'the mascot is the logo: a chevron with an eye and the three tail dots');
+  check(await evalExpr(`!!document.querySelector('#tailBuddy .tm-chevron') && !!document.querySelector('#tailBuddy .tm-eye') && [...document.querySelectorAll('#tailBuddy .tm-dot')].filter((d) => getComputedStyle(d).display !== 'none').length === 3 && document.querySelector('#tailBuddy #thinkCard') !== null`), 'Tail is the logo: a chevron with an eye, and three dots rise to its thought bubble');
   check(await evalExpr(`window.__stage.quips.includes(window.__stage.state().quip) && document.querySelector('#thinkCard .tc-quip').textContent === window.__stage.state().quip + '…'`), 'the mascot window shows a line of nonsense from its list', JSON.stringify(await evalExpr(`window.__stage.state()`)));
   // A long think: the mascot plays its games, each drawing frames; a click switches.
   await evalExpr(`window.__stage.cfg.gameAfterMs = 0; window.stageUpdate(); true`);
@@ -906,9 +906,20 @@ try {
     const name = await evalExpr(`window.__stage.state().game`);
     await waitFor(`window.__stage.state().frames > ${f0 + 10} && /\\S/.test(document.querySelector('#thinkCard .tc-game').textContent)`, 3000);
     if (await evalExpr(`window.__stage.state().frames > ${f0 + 10}`)) playedGames.add(name);
-    await evalExpr(`document.getElementById('thinkCard').click(); true`);
+    await evalExpr(`document.querySelector('#thinkCard .tc-next').click(); true`);
   }
-  check(playedGames.size === 7, 'a click switches games, and every game runs', JSON.stringify([...playedGames]));
+  check(playedGames.size === 7, 'next switches games, and every game runs', JSON.stringify([...playedGames]));
+  check(await evalExpr(`getComputedStyle(document.querySelector('#tailBuddy .tail-mascot')).display === 'none'`), 'while a game plays, the mascot in it is the only Tail');
+  // ▶ play hands you the controls: keys go to the game, Esc gives them back.
+  if (await evalExpr(`window.__stage.state().game === 'chess'`)) await evalExpr(`document.querySelector('#thinkCard .tc-next').click(); true`);
+  await evalExpr(`document.querySelector('#thinkCard .tc-play').click(); true`);
+  check(await waitFor(`window.__stage.state().human && document.getElementById('thinkCard').classList.contains('human') && /YOU PLAY/.test(document.querySelector('#thinkCard .tc-title').textContent)`, 2000), 'play hands you the controls', JSON.stringify(await evalExpr(`window.__stage.state()`)));
+  const keyTaken = await evalExpr(`(() => { const e = new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true }); document.body.dispatchEvent(e); document.body.dispatchEvent(new KeyboardEvent('keyup', { key: ' ', bubbles: true })); const a = new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true, cancelable: true }); document.body.dispatchEvent(a); document.body.dispatchEvent(new KeyboardEvent('keyup', { key: 'ArrowLeft', bubbles: true })); return e.defaultPrevented || a.defaultPrevented; })()`);
+  check(keyTaken, 'while you play, the game takes its keys');
+  await evalExpr(`document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); true`);
+  check(await waitFor(`!window.__stage.state().human`, 2000), 'Esc gives the controls back to Tail');
+  for (let i = 0; i < 7 && (await evalExpr(`window.__stage.state().game`)) !== 'chomp'; i++) await evalExpr(`document.querySelector('#thinkCard .tc-next').click(); true`);
+  check(await waitFor(`(JSON.parse(localStorage.getItem('agenttail-tail-records') || '{}').chomp || 0) >= 1 && /★ \\d/.test(document.querySelector('#thinkCard .tc-game').textContent)`, 6000), 'game records are kept across sessions', await evalExpr(`localStorage.getItem('agenttail-tail-records')`));
   await evalExpr(`window.__stage.cfg.stallMs = 1; true`);
   check(await waitFor(`window.__stage.state().stalled && /STALLED\\?/.test(document.querySelector('#thinkCard .tc-title').textContent) && /no output for/.test(document.querySelector('#thinkCard .tc-time').textContent)`, 3000), 'a long silence turns the window into a stalled warning');
   check(await evalExpr(`!window.__stage.state().playing && window.__stage.state().glyph === 'z z z'`), 'a stalled agent puts the mascot to sleep instead of playing');
@@ -952,6 +963,17 @@ try {
   const finishedLive = await waitFor(`document.getElementById('liveText').textContent !== 'LIVE'`, 12000);
   check(finishedLive, 'a closed turn leaves the LIVE state', await evalExpr(`JSON.stringify({ text: document.getElementById('liveText').textContent, dot: document.getElementById('liveDot').title })`));
   check(await waitFor(`!document.getElementById('thinkCard').classList.contains('show')`, 3000), 'stage: the mascot window closes when the agent stops thinking');
+  // Tail: there while the session is in motion, reacting and petted.
+  check(await waitFor(`window.__buddy.state().shown && getComputedStyle(document.querySelector('#tailBuddy .tail-mascot')).display !== 'none'`, 3000), 'Tail sits in the editor corner while the session is in motion', JSON.stringify(await evalExpr(`window.__buddy.state()`)));
+  check(await evalExpr(`window.__buddy.state().last === 'cheer'`), 'Tail cheers when a turn ends', JSON.stringify(await evalExpr(`window.__buddy.state()`)));
+  await evalExpr(`document.querySelector('#tailBuddy .tail-mascot').dispatchEvent(new MouseEvent('click', { bubbles: true })); true`);
+  check(await waitFor(`window.__buddy.state().reaction === 'love' && window.__buddy.state().saying.length > 0`, 2000), 'petting Tail gets a happy wiggle and a line', JSON.stringify(await evalExpr(`window.__buddy.state()`)));
+  await evalExpr(`for (let i = 0; i < 5; i++) document.querySelector('#tailBuddy .tail-mascot').dispatchEvent(new MouseEvent('click', { bubbles: true })); true`);
+  check(await waitFor(`window.__buddy.state().reaction === 'dizzy'`, 2000), 'petting it too fast makes Tail dizzy');
+  await evalExpr(`document.querySelector('[data-fx="mascot"]').click(); true`);
+  check(await waitFor(`!window.__buddy.state().shown && getComputedStyle(document.getElementById('tailBuddy')).display === 'none'`, 3000), 'Tail can be turned off in Settings');
+  await evalExpr(`document.querySelector('[data-fx="mascot"]').click(); true`);
+  check(await waitFor(`window.__buddy.state().shown`, 3000), 'and back on');
   // A quiet console shrinks to its rail; the rail opens it again.
   await evalExpr(`window.__stage.cfg.idleMs = 600; true`);
   check(await waitFor(`document.body.classList.contains('stage-min') && getComputedStyle(document.getElementById('terminalPane')).display === 'none' && getComputedStyle(document.getElementById('consoleRail')).display !== 'none'`, 6000), 'stage: a quiet console shrinks to a rail and the agent gets the room', JSON.stringify(await evalExpr(`({ s: window.__stage.state(), state: window.__dbg ? null : null, body: document.body.className })`)));

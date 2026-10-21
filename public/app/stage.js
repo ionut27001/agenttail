@@ -51,6 +51,7 @@
     quip: '',
     quipAt: 0,
     playing: false,
+    human: false,       // you have the controls of the game
   };
   const reducedMotion = (() => {
     try { return window.matchMedia('(prefers-reduced-motion: reduce)'); } catch { return null; }
@@ -102,22 +103,9 @@
   const card = document.createElement('div');
   card.id = 'thinkCard';
   card.setAttribute('aria-hidden', 'true');
-  // Static markup only. The window is a thought bubble: the mascot (the logo's
-  // prompt chevron with an eye in its opening) stands at its corner and the
-  // logo's trailing dots rise from its head to the bubble. Games play inside.
+  // Static markup only. The window is Tail's thought bubble (buddy.js draws
+  // Tail and the dots that rise to it). Games play inside; you can take over.
   card.innerHTML = `
-    <svg class="tail-mascot" viewBox="4 30 50 68" aria-hidden="true">
-      <ellipse class="tm-shadow" cx="30" cy="95" rx="15" ry="2.6"/>
-      <g class="tm-body">
-        <path class="tm-chevron" d="M13 38 L46 64 L13 90"/>
-        <g class="tm-eye">
-          <circle class="tm-white" cx="26.5" cy="64" r="7.2"/>
-          <circle class="tm-pupil" cx="28.6" cy="62" r="3.4"/>
-          <circle class="tm-glint" cx="29.7" cy="60.7" r="1.15"/>
-        </g>
-      </g>
-    </svg>
-    <i class="tm-dot d1"></i><i class="tm-dot d2"></i><i class="tm-dot d3"></i>
     <div class="tc-bubble">
       <canvas class="tail-game" aria-hidden="true"></canvas>
       <div class="tc-text">
@@ -125,9 +113,15 @@
         <div class="tc-quip"></div>
         <div class="tc-game"></div>
         <div class="tc-line"></div>
+        <div class="tc-controls">
+          <button type="button" class="tc-play" title="Take the controls (Esc gives them back)">▶ play</button>
+          <button type="button" class="tc-next" title="Another game (N)">↻ next</button>
+          <button type="button" class="tc-stop" title="Stop playing (Esc)">✕</button>
+        </div>
       </div>
     </div>`;
-  wrap.appendChild(card);
+  const buddy = window.__buddy || null;
+  (buddy ? buddy.slot : wrap).appendChild(card);
   const glyphEl = card.querySelector('.tc-glyph');
   const titleEl = card.querySelector('.tc-title');
   const timeEl = card.querySelector('.tc-time');
@@ -139,6 +133,21 @@
   const canvas = card.querySelector('.tail-game');
   const gameEl = card.querySelector('.tc-game');
   const game = { current: null, order: [], colors: null, raf: 0, last: 0, frames: 0, captionAt: 0 };
+  const RECORDS_KEY = 'agenttail-tail-records';
+  let records = {};
+  try { records = JSON.parse(localStorage.getItem(RECORDS_KEY) || '{}') || {}; } catch { records = {}; }
+
+  /** Your best per game, kept across sessions; Tail's own runs count too. */
+  function noteRecord() {
+    const g = game.current;
+    if (!g || typeof g.score !== 'function') return null;
+    const score = g.score();
+    if (score > (records[g.name] || 0)) {
+      records[g.name] = score;
+      try { localStorage.setItem(RECORDS_KEY, JSON.stringify(records)); } catch { /* ignore */ }
+    }
+    return records[g.name] || 0;
+  }
 
   function themeColors() {
     const cs = getComputedStyle(document.documentElement);
@@ -162,6 +171,22 @@
     game.current = games.create(game.order.shift());
     game.colors = themeColors();
     game.captionAt = 0;
+    if (s.human) {
+      if (typeof game.current.input === 'function') game.current.human = true;
+      else nextGame(); // chess only replays; skip it while you play
+    }
+    card.classList.toggle('watch-only', typeof game.current.input !== 'function');
+  }
+
+  /** Hand the controls to you, or back to Tail. */
+  function setHuman(on) {
+    on = !!on && !!game.current && typeof game.current.input === 'function';
+    if (on === s.human) return;
+    s.human = on;
+    card.classList.toggle('human', on);
+    if (game.current) game.current.human = on;
+    if (on) card.querySelector('.tc-bubble').focus({ preventScroll: true });
+    update();
   }
 
   function frame(t) {
@@ -181,7 +206,8 @@
     game.frames += 1;
     if (t - game.captionAt > 300) {
       game.captionAt = t;
-      gameEl.textContent = game.current.caption();
+      const record = noteRecord();
+      gameEl.textContent = `${game.current.caption()}${record ? ` · ★ ${record}` : ''}`;
     }
     game.raf = requestAnimationFrame(frame);
   }
@@ -191,23 +217,36 @@
     if (on === s.playing) return;
     s.playing = on;
     card.classList.toggle('playing', on);
-    card.title = on ? 'Click for another game' : '';
+    if (buddy) buddy.el.classList.toggle('playing', on);
     if (on) {
       nextGame();
       game.last = 0;
       game.raf = requestAnimationFrame(frame);
     } else {
       cancelAnimationFrame(game.raf);
+      setHuman(false);
       game.current = null;
       gameEl.textContent = '';
     }
   }
 
-  // A click on the window switches to the next game.
-  card.addEventListener('click', () => {
-    if (!s.playing) return;
-    nextGame();
-  });
+  card.querySelector('.tc-bubble').tabIndex = -1;
+  card.querySelector('.tc-play').addEventListener('click', (e) => { e.stopPropagation(); setHuman(true); });
+  card.querySelector('.tc-next').addEventListener('click', (e) => { e.stopPropagation(); if (s.playing) nextGame(); });
+  card.querySelector('.tc-stop').addEventListener('click', (e) => { e.stopPropagation(); setHuman(false); });
+
+  // While you play, the game gets the arrow keys and space; Esc gives it back, N skips.
+  const typing = (t) => t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
+  function onKey(e) {
+    if (!s.human || !game.current || typing(e.target) || e.ctrlKey || e.metaKey || e.altKey) return;
+    const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    if (e.type === 'keydown' && k === 'Escape') { setHuman(false); e.preventDefault(); return; }
+    if (e.type === 'keydown' && k === 'n') { nextGame(); e.preventDefault(); return; }
+    if (e.repeat && k !== ' ') { e.preventDefault(); return; }
+    if (game.current.input(e.type === 'keydown' ? 'down' : 'up', k)) { e.preventDefault(); e.stopPropagation(); }
+  }
+  document.addEventListener('keydown', onKey, true);
+  document.addEventListener('keyup', onKey, true);
 
   try {
     term.onLineFeed(() => { s.consoleAt = Date.now(); });
@@ -283,8 +322,10 @@
     railState.textContent = s.staged ? '▲' : state.lastCommandOk === false ? '✗' : state.lastCommandOk === true ? '✓' : '';
     railState.className = `cr-state ${s.staged ? 'run' : state.lastCommandOk === false ? 'bad' : 'ok'}`;
 
-    card.classList.toggle('show', s.thinking);
-    card.setAttribute('aria-hidden', String(!s.thinking));
+    // While you play, the bubble stays open even after the agent stops thinking.
+    const showCard = s.thinking || s.human;
+    card.classList.toggle('show', showCard);
+    card.setAttribute('aria-hidden', String(!showCard));
     // The log's own clock, so a stuck session reads as stuck right after a reload too.
     const quiet = now - (state.stats.lastTime || activity.lastEventAt || now);
     const stalled = s.thinking && quiet > cfg.stallMs;
@@ -296,8 +337,17 @@
       glyphEl.textContent = stalled ? 'z z z' : GLYPHS[s.glyph];
       s.quip = '';
     }
-    play(s.thinking && !stalled && now - activity.startedAt > cfg.gameAfterMs && !(reducedMotion && reducedMotion.matches));
-    if (s.thinking) {
+    play(s.human || (s.thinking && !stalled && now - activity.startedAt > cfg.gameAfterMs && !(reducedMotion && reducedMotion.matches)));
+    if (buddy) buddy.el.classList.toggle('stalled', stalled);
+    if (s.human) {
+      card.classList.remove('stalled');
+      titleEl.textContent = 'YOU PLAY';
+      const doing = s.thinking ? `thinking · ${clock(now - activity.startedAt)}` : `${activity.kind}${activity.label ? ` · ${activity.label}` : ''}`;
+      timeEl.textContent = `agent ${doing}`.slice(0, 64);
+      quipEl.textContent = game.current && game.current.controls ? game.current.controls : '';
+      lineEl.textContent = 'esc: back to Tail · n: next game';
+      s.quip = '';
+    } else if (s.thinking) {
       card.classList.toggle('stalled', stalled);
       titleEl.textContent = stalled ? 'STALLED?' : 'THINKING';
       timeEl.textContent = stalled ? `no output for ${clock(quiet)}` : clock(now - activity.startedAt);
@@ -335,7 +385,9 @@
     get mode() { return mode; },
     setMode,
     cfg,
-    state: () => ({ staged: s.staged, min: s.min, thinking: s.thinking, glyph: glyphEl.textContent, quip: s.quip, stalled: card.classList.contains('stalled'), playing: s.playing, game: game.current ? game.current.name : null, frames: game.frames }),
+    state: () => ({ staged: s.staged, min: s.min, thinking: s.thinking, glyph: glyphEl.textContent, quip: s.quip, stalled: card.classList.contains('stalled'), playing: s.playing, human: !!s.human, game: game.current ? game.current.name : null, frames: game.frames, score: game.current && game.current.score ? game.current.score() : null }),
+    setHuman,
+    records: () => ({ ...records }),
     games: games ? games.names : [],
     quips: QUIPS,
   };

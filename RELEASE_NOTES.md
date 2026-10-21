@@ -10,6 +10,11 @@
   snake, tetris, a runner, chess, space invaders, a geometry-dash level or
   chomp by itself; after five quiet minutes
   it falls asleep under a STALLED? warning.
+- Tail, the mascot, lives in the editor corner: its eye follows the pointer,
+  it reacts to passing and failing commands and finished turns, sleeps when
+  nothing happens and can be petted. The thought bubble hangs on it, and
+  ▶ play hands you the controls of its games (arrows, space; Esc, N), with
+  records kept per game. Settings can turn it off.
 - Claude Code sessions stay live while the model composes a long reply: a
   turn is open until the transcript says end_turn, not just while it grows.
 - A very long running command no longer pushes the page wider than the window.

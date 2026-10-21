@@ -1768,6 +1768,8 @@ async function applyEvent(ev) {
     window.__contextEvent(ev);
   }
   if (state.historyDone && followActive() && ['jobOutput', 'result', 'job', 'jobEnd', 'say', 'user'].includes(ev.t)) followFanout();
+  // Tail reacts to what happens now, not to the history replaying on load.
+  if ((state.historyDone || state.replaying) && window.__buddy) window.__buddy.onEvent(ev);
 }
 
 function relPath(p) {
@@ -2537,7 +2539,7 @@ window.addEventListener('resize', () => {
 });
 
 /* ---------- visual effects (all behind toggles) ---------- */
-const FX_DEFAULTS = { boot: true, crt: false, matrix: false, cursor: true, glitch: false, spark: true, heat: true, sys: false, follow: true, consoleSay: false, meters: false, wrap: true, intensity: 40 };
+const FX_DEFAULTS = { boot: true, crt: false, matrix: false, cursor: true, glitch: false, spark: true, heat: true, sys: false, follow: true, consoleSay: false, meters: false, wrap: true, mascot: true, intensity: 40 };
 const fx = { ...FX_DEFAULTS };
 try { Object.assign(fx, JSON.parse(localStorage.getItem('agenttail-fx') || '{}')); } catch { /* ignore */ }
 if (typeof fx.intensity !== 'number') fx.intensity = 40;
