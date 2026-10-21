@@ -663,7 +663,11 @@
       if (harnesses.length) picker.value = data.defaultHarness || harnesses[0].id;
       harnessRow().classList.toggle('hidden', harnesses.length < 2);
       if (harnesses.length) applyDialogHarness();
-      else $c('dlgProfile').textContent = `profile: ${data.dshProfile || 'acp'}`;
+      else {
+        $c('dlgProfile').textContent = `profile: ${data.dshProfile || 'acp'}`;
+        // An empty list is a config mistake (a "harnesses" block with nothing usable), not "dsh".
+        $c('dlgErr').textContent = data.harnessesError || 'no harness is configured: check the "harnesses" block of control.json';
+      }
     } catch (err) {
       $c('dlgErr').textContent = err.message;
     }

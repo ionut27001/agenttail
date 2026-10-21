@@ -235,6 +235,21 @@ try {
     check(described.commandLine.endsWith('adapter.js "with space"') && described.viewable === false && described.presets[1].danger === true, 'the description has a quoted command line and the danger flag', described.commandLine);
     check(describeHarness(registry.get('dsh'), {}).viewable === true, 'only log-linked harnesses are viewable');
 
+    // Legacy keys apply only when "harnesses" is absent; a block that yields nothing is an error, not dsh.
+    const emptyBlock = parseHarnesses({ dshCommand: 'legacy-bin', harnesses: {} }, base);
+    check(emptyBlock.list.length === 0 && emptyBlock.get('dsh') === null && emptyBlock.get() === null && emptyBlock.defaultId === null, 'an empty "harnesses" block does not fall back to the legacy dsh harness');
+    check(/"harnesses"/.test(emptyBlock.error || '') && emptyBlock.describe({}).length === 0, 'an empty registry says why, in words, and lists nothing');
+    const badBlock = parseHarnesses({ harnesses: { 'bad id': { command: 'x' }, nocommand: { label: 'n' }, wrong: 5 } }, base);
+    check(badBlock.list.length === 0 && /bad id/.test(badBlock.error || '') && /nocommand/.test(badBlock.error), 'an all-invalid block names the entries that were skipped', badBlock.error);
+    check(parseHarnesses({ harnesses: [] }, base).list.length === 0 && parseHarnesses({ harnesses: 'dsh' }, base).list.length === 0 && /object/.test(parseHarnesses({ harnesses: null }, base).error || ''), 'a "harnesses" value that is not an object is an empty registry with an error');
+    check(parseHarnesses({ harnesses: { a: { command: 'a-cmd' } } }, base).error === null && legacyRegistry.error === null, 'a usable registry has no error');
+    {
+      const brokenMgr = manager({ dshCommand: process.execPath, dshArgs: [fakeAcp], harnesses: {} }, 'emptyblock');
+      const none = await expectStatus(brokenMgr.begin({ cwd: workspace }), 400);
+      check(none.ok && /"harnesses"/.test(none.message) && !/unknown harness/.test(none.message), 'starting a session with no usable harness returns the config error', none.message);
+      check(brokenMgr.sessions.size === 0, 'and starts nothing');
+    }
+
     const file = path.join(tmp, 'cfg-file.json');
     fs.writeFileSync(file, JSON.stringify({ workspaces: [workspace], harnesses: { a: { command: 'a-cmd' }, b: { command: 'b-cmd' } } }));
     const loaded = await new (require('../lib/control').ControlConfig)(file).load();
