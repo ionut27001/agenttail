@@ -3,6 +3,10 @@
   <g fill="none" stroke="#0b7a42" stroke-linecap="round" stroke-linejoin="round">
     <path d="M18 27 L43 48 L18 69" stroke-width="9"/>
   </g>
+  <g class="eye">
+    <circle cx="26.6" cy="48" r="4.7" fill="#0b7a42"/>
+    <circle cx="28.01" cy="46.73" r="2.21" fill="#fbfaf5"/>
+  </g>
   <g fill="#0b7a42">
     <circle cx="57" cy="48" r="4.6"/>
     <circle cx="70" cy="48" r="3.6" opacity=".68"/>

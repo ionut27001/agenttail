@@ -1171,6 +1171,10 @@
   #bootBanner .boot-logo { height: 44px; width: auto; filter: drop-shadow(0 0 12px color-mix(in srgb, var(--green) 45%, transparent)); animation: boot-in .9s ease-out both; }
   #bootBanner .boot-logo path[stroke] { stroke: var(--green); }
   #bootBanner .boot-logo g { fill: var(--green); }
+  /* Tail's eye in the logo follows the theme like the mascot's does. */
+  #bootBanner .boot-logo .eye circle:nth-child(1) { fill: var(--green); }
+  #bootBanner .boot-logo .eye circle:nth-child(2) { fill: var(--bg-deep); }
+  #bootBanner .boot-logo .eye circle:nth-child(3) { fill: var(--text-strong); }
   #bootBanner .boot-logo > path:last-child { fill: color-mix(in srgb, var(--green) 78%, #000); }
   #bootBanner .boot-tag { font-size: 12px; letter-spacing: .08em; color: var(--green-soft); }
   @keyframes boot-in { from { opacity: 0; transform: translateY(6px) scale(.96); } to { opacity: 1; transform: none; } }
@@ -1957,7 +1961,7 @@
   .think-card.stalled .tc-head b { color: var(--amber); }
   .tail-buddy.stalled .tm-dot, .tail-buddy.stalled .tm-body { animation-duration: 4s; }
   /* Tail in each watch-wall pane (wall-tail.js): over the stage, above the dock. */
-  .tail-buddy.wall-tail { right: 12px; bottom: 40px; z-index: 7; }
+  .tail-buddy.wall-tail { right: 12px; bottom: 40px; z-index: 7; --green: var(--c); } /* each Tail in its agent's colour */
   #wall:not(.focus) .tail-buddy.wall-tail { bottom: 10px; }
   #wall .wall-pane.has-tail .wp-caption { right: 74px; }
   .wall-tail .tc-bubble { width: 250px; }

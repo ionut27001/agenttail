@@ -20,8 +20,11 @@
   gets ship sections and jump orbs, chess replays two famous games with
   sliding pieces, invaders gets shields and a saucer, chomp gets lanes,
   bombs and combos.
-- The watch wall catches up: every pane has its own Tail reacting to its
-  agent, a thought bubble with the clock and Tail's games on a long think
+- The logo is Tail now: the chevron has its eye, in the README, the
+  favicon, the wordmark and the boot banner. The README gets a Meet Tail
+  section with a capture of it thinking and playing, and a themes mosaic.
+- The watch wall catches up: every pane has its own Tail, in its agent's
+  colour, reacting to its agent, a thought bubble with the clock and Tail's games on a long think
   (▶ play works there too), and TOK/S in the scoreboard. Same code as the
   main view: Tail and the bubble are now factories both use.
 - Claude Code sessions show a cost: what the same tokens would cost at

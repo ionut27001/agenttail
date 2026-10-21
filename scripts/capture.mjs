@@ -215,6 +215,98 @@ async function captureStills() {
   fs.writeFileSync(path.join(OUT, 'chat-log.png'), Buffer.from(shot.data, 'base64'));
 }
 
+/** A screenshot of part of the page, as a PNG. */
+async function clipPng(clip, scale = 1) {
+  const shot = await cdp('Page.captureScreenshot', { format: 'png', clip: { ...clip, scale } });
+  return PNG.sync.read(Buffer.from(shot.data, 'base64'));
+}
+
+/** The editor corner while the agent thinks: Tail, its thought bubble, then one of its games. */
+async function tailClip() {
+  return evaluate(`(() => {
+    const b = document.querySelector('#thinkCard .tc-bubble').getBoundingClientRect();
+    const w = document.getElementById('editorWrap').getBoundingClientRect();
+    // Wide enough for the bubble once a game plays in it (it grows to the left).
+    const x = Math.max(w.left, Math.round(b.right) - 520 - 60);
+    const y = Math.max(w.top, Math.round(b.top) - 70);
+    return { x, y, width: Math.round(w.right) - x, height: Math.round(w.bottom) - y };
+  })()`);
+}
+
+async function captureTail() {
+  await setViewport(1600, 1000);
+  await cdp('Page.navigate', { url: `${BASE}/#${SESSION_ID}` });
+  await waitEval(`document.body && !document.body.classList.contains('loading-session') && document.getElementById('liveText').textContent === 'LIVE'`, 15000);
+  await sleep(800);
+  // The session is live and between steps: the agent is thinking.
+  await evaluate(`(() => {
+    window.__thinkBubble.cfg.gameAfterMs = 60 * 60000;
+    setActivity('thinking', 'weighing whether divide() should throw on zero', 'chat');
+    window.stageUpdate();
+    return true;
+  })()`);
+  await waitEval(`document.getElementById('thinkCard').classList.contains('show')`, 8000);
+  await sleep(700);
+  let clip = await tailClip();
+  const frames = [];
+  for (let i = 0; i < 14; i++) {
+    frames.push(await clipPng(clip));
+    await sleep(140);
+  }
+  // A long think: Tail gets bored and plays. Invaders reads best in a few seconds.
+  await evaluate(`window.__thinkBubble.cfg.gameAfterMs = 0; window.stageUpdate(); true`);
+  await waitEval(`window.__stage.state().playing`, 5000);
+  for (let i = 0; i < 12 && (await evaluate(`window.__stage.state().game`)) !== 'invaders'; i++) {
+    await evaluate(`document.querySelector('#thinkCard .tc-next').click(); true`);
+  }
+  await sleep(1500);
+  clip = { ...clip, width: frames[0].width, height: frames[0].height };
+  for (let i = 0; i < 34; i++) {
+    frames.push(await clipPng(clip));
+    await sleep(110);
+  }
+  if (process.env.CAPTURE_DEBUG_DIR) fs.writeFileSync(path.join(process.env.CAPTURE_DEBUG_DIR, 'tail-game.png'), PNG.sync.write(frames[frames.length - 1]));
+  writeGif(path.join(OUT, 'tail.gif'), frames, frames[0].width, frames[0].height, 130);
+  await evaluate(`window.__thinkBubble.cfg.gameAfterMs = 8000; true`);
+}
+
+/** Every theme on the same view, as one mosaic: four across, the rest centred below. */
+async function captureThemes() {
+  const themes = await evaluate(`window.__theme.list()`);
+  const before = await evaluate(`window.__theme.get()`);
+  const scale = 0.3;
+  const cellW = Math.round(1600 * scale);
+  const cellH = Math.round(1000 * scale);
+  const gap = 12;
+  const cols = 4;
+  const rows = Math.ceil(themes.length / cols);
+  const out = new PNG({ width: cols * cellW + (cols + 1) * gap, height: rows * cellH + (rows + 1) * gap });
+  for (let p = 0; p < out.data.length; p += 4) out.data.set([6, 18, 12, 255], p); // the logo's dark green
+  for (let i = 0; i < themes.length; i++) {
+    await evaluate(`(() => {
+      window.__theme.set(${JSON.stringify(themes[i])});
+      let tag = document.getElementById('captureThemeTag');
+      if (!tag) {
+        tag = document.createElement('div');
+        tag.id = 'captureThemeTag';
+        tag.style.cssText = 'position:fixed;left:24px;bottom:24px;z-index:99999;padding:10px 26px;border-radius:12px;font:700 46px var(--mono);letter-spacing:.08em;color:var(--bg-deep);background:var(--green);box-shadow:0 10px 40px rgba(0,0,0,.5)';
+        document.body.appendChild(tag);
+      }
+      tag.textContent = ${JSON.stringify(themes[i])};
+      return true;
+    })()`);
+    await sleep(700);
+    const cell = await clipPng({ x: 0, y: 0, width: 1600, height: 1000 }, scale);
+    const row = Math.floor(i / cols);
+    const inRow = Math.min(cols, themes.length - row * cols);
+    const offset = Math.round(((cols - inRow) * (cellW + gap)) / 2);
+    const col = i % cols;
+    PNG.bitblt(cell, out, 0, 0, Math.min(cellW, cell.width), Math.min(cellH, cell.height), offset + gap + col * (cellW + gap), gap + row * (cellH + gap));
+  }
+  await evaluate(`document.getElementById('captureThemeTag')?.remove(); window.__theme.set(${JSON.stringify(before)}); true`);
+  fs.writeFileSync(path.join(OUT, 'themes.png'), PNG.sync.write(out));
+}
+
 /** The watch wall with the lead and two teammates, caught while two of them share a file. */
 async function captureWall() {
   await setViewport(1600, 1000);
@@ -303,14 +395,18 @@ async function cleanup() {
 
   console.log('capturing loading.png');
   await captureLoading();
+  console.log('capturing tail.gif');
+  await captureTail();
   console.log('capturing hero.gif');
   await captureHero();
   console.log('capturing stills');
   await captureStills();
+  console.log('capturing themes.png');
+  await captureThemes();
   console.log('capturing wall.png');
   await captureWall();
 
-  const files = ['hero.gif', 'loading.png', 'screenshot-dark.png', 'stream-mode.png', 'chat-log.png', 'wall.png'];
+  const files = ['hero.gif', 'loading.png', 'screenshot-dark.png', 'stream-mode.png', 'chat-log.png', 'tail.gif', 'themes.png', 'wall.png'];
   for (const name of files) {
     const stat = await fsp.stat(path.join(OUT, name));
     console.log(`${name.padEnd(20)} ${(stat.size / 1024).toFixed(0)} KiB`);

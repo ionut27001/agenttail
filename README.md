@@ -7,7 +7,7 @@
 
 <h1 align="center">agenttail</h1>
 
-<p align="center"><b>tail -f for AI coding agents</b> — one live dashboard for DeepSeek Harness, Claude Code and Antigravity sessions, with opt-in control for dsh.</p>
+<p align="center"><b>tail -f for AI coding agents</b> — one live dashboard for DeepSeek Harness, Claude Code and Antigravity sessions, with opt-in control for dsh. Watched over by Tail, the chevron with an eye.</p>
 
 <p align="center">
   <a href="https://github.com/ionut27001/agenttail/releases"><img alt="release" src="https://img.shields.io/badge/release-v0.2.0-37f28a.svg"></a>
@@ -20,6 +20,9 @@
 <p align="center">
   <a href="#quick-start">Download</a> ·
   <a href="#quick-start">Quick start</a> ·
+  <a href="#meet-tail">Meet Tail</a> ·
+  <a href="#watching-several-agents">Watch wall</a> ·
+  <a href="#themes">Themes</a> ·
   <a href="#stream-mode">Stream mode</a> ·
   <a href="#security-and-privacy">Security</a>
 </p>
@@ -87,12 +90,12 @@ Requirements: Node 24+, Windows, macOS or Linux. Windows is the tested platform;
 - ⌨️ **Console and job progress** — running spinner, elapsed time, collapsible multi-line commands, `(+N lines)` outputs, a live job bar and a `[n/N]` mini progress bar. Failed commands flash red and show `✗ COMMAND FAILED` for three seconds.
 - 💬 **Chat and Log** — Chat groups tool calls and thinking for reading; Log is the full trajectory for auditing (the **MD** button exports it as Markdown), with a summary per turn (model, tools by kind, files changed, failures, tokens, cost, duration). Agent replies render as markdown: headings, lists, tables, quotes, code and links.
 - 👥 **Several agents at once** — an overview of every agent active in the last 30 minutes (dsh, Claude Code, Antigravity), grouped by git repository (worktrees count as the same repo), each with its own colour, branch, model and current action. The activity bar names the other agents on the repo you are viewing, and the tree marks the files they edited. `Alt+W` opens the [watch wall](#watching-several-agents).
-- 🎭 **Console on stage** — while the agent runs a command the console comes up over the editor; when it edits, the console goes back to its dock; when it has nothing to show it shrinks to a slim rail and the agent pane gets the room. While the agent thinks, a thought bubble over the editor shows the agenttail mascot thinking out loud; on a long think it gets bored and plays one of ten games on its own: snake, tetris, a runner, chess (famous games replayed), chomp, space invaders, a geometry-dash level with ship sections, breakout, flappy and a shell-command typing game (↻ next for another), and if the agent goes quiet for five minutes it falls asleep under a STALLED? warning. Switch to a plain docked console from the console header.
-- 🐾 **Tail, the mascot** — the logo's chevron with an eye sits in the editor corner while a session is in motion. Its eye follows your pointer, it hops when a command passes, sweats when one fails, cheers when a turn ends and dozes off when nothing happens. Click it to pet it (not too fast). While the agent thinks it raises a thought bubble; on a long think it plays its games there, and **▶ play** hands you the controls (arrows and space; Esc gives them back, N for the next game). Records are kept per game. Turn Tail off in Settings.
-- 🎨 **Themes** — matrix (default), amber, red (crimson and bone), ice, dracula, neon (synthwave) and a light paper theme, from Settings. Each theme colours the editor, its bracket pairs and the console, and keeps success, errors and the accent apart.
+- 🎭 **Console on stage** — while the agent runs a command the console comes up over the editor; when it edits, the console goes back to its dock; when it has nothing to show it shrinks to a slim rail and the agent pane gets the room. Switch to a plain docked console from the console header.
+- 🐾 **Tail, the mascot** — the logo come to life: it reacts to what the agent does, thinks out loud while the model thinks and plays games on a long think. See [Meet Tail](#meet-tail).
+- 🎨 **Themes** — seven, from matrix to a light paper theme. See [Themes](#themes).
 - ◉ **One activity state** — RUNNING, EDITING, THINKING, REPLYING, IDLE or DONE, with a colour-coded stripe and dot; a settled job shows a checkmark briefly, then returns to the current state.
 - 🧮 **Context** — how much of the model's context window the session uses, in the activity bar and on every wall pane.
-- 📊 **Meters and layout** — CPU, RAM, GPU, steps, tokens, output tokens per second (a 30 s average, with a sparkline) and estimated cost; console/chat side by side, or the agent pane docked as a full-height column on the right (`Ctrl+Shift+.`); collapsible rails and 90/100/115/130% UI scale (115% on wide fresh profiles). Repeated identical actions collapse into one console line with a counter.
+- 📊 **Meters and layout** — CPU, RAM, GPU, steps, tokens, output tokens per second (a 30 s average, with a sparkline) and cost: DeepSeek's real price by peak band, and for Claude Code what the tokens would cost at Anthropic's API list prices (**≈ API**, a yardstick even on a subscription); console/chat side by side, or the agent pane docked as a full-height column on the right (`Ctrl+Shift+.`); collapsible rails and 90/100/115/130% UI scale (115% on wide fresh profiles). Repeated identical actions collapse into one console line with a counter.
 - ⏪ **Replay** — finished sessions replay through the same pipeline, typing animation included, at a chosen speed.
 - 🔒 **Stream mode** — server-side redaction with fail-closed behaviour; add your own rules in `redact.json`.
 - 🎛️ **Control (opt-in)** — start an owned dsh session in an allowlisted folder, send messages, approve or reject commands, stop a turn, switch the model between turns, and see the model/provider and permission preset. View-only sessions stay read-only.
@@ -119,6 +122,30 @@ Requirements: Node 24+, Windows, macOS or Linux. Windows is the tested platform;
     </td>
   </tr>
 </table>
+
+## Meet Tail
+
+<p align="center">
+  <img src="docs/tail.gif" width="560" alt="Tail, the agenttail mascot, thinking in a thought bubble and then playing space invaders">
+</p>
+
+Tail is the logo's prompt chevron with an eye in its opening. It sits in the editor corner while a session is in motion and keeps you company:
+
+- **It watches.** The eye follows your pointer; left alone, it glances at whatever the agent is busy with, and up at its thoughts while it thinks.
+- **It reacts.** A hop and a ✓ when a command passes, a shake and a sweat drop when one fails, confetti when a turn ends, a little `!` when you send a message. It dozes off when the session has been idle for a minute and a half, and wakes up when you come near.
+- **It thinks out loud.** While the model thinks, three dots rise into a thought bubble with a clock, the latest line of reasoning and some nonsense (*catching kittens*, *what is 42*, *negotiating with the compiler*). Five minutes without output and it falls asleep under a **STALLED?** warning.
+- **It plays.** On a long think it gets bored and plays one of ten games by itself: snake, tetris, a runner, chess (famous games replayed), chomp, space invaders, a geometry-dash level with ship sections, breakout, flappy and a shell-command typing game. **▶ play** hands you the controls (arrows and space; Esc gives them back, N for the next game), and the best score per game is kept.
+- **It likes pets.** Click it. Not too fast, or it gets dizzy.
+
+On the [watch wall](#watching-several-agents) every agent gets its own Tail in its own colour. Turn Tail off in Settings.
+
+## Themes
+
+<p align="center">
+  <a href="docs/themes.png"><img src="docs/themes.png" width="100%" alt="The seven themes side by side: matrix, amber, red, ice, dracula, neon and paper"></a>
+</p>
+
+Matrix (default), amber, red (crimson and bone), ice, dracula, neon (synthwave) and a light paper theme, from Settings. Each theme colours the editor, its bracket pairs, the console, Tail and its games, and keeps success, errors and the accent apart.
 
 ## Watching several agents
 
@@ -337,10 +364,10 @@ The control design and the dsh ACP evidence are recorded in [docs/dev/input-desi
 - `smoke` — dsh API/SSE, live/idle/finished states, stale-mtime growth, hysteresis, system user classification, nicknames, job output, sorting, source counts, sys samples, Host/Origin/Content-Type checks.
 - `roots` — allowlisted roots, junction follow/deny, opaque keys, traversal, touched deep paths, ignore list/show-hidden.
 - `redact` — every redaction category, IP:port/UUID/opaque-id rules, network boundaries, live `redact.json`, fail-closed and off mode.
-- `sources` — Claude custom titles/subagents/thinking/pending live, Antigravity normalization, tokens, deletes and live tail.
+- `sources` — Claude custom titles/subagents/thinking/pending live, replies counted once, turns and API-equivalent prices, Antigravity normalization, tokens, deletes and live tail.
 - `control` — opt-in gate (404), token (401), stream-mode lockout (403), foreign Origin (403), ACP start/message/approve/stop/close, queueing, audit-without-bodies.
 - `agents` — the agents overview API, repository and worktree grouping, colours, `/app/` asset security, stream tail and lite mode.
-- `ui` — headless Edge: header, compact picker, meters, activity states, follow, tree legend/tooltips/show-hidden, skeleton/loading bar, chat Chat|Log and grouped tools, replay, splitter persistence, themes, the watch wall (panes, focus stage, chat modes, team tree, timeline, quiet agents), vendored assets, reduced motion and 900/720 px layouts.
+- `ui` — headless Edge: header, compact picker, meters, activity states, follow, tree legend/tooltips/show-hidden, skeleton/loading bar, chat Chat|Log and grouped tools, replay, splitter persistence, themes, the console stage, Tail and its ten games, the watch wall (panes, focus stage, chat modes, team tree, timeline, quiet agents, a Tail per pane), vendored assets, reduced motion and 900/720 px layouts.
 
 Build a standalone Windows exe and the package/portable archives with `node scripts/build-sea.mjs`. Artifacts go to `dist/` (git-ignored).
 
