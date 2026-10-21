@@ -109,6 +109,23 @@ try {
   check(blocked?.attention?.tool === 'B***' && blocked.attention.reason === 'permission', 'the attention record passes the redactor', JSON.stringify(blocked?.attention));
   check(attn.groups.flatMap((g) => g.agents).find((x) => x.id === 'quiet')?.attention.level === 'none', 'an agent with no attention record gets none');
 
+  console.log('\nthe cap never hides an agent that needs you');
+  const many = (waitingCount, otherCount) => [
+    ...Array.from({ length: waitingCount }, (_, i) => ({
+      source: 'claude', id: `need-${i}`, title: `Needs ${i}`, state: 'live', cwd: i % 2 ? plain : main, lastEventAt: now - 1000 * (i + 1), touched: [],
+      attention: { level: 'needs-you', reason: 'permission', since: now - 60000 - i * 1000, via: 'status-file', certainty: 'sure', detail: 'permission prompt' },
+    })),
+    ...Array.from({ length: otherCount }, (_, i) => ({ source: 'dsh', id: `busy-${i}`, title: `Busy ${i}`, state: 'live', cwd: plain, lastEventAt: now - 500 * (i + 1), touched: [] })),
+  ];
+  const flood = await buildAgents(many(20, 30), { now, labelFor: (k) => k });
+  const floodAgents = flood.groups.flatMap((g) => g.agents);
+  check(floodAgents.filter((x) => x.attention.level === 'needs-you').length === 20 && flood.needsYou === 20, 'with 20 sessions needing you, all 20 are listed and counted', JSON.stringify([flood.needsYou, floodAgents.length]));
+  check(flood.groups.reduce((n, g) => n + g.needsYou, 0) === flood.needsYou && flood.total === floodAgents.length, 'the snapshot, the group counts and the list agree', JSON.stringify([flood.needsYou, flood.total, floodAgents.length]));
+  check(flood.total === 20, 'the cap only trims the agents that do not need you', String(flood.total));
+  const mixed = await buildAgents(many(3, 30), { now, labelFor: (k) => k });
+  check(mixed.total === 16 && mixed.needsYou === 3, 'with few waiting the overview still stops at 16', JSON.stringify([mixed.total, mixed.needsYou]));
+  check(mixed.groups.flatMap((g) => g.agents).filter((x) => x.attention.level === 'needs-you').length === 3, 'and the ones waiting are all in it');
+
   console.log('\n/api/agents');
   const fixture = buildFixture(path.join(tmp, 'server'));
   const PORT = 8905;

@@ -188,6 +188,128 @@ try {
   check(claudeStatus.pidAlive(process.pid) && !claudeStatus.pidAlive(dead) && !claudeStatus.pidAlive(0) && !claudeStatus.pidAlive(-5) && !claudeStatus.pidAlive('12'), 'process liveness: running, exited, and nonsense pids');
   check((await claudeStatus.readStatuses({ dir: path.join(tmp, 'does-not-exist'), fresh: true })).size === 0, 'a missing folder is no signal, not an error');
 
+  // A <pid>.json that is a link to a .key file must not be followed.
+  const ldir = path.join(tmp, 'link-sessions');
+  fs.mkdirSync(ldir, { recursive: true });
+  const linkTarget = path.join(ldir, '4000011.key');
+  fs.writeFileSync(linkTarget, J(status(4000011, 'unit-symlink')));
+  fs.writeFileSync(path.join(ldir, '4000012.json'), J(status(4000012, 'unit-regular')));
+  let linkMade = true;
+  try {
+    fs.symlinkSync(linkTarget, path.join(ldir, '4000011.json'), 'file');
+  } catch (err) {
+    linkMade = false;
+    console.log(`  skip  real symlink check: this OS refused to create a symlink (${err.code || 'error'}); the simulated one below still runs`);
+  }
+  if (linkMade) {
+    const linkRead = [];
+    const origReadFile = fsp.readFile;
+    fsp.readFile = (...args) => { linkRead.push(String(args[0])); return origReadFile(...args); };
+    let linked;
+    try {
+      linked = await claudeStatus.readStatuses({ dir: ldir, now, alive: () => true, fresh: true });
+    } finally {
+      fsp.readFile = origReadFile;
+    }
+    check(!linked.has('unit-symlink'), 'a <pid>.json that is a symlink to a .key file gives no signal', J([...linked.keys()]));
+    check(!linkRead.some((p) => p.endsWith('4000011.json') || p.endsWith('.key')), 'a symlink is never opened, and neither is its target', J(linkRead));
+    check(linked.has('unit-regular'), 'a regular file next to the symlink is still read');
+  }
+  // Where symlinks cannot be made, the same shape is simulated: the folder
+  // holds a regular file, but lstat reports it as a link. Going through lstat
+  // is what keeps the reader from following it.
+  {
+    const sdir2 = path.join(tmp, 'sim-link-sessions');
+    fs.mkdirSync(sdir2, { recursive: true });
+    fs.writeFileSync(path.join(sdir2, '4000013.json'), J(status(4000013, 'unit-simlink')));
+    fs.writeFileSync(path.join(sdir2, '4000014.json'), J(status(4000014, 'unit-simplain')));
+    const origLstat = fsp.lstat;
+    fsp.lstat = async (file, ...rest) => {
+      const st = await origLstat(file, ...rest);
+      if (String(file).endsWith('4000013.json')) return Object.assign(Object.create(Object.getPrototypeOf(st)), st, { isFile: () => false, isSymbolicLink: () => true });
+      return st;
+    };
+    let simmed;
+    try {
+      simmed = await claudeStatus.readStatuses({ dir: sdir2, now, alive: () => true, fresh: true });
+    } finally {
+      fsp.lstat = origLstat;
+    }
+    check(!simmed.has('unit-simlink') && simmed.has('unit-simplain'), 'an entry that lstat reports as a link is skipped, a regular one is read', J([...simmed.keys()]));
+  }
+
+  // A waiting file is only believed when the live process is the one that wrote
+  // it: the file carries the process start time, and a reused pid starts later.
+  console.log('\nthe start-time check on waiting status files');
+  {
+    const pdir = path.join(tmp, 'start-sessions');
+    fs.mkdirSync(pdir, { recursive: true });
+    const put = (pid, sessionId, extra = {}) => fs.writeFileSync(path.join(pdir, `${pid}.json`), J(status(pid, sessionId, { status: 'waiting', waitingFor: 'permission prompt', ...extra })));
+    const START = '133000000000000000';
+    put(4000021, 'start-reused', { procStart: START });
+    put(4000022, 'start-same', { procStart: START });
+    put(4000023, 'start-error', { procStart: START });
+    put(4000024, 'start-nodata', { procStart: START });
+    put(4000025, 'start-busy', { status: 'busy', waitingFor: undefined, procStart: START });
+    put(4000026, 'start-nostamp');
+    put(4000027, 'start-nostamp-old', { updatedAt: now - 8 * 3600000, statusUpdatedAt: now - 8 * 3600000 });
+    fs.utimesSync(path.join(pdir, '4000027.json'), new Date(now - 8 * 3600000), new Date(now - 8 * 3600000));
+    put(4000028, 'start-badstamp', { procStart: 'not-a-number' });
+    const asked = [];
+    const fake = async (pids) => {
+      asked.push([...pids].sort((a, b) => a - b));
+      return new Map([[4000021, '133000000000000001'], [4000022, START]]); // 4000023 and 4000024 are not answered
+    };
+    claudeStatus.resetStartCache();
+    const m1 = await claudeStatus.readStatuses({ dir: pdir, now, alive: () => true, fresh: true, startTimes: fake });
+    check(!m1.has('start-reused'), 'a waiting file whose process started at another time (a reused pid) gives no signal', J([...m1.keys()]));
+    check(m1.get('start-same')?.startCheck === 'match', 'a waiting file whose process start time matches is confirmed', J(m1.get('start-same')));
+    check(m1.get('start-error')?.startCheck === 'unverified' && m1.get('start-nodata')?.startCheck === 'unverified', 'a start time that cannot be read leaves the wait unverified', J([m1.get('start-error'), m1.get('start-nodata')]));
+    check(m1.get('start-busy')?.status === 'busy' && !asked.flat().includes(4000025), 'busy and idle files are not checked');
+    check(m1.get('start-nostamp')?.startCheck === 'unsupported' && m1.get('start-badstamp')?.startCheck === 'unsupported' && !asked.flat().includes(4000026) && !asked.flat().includes(4000028), "a file with no usable start time is not looked up and keeps today's behaviour");
+    check(!m1.has('start-nostamp-old'), 'an unconfirmable wait older than the freshness limit is dropped', J([...m1.keys()]));
+    check(asked.length === 1 && asked[0].join() === '4000021,4000022,4000023,4000024', 'all unconfirmed pids are asked in one lookup', J(asked));
+    const m1b = await claudeStatus.readStatuses({ dir: pdir, now, alive: () => true, fresh: true, startTimes: fake });
+    check(asked.length === 1, 'a second read asks nothing: matches, mismatches and recent failures are cached per pid and start time', J(asked));
+    check(!m1b.has('start-reused') && m1b.get('start-same')?.startCheck === 'match' && m1b.get('start-error')?.startCheck === 'unverified', 'and gives the same answers from the cache', J([...m1b.keys()]));
+
+    // A lookup that throws, and one that never answers, must not hold the poll.
+    claudeStatus.resetStartCache();
+    const m2 = await claudeStatus.readStatuses({ dir: pdir, now, alive: () => true, fresh: true, startTimes: async () => { throw new Error('boom'); } });
+    check(m2.get('start-same')?.startCheck === 'unverified' && m2.has('start-error'), 'a lookup that fails leaves the waits unverified, not dropped', J([...m2.keys()]));
+    claudeStatus.resetStartCache();
+    const t0 = Date.now();
+    const m3 = await claudeStatus.readStatuses({ dir: pdir, now, alive: () => true, fresh: true, startTimes: () => new Promise(() => {}), startTimeoutMs: 60 });
+    check(Date.now() - t0 < 3000 && m3.get('start-same')?.startCheck === 'unverified', 'a lookup that never answers times out and leaves the wait unverified', `${Date.now() - t0} ms`);
+
+    // Without a lookup (other platforms) the file is trusted as before, within the limit.
+    claudeStatus.resetStartCache();
+    const m4 = await claudeStatus.readStatuses({ dir: pdir, now, alive: () => true, fresh: true, startTimes: null });
+    check(m4.get('start-same')?.startCheck === 'unsupported' && m4.has('start-reused') && !m4.has('start-nostamp-old'), 'with no way to check, a wait is trusted but capped by age', J([...m4.keys()]));
+
+    // What the page sees.
+    const att = (rec) => attention.claudeAttention({ status: rec, state: 'live', now });
+    check(att(m1.get('start-same')).certainty === 'sure' && att(m4.get('start-same')).certainty === 'sure', 'a confirmed or unchecked wait is sure');
+    check(att(m1.get('start-error')).level === 'needs-you' && att(m1.get('start-error')).certainty === 'guess' && !attention.notifiable(att(m1.get('start-error'))), 'an unverified wait is only a guess and does not notify', J(att(m1.get('start-error'))));
+  }
+  if (process.platform === 'win32') {
+    // The real lookup, against a process this test started.
+    const pid = sleeper();
+    const got = await claudeStatus.processStartTimes([pid, process.pid]);
+    check(got instanceof Map && /^\d{17,19}$/.test(got.get(pid) || '') && /^\d{17,19}$/.test(got.get(process.pid) || ''), 'on Windows the start time comes back as a FILETIME decimal string', J([...got.entries()].map(([k, v]) => [k === pid ? 'child' : 'self', v.length])));
+    const rdir = path.join(tmp, 'real-start-sessions');
+    fs.mkdirSync(rdir, { recursive: true });
+    const real = got.get(pid);
+    const off = String(BigInt(real) + 10000000n); // one second later
+    fs.writeFileSync(path.join(rdir, `${pid}.json`), J(status(pid, 'real-same', { status: 'waiting', waitingFor: 'permission prompt', procStart: real })));
+    fs.writeFileSync(path.join(rdir, `${process.pid}.json`), J(status(process.pid, 'real-reused', { status: 'waiting', waitingFor: 'permission prompt', procStart: off })));
+    claudeStatus.resetStartCache();
+    const live = await claudeStatus.readStatuses({ dir: rdir, now, fresh: true });
+    check(live.get('real-same')?.startCheck === 'match' && !live.has('real-reused'), 'the default lookup confirms the real process and rejects a start time that differs', J([...live.keys()]));
+  } else {
+    console.log('  skip  the real start-time lookup is only implemented on Windows');
+  }
+
   /* ------------------------------------------------------------- server --- */
   const workspace = path.join(tmp, 'workspace');
   fs.mkdirSync(workspace, { recursive: true });
