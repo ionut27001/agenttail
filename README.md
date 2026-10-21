@@ -258,7 +258,7 @@ Every control POST needs `Authorization: Bearer <token>` in addition to the exis
 
 - **New session** — pick an allowlisted workspace, a permission preset (`workspace-write` by default, `read-only`, or `danger-full-access` with an explicit confirmation), a model from the live dsh catalog (including custom providers such as Ollama configured in the ACP profile), and a first message.
 - **Input** — Enter sends; Shift+Enter adds a newline. A message sent during a running turn is queued and sent when that turn ends. The model picker next to the input switches the model for the next turn (the live dsh catalog). Pasted images are sent only when the agent declares image prompts; dsh's ACP does not, so agenttail says so instead of sending them.
-- **Approvals** — the exact command or diff appears in the chat and the activity bar, with Approve and Reject. Reject accepts an optional short reason. The inbox (`Alt+I`) lists the pending approvals of every owned session with Approve and Reject in place. agenttail never auto-approves.
+- **Approvals** — the exact command, file paths and diff appear first, the agent's own title last, with Approve and Reject. Approve always means "allow once": agenttail never picks an agent's "always allow" option, and refuses to approve a request that came with no command or file details, or a card that changed after you saw it (it shows what changed). Reject accepts an optional short reason. The inbox (`Alt+I`) lists the pending approvals of every owned session with Approve and Reject in place. agenttail never auto-approves.
 - **Stop** — cancels the running turn and kills the tool process. **End** closes the owned session; it becomes view-only.
 - **Owned vs view-only** — sessions started by agenttail are marked ◈. Sessions started by the Desktop app or another process are view-only: dsh does not expose a live attach surface, and a second process cannot resume an active session (`session … is already owned by an active write handle`).
 
@@ -318,6 +318,20 @@ The session workspace is always allowed. Junctions/symlinks are followed only wh
 ```
 
 `dshProfile` defaults to `acp`; `dshHome` and `patch` are optional. A custom provider such as Ollama must be configured in that ACP profile (or passed as a `patch` overlay) before it appears in the model picker. `workspaces` is the only required field.
+
+The same file can describe several harnesses in a `harnesses` block instead of the `dsh…` keys (which keep working and are read as `harnesses.dsh` when the block is absent):
+
+```json
+{
+  "workspaces": ["E:\\dev\\scratch"],
+  "defaultHarness": "dsh",
+  "harnesses": {
+    "dsh": { "label": "DeepSeek Harness", "profile": "acp" }
+  }
+}
+```
+
+Each entry takes `label`, `kind` (`dsh` or `acp`), `command` and `args` (absolute paths recommended), `envPass` (names of environment variables to pass through), `env` (fixed values), `presets` (`{ id, label, danger?, env | mode | config }`), `defaultPreset` and `log` (which adapter shows its sessions). Commands come only from this file, never from the page or an API request, and agenttail never downloads or installs a harness. A harness other than dsh gets only the basic environment (path, system, temp and home variables) plus `envPass`; environment values never reach the page or the audit log. A `danger` preset, or switching a running session to its mode, needs the explicit confirmation. The New Session dialog shows a harness picker only when there is more than one, with the command line that will run. In this release only harnesses shown by the dsh log adapter can be started; driving Claude Code, Antigravity and other harnesses is the next release (see [docs/dev/hub-roadmap.md](docs/dev/hub-roadmap.md)).
 
 | Variable | Default | Purpose |
 | --- | --- | --- |

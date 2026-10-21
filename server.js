@@ -1485,6 +1485,7 @@ async function handleControlOptions(res) {
     // presets it offers; never its environment.
     harnesses: config.harnesses.describe(),
     defaultHarness: config.harnesses.defaultId,
+    harnessesError: config.harnesses.error || null,
     dshProfile: config.harnesses.get('dsh')?.profile || 'acp',
   });
 }
@@ -1561,11 +1562,14 @@ async function handleControlPost(req, res, p) {
     if (p === '/api/control/approval') {
       const decision = String(body.decision || '');
       const reason = body.reason === undefined || body.reason === null ? '' : String(body.reason).slice(0, 500);
+      // An approve is valid only for the card revision the reviewer saw.
+      const revision = Number.isInteger(body.revision) && body.revision > 0 ? body.revision : undefined;
       const result = await control.approval(
         String(body.id || ''),
         String(body.approvalId || ''),
         decision,
         reason,
+        revision,
       );
       sendJson(res, 200, result);
       return;
@@ -1577,7 +1581,7 @@ async function handleControlPost(req, res, p) {
     }
     if (p === '/api/control/config') {
       // A select option the agent offers (mode, effort...); the model has its own endpoint.
-      const result = await control.setConfig(String(body.id || ''), String(body.configId || ''), body.value);
+      const result = await control.setConfig(String(body.id || ''), String(body.configId || ''), body.value, body.confirmDanger === true);
       sendJson(res, 200, { session: safeControlState(result.session) });
       return;
     }

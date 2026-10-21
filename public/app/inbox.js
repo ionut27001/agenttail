@@ -102,6 +102,13 @@
     const reject = el('button', 'ib-reject', 'REJECT');
     for (const b of [approve, reject]) { b.type = 'button'; b.disabled = inbox.busy.has(id); }
     approve.title = 'Allow this once';
+    // Same rule as the session page: no allow-once option, or no details to review, means no Approve.
+    if (approval.canApprove === false) {
+      approve.disabled = true;
+      approve.title = approval.approveBlock === 'no-details'
+        ? 'The agent sent no command or file details; reject it or answer in the chat'
+        : 'The agent offers no allow-once option; reject it instead';
+    }
     approve.addEventListener('click', () => decide(row, approval, 'approve', ''));
     reject.addEventListener('click', () => decide(row, approval, 'reject', reason.value.trim()));
     reason.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); decide(row, approval, 'reject', reason.value.trim()); } });
@@ -121,7 +128,8 @@
       await controlFetch('/api/control/approval', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: row.id, approvalId: approval.approvalId, decision, reason }),
+        // The revision ties an approve to the version of the card on screen.
+        body: JSON.stringify({ id: row.id, approvalId: approval.approvalId, decision, reason, revision: approval.revision }),
       });
       inbox.approvals = inbox.approvals.filter((a) => !(a.sessionId === row.id && a.approval.approvalId === approval.approvalId));
     } catch (err) {

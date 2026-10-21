@@ -202,8 +202,10 @@
   }
 
   function renderModePicker(session) {
-    const select = modeSelect();
     const option = modeOption(session);
+    // With no mode to choose and no picker built yet, add no empty control to the page.
+    if (!option && !$c('composerMode')) return;
+    const select = modeSelect();
     select.classList.toggle('hidden', !option);
     if (!option) { select.dataset.signature = ''; return; }
     const signature = `${option.id}|${option.options.map((m) => m.value).join('|')}`;
@@ -618,6 +620,11 @@
       row.appendChild(document.createTextNode('HARNESS'));
       const select = document.createElement('select');
       select.id = 'dlgHarness';
+      // Never an empty select: a placeholder until the options arrive.
+      const loading = document.createElement('option');
+      loading.value = '';
+      loading.textContent = 'loading…';
+      select.appendChild(loading);
       row.appendChild(select);
       $c('dlgPreset').closest('label').before(row);
       select.addEventListener('change', applyDialogHarness);
@@ -693,6 +700,12 @@
         opt.value = harness.id;
         opt.textContent = harness.label || harness.id;
         picker.appendChild(opt);
+      }
+      if (!harnesses.length) {
+        const none = document.createElement('option');
+        none.value = '';
+        none.textContent = 'no harness configured';
+        picker.appendChild(none);
       }
       if (harnesses.length) picker.value = data.defaultHarness || harnesses[0].id;
       harnessRow().classList.toggle('hidden', harnesses.length < 2);
