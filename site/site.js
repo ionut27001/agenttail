@@ -459,8 +459,9 @@
       const dt = Math.min(0.05, (t - (cab.last || t)) / 1000);
       cab.last = t;
       cab.game.step(dt, t / 1000);
-      const dpr = Math.min(2, window.devicePixelRatio || 1);
-      if (cab.canvas.width !== games.W * dpr) { cab.canvas.width = games.W * dpr; cab.canvas.height = games.H * dpr; }
+      // Drawn at the cabinet's on-screen size, so the games stay sharp.
+      const dpr = Math.min(4, (window.devicePixelRatio || 1) * Math.max(1, (cab.canvas.clientWidth || games.W) / games.W));
+      if (cab.canvas.width !== Math.round(games.W * dpr)) { cab.canvas.width = Math.round(games.W * dpr); cab.canvas.height = Math.round(games.H * dpr); }
       const ctx = cab.canvas.getContext('2d');
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, games.W, games.H);

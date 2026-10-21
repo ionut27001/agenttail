@@ -217,11 +217,39 @@ main, .foot, .nav { position: relative; z-index: 1; }
 
 /* ---------- Tail lab ---------- */
 .tail-lab { position: relative; padding: 26px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); }
-.lab-stage { position: relative; display: grid; place-items: end end; height: 420px; padding-right: 30px; }
-/* In the lab the bubble stacks its game above the text, so it fits the card. */
-.tail-lab .tail-buddy.big .tb-bubble-slot { right: 120px; bottom: 236px; }
-.tail-lab .tail-buddy.big.playing .tb-bubble-slot { right: 0; bottom: 0; }
-.tail-lab .think-card.playing .tc-bubble { width: 300px; flex-direction: column; align-items: stretch; gap: 8px; }
+.lab-stage { position: relative; height: 470px; }
+/* Bubbles never leave their box: the demo's bubble sizes to its stage
+   (container units) and a playing game stacks above the text when narrow. */
+.d-stage { container-type: inline-size; }
+.d-stage .tc-bubble { max-width: calc(100cqw - 90px); }
+@container (max-width: 560px) {
+  .d-stage .think-card.playing .tc-bubble { width: min(340px, calc(100cqw - 24px)); max-width: none; flex-direction: column; align-items: stretch; gap: 8px; }
+  .d-stage .think-card.playing .tail-game { width: 100%; }
+  .d-stage .tail-buddy.playing .tb-bubble-slot { right: -4px; bottom: 2px; }
+}
+.d-stage .tail-game, .tail-lab .tail-game { max-width: 100%; height: auto; aspect-ratio: 240 / 110; }
+@container (min-width: 561px) {
+  .d-stage .think-card.playing .tc-bubble { width: min(640px, calc(100cqw - 40px)); max-width: none; }
+  .d-stage .think-card.playing .tail-game { width: 340px; }
+}
+/* In the lab the stage itself holds Tail's parts: the thought bubble spans
+   its top, and a game takes the whole stage, the canvas as wide as it fits. */
+.tail-lab .tail-buddy.big { position: static; width: auto; height: auto; }
+.tail-lab .tail-buddy.big .tail-mascot { right: 24px; bottom: 0; }
+.tail-lab .tail-buddy.big .tb-say { right: 0; bottom: 226px; }
+.tail-lab .tail-buddy.big .tb-fx { right: 64px; bottom: 175px; }
+.tail-lab .tail-buddy.big .tm-dot.d1 { right: 144px; bottom: 192px; }
+.tail-lab .tail-buddy.big .tm-dot.d2 { right: 160px; bottom: 212px; }
+.tail-lab .tail-buddy.big .tm-dot.d3 { right: 180px; bottom: 234px; }
+.tail-lab .tail-buddy.big .tb-bubble-slot,
+.tail-lab .tail-buddy.big.playing .tb-bubble-slot { left: 0; right: 0; top: 0; bottom: auto; }
+.tail-lab .tail-buddy.big.playing .tb-bubble-slot { bottom: 0; }
+.tail-lab .think-card .tc-bubble { width: 100%; max-width: none; }
+.tail-lab .think-card.playing, .tail-lab .think-card.playing .tc-bubble { height: 100%; }
+.tail-lab .think-card.playing .tc-bubble { flex-direction: column; align-items: stretch; justify-content: center; gap: 12px; padding: 16px; }
+.tail-lab .think-card.playing .tail-game { width: 100%; border-radius: 8px; background: var(--bg-deep); }
+.tail-lab .think-card.playing .tc-text { flex: none; }
+@media (max-width: 640px) { .lab-stage { height: 400px; } }
 .moods { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 16px; }
 .moods button {
   padding: 8px 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg-2); color: var(--text);

@@ -148,7 +148,8 @@
       const dt = Math.min(0.05, (t - (game.last || t)) / 1000);
       game.last = t;
       game.current.step(dt, t / 1000);
-      const dpr = window.devicePixelRatio || 1;
+      // Draw at the size the canvas has on screen, so a bigger bubble stays sharp.
+      const dpr = (window.devicePixelRatio || 1) * Math.max(1, (canvas.clientWidth || games.W) / games.W);
       const ctx = canvas.getContext('2d');
       if (canvas.width !== Math.round(games.W * dpr)) {
         canvas.width = Math.round(games.W * dpr);
