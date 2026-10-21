@@ -27,7 +27,7 @@ const claude = require('./lib/claude');
 const antigravity = require('./lib/antigravity');
 const { deletionsFromCommand } = require('./lib/deletes');
 const { jobLogFromCommand } = require('./lib/jobs');
-const { PRICES } = require('./lib/pricing');
+const { PRICES, CLAUDE_PRICES } = require('./lib/pricing');
 const { analyzeLog } = require('./lib/session-analysis');
 const { stateFrom, describe, LiveTracker } = require('./lib/live');
 const { Nicknames } = require('./lib/nicknames');
@@ -1187,7 +1187,7 @@ async function serveStream(req, res, record, options = {}) {
       owned: record.owned === true,
     },
     streamSafe: redactor.enabled,
-    prices: record.source === 'dsh' ? PRICES : null,
+    prices: record.source === 'dsh' ? PRICES : record.source === 'claude' ? CLAUDE_PRICES : null,
     pollMs: POLL_MS,
     historyCount: stream.events.length,
     control: controlDescriptor(record),

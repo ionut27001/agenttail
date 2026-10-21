@@ -20,6 +20,13 @@
   gets ship sections and jump orbs, chess replays two famous games with
   sliding pieces, invaders gets shields and a saucer, chomp gets lanes,
   bombs and combos.
+- Claude Code sessions show a cost: what the same tokens would cost at
+  Anthropic's API list prices, per model (labelled ≈ API, since a
+  subscription is not billed per token), in the header and per turn.
+- Claude Code token and step counts were about 2.5× too high: the transcript
+  repeats a reply's usage on each content-block line, and each reply now
+  counts once. Claude sessions also get turns, so the Log shows per-turn
+  summaries and Tail cheers when a turn ends.
 - Claude Code sessions stay live while the model composes a long reply: a
   turn is open until the transcript says end_turn, not just while it grows.
 - A very long running command no longer pushes the page wider than the window.

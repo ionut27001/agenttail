@@ -47,10 +47,23 @@ const claudeLines = [
   {
     type: 'assistant', cwd: workspace, sessionId: claudeId, timestamp: iso(2), uuid: 'a1',
     message: {
+      id: 'msg_a1', model: 'claude-opus-5-5',
       role: 'assistant',
       content: [
         { type: 'thinking', thinking: 'Deliberating about the widget.' },
         { type: 'text', text: 'I will delete the stale file and update the answer.' },
+      ],
+      usage: { input_tokens: 100, output_tokens: 40, cache_read_input_tokens: 1000, cache_creation_input_tokens: 10 },
+    },
+  },
+  // Claude Code writes a reply's next content block as its own line, with the
+  // same message id and the same usage repeated.
+  {
+    type: 'assistant', cwd: workspace, sessionId: claudeId, timestamp: iso(2), uuid: 'a1b',
+    message: {
+      id: 'msg_a1', model: 'claude-opus-5-5',
+      role: 'assistant',
+      content: [
         { type: 'tool_use', id: 'tool-bash', name: 'Bash', input: { command: 'rm gone.txt', description: 'remove stale file' } },
       ],
       usage: { input_tokens: 100, output_tokens: 40, cache_read_input_tokens: 1000, cache_creation_input_tokens: 10 },
@@ -64,6 +77,7 @@ const claudeLines = [
   {
     type: 'assistant', cwd: workspace, sessionId: claudeId, timestamp: iso(4), uuid: 'a2',
     message: {
+      id: 'msg_a2', model: 'claude-opus-5-5',
       role: 'assistant',
       content: [
         { type: 'tool_use', id: 'tool-edit', name: 'Edit', input: { file_path: path.join(workspace, 'src', 'app.js'), old_string: 'export const answer = 41;', new_string: 'export const answer = 42;' } },
@@ -78,6 +92,7 @@ const claudeLines = [
   {
     type: 'assistant', cwd: workspace, sessionId: claudeId, timestamp: iso(6), uuid: 'a3',
     message: {
+      id: 'msg_a3', model: 'claude-opus-5-5',
       role: 'assistant',
       content: [
         { type: 'text', text: `Token ${SECRET} should never leak.` },
@@ -103,6 +118,7 @@ fs.writeFileSync(
 fs.appendFileSync(claudeFile, JSON.stringify({
   type: 'assistant', cwd: workspace, sessionId: claudeId, timestamp: iso(7.5), uuid: 'a-pending',
   message: {
+    id: 'msg_pending', model: 'claude-opus-5-5',
     role: 'assistant',
     content: [
       { type: 'text', text: 'Waiting on a long command.' },
@@ -117,6 +133,7 @@ const subLines = [
   {
     type: 'assistant', isSidechain: true, cwd: workspace, sessionId: claudeId, timestamp: iso(9),
     message: {
+      id: 'msg_sub', model: 'claude-haiku-4-5',
       role: 'assistant',
       content: [
         { type: 'text', text: 'subagent reporting in' },
@@ -255,7 +272,8 @@ try {
   );
   const claudeEvs = eventsOf(cEvents);
   const cMeta = cEvents.find((e) => e.event === 'meta');
-  check(cMeta?.data.prices === null, 'Claude has no cost estimate', JSON.stringify(cMeta?.data.prices));
+  check(cMeta?.data.prices?.apiEquivalent === true, 'Claude is priced as an API equivalent', JSON.stringify(cMeta?.data.prices));
+  check(cMeta?.data.session.model === 'claude-opus-5-5' && cMeta?.data.session.provider === 'anthropic', 'the model comes from the transcript', JSON.stringify([cMeta?.data.session.model, cMeta?.data.session.provider]));
   check(cMeta?.data.session.source === 'claude', 'meta reports the source');
   check(!JSON.stringify(claudeEvs).includes(SECRET), 'redaction applies to Claude events');
   check(claudeEvs.some((e) => e.t === 'user' && e.text.includes('Fix the widget')), 'user message normalized');
@@ -271,6 +289,13 @@ try {
   check(claudeEvs.some((e) => e.t === 'result' && e.text.includes('removed')), 'tool_result becomes output');
   const cUsage = claudeEvs.filter((e) => e.usage).reduce((a, e) => a + e.usage.input + e.usage.output + e.usage.cacheRead + e.usage.cacheWrite, 0);
   check(cUsage === 100 + 40 + 1000 + 10 + 50 + 20 + 2000 + 30 + 10 + 3000 + 5 + 5 + 1 + 1, 'usage is mapped to token counts', String(cUsage));
+  // Opus 5.5: $4 in, $20 out, $0.20 cache read, $5 5-minute cache write; Haiku 4.5: $1 in, $5 out.
+  const cCost = claudeEvs.filter((e) => e.t === 'say' && typeof e.cost === 'number').reduce((a, e) => a + e.cost, 0);
+  const wantCost = (100 * 4 + 40 * 20 + 1000 * 0.2 + 10 * 5 + 50 * 4 + 20 * 20 + 2000 * 0.2 + 30 * 4 + 10 * 20 + 3000 * 0.2 + 1 * 4 + 1 * 20 + 5 * 1 + 5 * 5) / 1e6;
+  check(Math.abs(cCost - wantCost) < 1e-12, 'each reply carries its API-equivalent cost, counted once', `${cCost} vs ${wantCost}`);
+  check(claudeEvs.filter((e) => e.t === 'say' && e.usage).every((e) => e.model), 'priced replies name their model');
+  check(claudeEvs.filter((e) => e.t === 'turn').length === 1 && claudeEvs.filter((e) => e.t === 'turnEnd').length === 0, 'a real prompt opens a turn; injected text does not', JSON.stringify(claudeEvs.filter((e) => /^turn/.test(e.t))));
+  check(claudeEvs.filter((e) => e.t === 'say' && !e.agent).every((e) => e.turn === 1), 'replies carry their turn number');
   check(claudeEvs.some((e) => e.agent && e.agent.startsWith('agent-') && e.text?.includes('subagent')), 'subagent transcript events are included', JSON.stringify(claudeEvs.filter((e) => e.agent).slice(0, 2)));
 
   // A quiet transcript is not idle while the turn is open: the model may be composing.
@@ -283,6 +308,37 @@ try {
   check(sig({ type: 'assistant', message: { stop_reason: 'end_turn', content: [] } }) === false, 'end_turn closes the turn');
   check(sig({ type: 'user', message: { content: [{ type: 'text', text: '[Request interrupted by user]' }] } }) === false, 'an interrupted request closes the turn');
   check(sig({ type: 'user', message: { content: '<local-command-stdout>ok</local-command-stdout>' } }) === null && sig({ type: 'attachment' }) === null && sig({ type: 'user', isSidechain: true, message: { content: 'x' } }) === null, 'injected text, attachments and subagent lines say nothing about the turn');
+
+  // API-equivalent prices for Claude replies.
+  const pricing = createRequire(import.meta.url)('../lib/pricing.js');
+  const near = (a, b) => a !== null && Math.abs(a - b) < 1e-9;
+  const M = 1_000_000;
+  check(near(pricing.claudeCost('claude-opus-5-5', { input_tokens: M, output_tokens: M }), 24), 'Opus 5.5 is $4 in, $20 out');
+  check(near(pricing.claudeCost('claude-opus-5', { input_tokens: M, output_tokens: M }), 30), 'Opus 5 does not pick up the Opus 5.5 rate');
+  check(near(pricing.claudeCost('claude-opus-5-5', { cache_read_input_tokens: M }), 0.2), 'Opus 5.5 cache reads use their own rate');
+  check(near(pricing.claudeCost('claude-sonnet-4-6', { cache_read_input_tokens: M }), 0.3), 'other cache reads are 0.1x input');
+  check(near(pricing.claudeCost('claude-sonnet-5-5', { cache_creation_input_tokens: 2 * M, cache_creation: { ephemeral_5m_input_tokens: M, ephemeral_1h_input_tokens: M } }), 2 * 1.25 + 2 * 2), '5-minute writes are 1.25x input, 1-hour writes 2x');
+  check(near(pricing.claudeCost('claude-haiku-5-5', { input_tokens: 50_000, output_tokens: 1000 }), (50_000 * 0.1 + 1000 * 0.5) / M) &&
+    near(pricing.claudeCost('claude-haiku-5-5', { input_tokens: 200_000, output_tokens: 1000 }), (200_000 * 0.5 + 1000 * 2.5) / M), 'Haiku 5.5 switches rate cards above 100K prompt tokens');
+  check(near(pricing.claudeCost('claude-opus-5-5', { input_tokens: M, output_tokens: M, speed: 'fast' }), 48), 'Opus 5.5 fast mode is $8 in, $40 out');
+  check(near(pricing.claudeCost('claude-sonnet-5', { server_tool_use: { web_search_requests: 3 } }), 0.03), 'web searches are $10 per thousand');
+  check(near(pricing.claudeCost('us.anthropic.claude-haiku-4-5-20251001-v1:0', { output_tokens: M }), 5) && near(pricing.claudeCost('claude-opus-4-1-20250805', { output_tokens: M }), 75), 'dated and cloud ids find their model');
+  check(pricing.claudeCost('<synthetic>', { input_tokens: 5 }) === null && pricing.claudeCost('gpt-x', { input_tokens: 5 }) === null && pricing.claudeCost('claude-opus-55', { input_tokens: 5 }) === null, 'an unknown model has no price');
+
+  // Turns: end_turn closes the open turn exactly once, even across repeated lines.
+  const turnStream = claudeLib.open({ id: 'turns', file: path.join(tmp, 'turns.jsonl'), cwd: workspace }, { mapPath: (p) => p, redactor: { event: (e) => e, text: (t) => t }, maxEvents: 1000 });
+  const ts0 = new Date().toISOString();
+  for (const e of [
+    { type: 'user', message: { content: 'first task' } },
+    { type: 'assistant', message: { id: 'm1', model: 'claude-opus-5-5', stop_reason: 'end_turn', content: [{ type: 'text', text: 'done' }], usage: { output_tokens: 3 } } },
+    { type: 'assistant', message: { id: 'm1', model: 'claude-opus-5-5', stop_reason: 'end_turn', content: [{ type: 'text', text: 'done again' }], usage: { output_tokens: 3 } } },
+    { type: 'user', message: { content: 'second task' } },
+    { type: 'user', message: { content: [{ type: 'text', text: '[Request interrupted by user]' }] } },
+  ]) turnStream.processEntry({ timestamp: ts0, ...e }, null);
+  const turnEvs = turnStream.events.filter((e) => /^turn/.test(e.t)).map((e) => `${e.t}:${e.turn}`).join(' ');
+  check(turnEvs === 'turn:1 turnEnd:1 turn:2 turnEnd:2', 'turns open on prompts and close on end_turn or an interrupt', turnEvs);
+  check(turnStream.events.filter((e) => e.t === 'step').length === 1 && turnStream.events.filter((e) => e.usage).length === 1, 'a reply split over lines is one step with one usage');
+
   const turnDir = path.join(tmp, 'turn-meta');
   fs.mkdirSync(turnDir, { recursive: true });
   const at = new Date().toISOString();

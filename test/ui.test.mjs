@@ -145,6 +145,7 @@ const claudeLines = [
   {
     type: 'assistant', cwd: fixture.workspace, sessionId: claudeId, timestamp: new Date().toISOString(),
     message: {
+      id: 'msg_ui', model: 'claude-sonnet-5-5',
       role: 'assistant',
       content: [{ type: 'text', text: 'Claude is on the case.' }],
       usage: { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
@@ -999,8 +1000,10 @@ try {
 
   console.log('\nsource picker');
   await evalExpr(`(() => { const s = document.getElementById('sourceSelect'); s.value = 'claude'; s.dispatchEvent(new Event('change')); return true; })()`);
-  const claudeReady = await waitFor(`document.getElementById('mCost').textContent.includes('TOKENS ONLY')`, 20000);
+  const claudeReady = await waitFor(`document.getElementById('mCost').textContent.includes('≈ API')`, 20000);
   check(claudeReady, 'source picker switches to Claude Code');
+  check(await evalExpr(`document.getElementById('mCost').textContent.startsWith('$0.000070') && /API equivalent/.test(document.getElementById('mCost').title)`), 'Claude shows its API-equivalent cost',
+    await evalExpr(`document.getElementById('mCost').textContent + ' | ' + document.getElementById('mCost').title.slice(0, 80)`));
   check(await evalExpr(`document.getElementById('sourceSelect').value === 'claude'`), 'picker keeps the selected source');
   check(await evalExpr(`[...document.getElementById('sessionSelect').options].some(o => o.textContent.includes('Claude fixture'))`), 'Claude session title is shown in the picker',
     await evalExpr(`document.getElementById('sessionSelect').selectedOptions[0].textContent`));

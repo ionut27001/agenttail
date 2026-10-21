@@ -42,7 +42,7 @@ A zero-runtime-dependency Node 24 server plus a single-page UI. It reads local l
 | Source | | Logs read from | Shown |
 | --- | --- | --- | --- |
 | DeepSeek Harness | ✓ | `~/.dsh/sessions/**/session.v4.jsonl.zstd` | edits, commands, background jobs, thinking, tool calls, tokens/cost |
-| Claude Code | ✓ | `~/.claude/projects/**/*.jsonl` | messages, thinking, tool calls, subagents, custom titles |
+| Claude Code | ✓ | `~/.claude/projects/**/*.jsonl` | messages, thinking, tool calls, subagents, custom titles, turns, tokens/API-equivalent cost |
 | Antigravity CLI | ◐ | `~/.gemini/antigravity/**` | normalized messages, thinking, tool calls and file edits |
 
 ✓ full adapter · ◐ normalized/partial. Only sessions whose logs exist locally are listed; empty sessions are hidden behind a picker toggle.
@@ -51,7 +51,7 @@ A zero-runtime-dependency Node 24 server plus a single-page UI. It reads local l
 <summary><b>Source adapter details</b></summary>
 
 - **DeepSeek Harness** reads `session.v4.jsonl.zstd` frames from `~/.dsh/sessions`, decodes them with Node's built-in zlib and understands edits, commands, background jobs, thinking and token/cost usage. The title prefers the local nickname, then a real `session/title` (fallback titles derived from the first prompt are ignored), then the last real user message (first 60 characters), then the first prompt.
-- **Claude Code** reads `~/.claude/projects` transcripts, including custom titles, thinking blocks, tool calls, subagents and pending live writes.
+- **Claude Code** reads `~/.claude/projects` transcripts, including custom titles, thinking blocks, tool calls, subagents and pending live writes. Each reply counts once (Claude Code repeats a reply's usage on every content-block line), turns run from a real prompt to `end_turn`, and every reply is priced at Anthropic's API list price for its own model: cache reads, 5-minute and 1-hour cache writes, Haiku 5.5's long-prompt rate card, Opus 5.5 fast mode and web searches included. The header labels it **≈ API**: on a subscription it is a yardstick for how much work the session was, not your bill.
 - **Antigravity CLI** reads `~/.gemini/antigravity` conversations and normalizes messages, thinking, tool calls and file edits.
 - Sessions sort live first, then by last activity. The header shows only the short id; the picker carries the full title and details. Nicknames live in `nicknames.json` in the config directory (never in `.dsh`) and are redacted like every other label.
 
@@ -349,7 +349,7 @@ Build a standalone Windows exe and the package/portable archives with `node scri
 - Control starts one `dsh --profile acp` process per owned session, because the permission preset is process-level in dsh. ACP is automation-only: no plans, commands, terminals or client filesystem operations.
 - Sessions started outside agenttail are view-only; dsh rejects a second controller for an active session.
 - The tree is a snapshot (2,500 nodes, 12 levels); files created later appear when touched if their parent is known.
-- Peak/off-peak pricing ignores public holidays; GPU metering needs `nvidia-smi`.
+- Peak/off-peak pricing ignores public holidays; the Claude API-equivalent cost uses list prices (no batch, regional or long-context surcharges) and skips models without a list price; GPU metering needs `nvidia-smi`.
 - Windows is tested. macOS and Linux are untested. The Windows exe is unsigned, so SmartScreen may warn.
 - `.dsh` logs are decoded as zstd frames; corrupted frames are skipped.
 

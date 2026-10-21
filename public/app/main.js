@@ -905,7 +905,22 @@ function tokenTotal(usage) {
   return (usage.input || 0) + (usage.output || 0) + (usage.cacheRead || 0) + (usage.cacheWrite || 0);
 }
 
-function addUsage(usage, time) {
+/**
+ * What one reply cost in USD. Claude replies carry the server's own figure at
+ * Anthropic's API list prices (what the tokens would cost on the API, even on
+ * a subscription); DeepSeek replies are priced here by the band they fell in.
+ */
+function replyCost(usage, time, cost) {
+  const p = state.prices;
+  if (!p || !usage) return 0;
+  if (p.apiEquivalent) return typeof cost === 'number' && Number.isFinite(cost) ? cost : 0;
+  const rate = isPeak(time || Date.now()) ? p.peak : p.offPeak;
+  return ((usage.input || 0) * rate.cacheMiss +
+    (usage.cacheRead || 0) * rate.cacheHit +
+    (usage.output || 0) * rate.output) / p.unit;
+}
+
+function addUsage(usage, time, cost) {
   if (!usage) return;
   state.stats.input += usage.input || 0;
   state.stats.output += usage.output || 0;
@@ -920,16 +935,19 @@ function addUsage(usage, time) {
   lastActivity = Date.now();
   const p = state.prices;
   if (!p) { renderStats(); return; }
-  const peak = isPeak(time || Date.now());
-  const rate = peak ? p.peak : p.offPeak;
-  state.stats.cost +=
-    ((usage.input || 0) * rate.cacheMiss +
-      (usage.cacheRead || 0) * rate.cacheHit +
-      (usage.output || 0) * rate.output) / p.unit;
-  state.stats.peak = peak;
+  state.stats.cost += replyCost(usage, time, cost);
+  if (p.apiEquivalent) {
+    if (typeof cost !== 'number' && tokenTotal(usage) > 0) state.stats.unpriced = (state.stats.unpriced || 0) + 1;
+  } else {
+    state.stats.peak = isPeak(time || Date.now());
+  }
   renderStats();
 }
 
+function fmtUsd(n) {
+  if (n > 0 && n < 0.0001) return n.toFixed(6);
+  return n >= 100 ? n.toFixed(2) : n.toFixed(4);
+}
 function fmtInt(n) {
   if (n >= 1e6) return (n / 1e6).toFixed(2) + 'M';
   if (n >= 10000) return (n / 1000).toFixed(1) + 'k';
@@ -962,8 +980,12 @@ function renderStats() {
   if (!state.prices) {
     $('mCost').innerHTML = '—<span class="period" id="mPeriod">TOKENS ONLY</span>';
     $('mCost').title = 'No cost estimate for this source; token counts only.';
+  } else if (state.prices.apiEquivalent) {
+    $('mCost').innerHTML = `$${fmtUsd(s.cost)}<span class="period" id="mPeriod">≈ API</span>`;
+    const unpriced = s.unpriced ? `\n${s.unpriced} ${s.unpriced === 1 ? 'reply' : 'replies'} from a model with no list price ${s.unpriced === 1 ? 'is' : 'are'} not counted.` : '';
+    $('mCost').title = `API equivalent: what these tokens would cost at ${state.prices.model}, $${s.cost.toFixed(4)}. Each reply is priced by its own model, with cache reads, 5-minute and 1-hour cache writes, fast mode and web searches at their own rates. A subscription is not billed per token, so this is a yardstick, not your bill.${unpriced}${approx ? '\n' + approx : ''}`;
   } else {
-    $('mCost').innerHTML = `$${s.cost < 0.0001 && s.cost > 0 ? s.cost.toFixed(6) : s.cost.toFixed(4)}<span class="period" id="mPeriod">${s.peak ? 'peak' : 'low'}</span>`;
+    $('mCost').innerHTML = `$${fmtUsd(s.cost)}<span class="period" id="mPeriod">${s.peak ? 'peak' : 'low'}</span>`;
     $('mCost').title = `${state.prices.model} · $${s.cost.toFixed(4)} estimated · cache hit $${state.prices.offPeak.cacheHit}/M, cache miss $${state.prices.offPeak.cacheMiss}/M, output $${state.prices.offPeak.output}/M off-peak. DeepSeek charges 2× during peak hours; this estimate uses the band of each reply ("low" = off-peak).${approx ? '\n' + approx : ''}`;
   }
   updateStatsChip();
@@ -1014,7 +1036,7 @@ function updateStatsChip() {
   const chip = $('statsChip');
   if (!chip) return;
   const s = state.stats;
-  const cost = state.prices ? `$${s.cost.toFixed(4)} estimated` : 'no cost estimate';
+  const cost = !state.prices ? 'no cost estimate' : state.prices.apiEquivalent ? `$${s.cost.toFixed(4)} at API prices` : `$${s.cost.toFixed(4)} estimated`;
   const approx = state.prices ? approxCostLine(s.cost) : '';
   const base = [`${s.steps} steps`, `${(s.input + s.output + s.cacheRead + s.cacheWrite).toLocaleString('en-US')} tokens`, cost].join(' · ');
   chip.title = approx ? `${base}\n${approx}` : base;
@@ -1501,20 +1523,14 @@ async function applyEvent(ev) {
 
     case 'say': {
       if (ev.usage) {
-        addUsage(ev.usage, ev.time);
+        addUsage(ev.usage, ev.time, ev.cost);
         if (state.currentTurnItem && state.currentTurnItem.turn === ev.turn) {
           const u = state.currentTurnItem.usage;
           u.input += ev.usage.input || 0;
           u.output += ev.usage.output || 0;
           u.cacheRead += ev.usage.cacheRead || 0;
           u.cacheWrite += ev.usage.cacheWrite || 0;
-          const rate = state.prices ? (isPeak(ev.time) ? state.prices.peak : state.prices.offPeak) : null;
-          if (rate) {
-            state.currentTurnItem.cost +=
-              ((ev.usage.input || 0) * rate.cacheMiss +
-                (ev.usage.cacheRead || 0) * rate.cacheHit +
-                (ev.usage.output || 0) * rate.output) / state.prices.unit;
-          }
+          state.currentTurnItem.cost += replyCost(ev.usage, ev.time, ev.cost);
         }
       }
       if (ev.thinking) {
@@ -1530,7 +1546,7 @@ async function applyEvent(ev) {
     }
 
     case 'usage':
-      if (ev.usage) addUsage(ev.usage, ev.time);
+      if (ev.usage) addUsage(ev.usage, ev.time, ev.cost);
       break;
 
     case 'deleted': {
