@@ -1,0 +1,142 @@
+/* Tail, the agenttail mascot (buddy.js), and its thought bubble and games
+   (think-bubble.js). Shared by the app and the project site; colours come
+   from the theme variables in themes.css. */
+  /* ---------- Tail, the mascot (buddy.js), and its thought bubble (think-bubble.js) ---------- */
+  .tail-buddy { position: absolute; right: 18px; bottom: 12px; z-index: 9; width: 50px; height: 68px; display: none; pointer-events: none; }
+  .tail-buddy.show { display: block; }
+  .tail-mascot { position: absolute; right: 0; bottom: 0; width: 50px; height: 68px; overflow: visible; pointer-events: auto; cursor: pointer; }
+  .tail-mascot * { transform-box: fill-box; transform-origin: center; }
+  .tm-body { animation: tm-bob 1.8s ease-in-out infinite; }
+  .tm-chevron { fill: none; stroke: var(--green); stroke-width: 8.5; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 5px color-mix(in srgb, var(--green) 55%, transparent)); }
+  .tm-eye { animation: tm-blink 4.2s infinite; }
+  .tm-white { fill: var(--green); }
+  .tm-pupil { fill: var(--bg-deep); transition: cx .12s, cy .12s; }
+  .tm-glint { fill: var(--text-strong); transition: cx .12s, cy .12s; }
+  .tm-happy { display: none; fill: none; stroke: var(--green); stroke-width: 3.2; stroke-linecap: round; }
+  .tm-sweat { fill: var(--cyan); opacity: 0; }
+  .tm-shadow { fill: var(--green); opacity: .16; animation: tm-shadow 1.8s ease-in-out infinite; }
+  /* Moods: a happy squint, a hop, a shake with a sweat drop, a cheer, a wiggle when petted. */
+  .tail-buddy.r-happy .tm-eye, .tail-buddy.r-cheer .tm-eye, .tail-buddy.r-love .tm-eye { display: none; }
+  .tail-buddy.r-happy .tm-happy, .tail-buddy.r-cheer .tm-happy, .tail-buddy.r-love .tm-happy { display: inline; }
+  .tail-buddy.r-happy .tm-pose { animation: tb-hop .6s ease-out; }
+  .tail-buddy.r-cheer .tm-pose { animation: tb-cheer .95s ease-out; }
+  .tail-buddy.r-oops .tm-pose { animation: tb-shake .5s ease-in-out; }
+  .tail-buddy.r-oops .tm-sweat { opacity: 1; animation: tb-sweat 1.1s ease-in forwards; }
+  .tail-buddy.r-perk .tm-pose { animation: tb-perk .4s ease-out; }
+  .tail-buddy.r-love .tm-pose { animation: tb-wiggle .6s ease-in-out; }
+  .tail-buddy.r-dizzy .tm-pose { animation: tb-dizzy 1.1s ease-in-out 2; }
+  .tail-buddy.r-type .tm-pose { animation: tb-tap .28s ease-out; }
+  .tail-mascot:hover .tm-pose { animation: tb-wiggle .6s ease-in-out; }
+  /* Asleep (an idle session nobody is watching) or stalled: eye shut, z's rising. */
+  .tail-buddy.sleeping .tm-eye, .tail-buddy.stalled .tm-eye { animation: none; transform: scaleY(.14); }
+  .tail-buddy.sleeping .tm-body { animation-duration: 3.6s; }
+  .tail-buddy.sleeping .tb-fx::before, .tail-buddy.sleeping .tb-fx::after {
+    content: 'z'; position: absolute; right: 2px; bottom: 0; color: var(--muted); font-size: 12px; font-weight: 700;
+    animation: tb-z 2.6s ease-out infinite;
+  }
+  .tail-buddy.sleeping .tb-fx::after { animation-delay: 1.3s; font-size: 10px; }
+  .tb-fx { position: absolute; right: 12px; bottom: 58px; width: 0; height: 0; }
+  .tb-p { position: absolute; left: 0; top: 0; font-size: 14px; font-weight: 800; animation: tb-float 1.25s ease-out forwards; }
+  .tb-p.ok { color: var(--ok); }
+  .tb-p.bad { color: var(--red); }
+  .tb-p.perk { color: var(--amber); }
+  .tb-p.love { color: var(--green); }
+  .tb-confetti { position: absolute; left: 0; top: 0; width: 4px; height: 4px; border-radius: 1px; animation: tb-burst 1.05s ease-out forwards; }
+  .tb-say {
+    position: absolute; right: 0; bottom: 74px; max-width: 240px; width: max-content; padding: 4px 10px;
+    border: 1px solid var(--line); border-radius: 11px; background: var(--bg-badge-88); color: var(--text-strong);
+    font-size: 11.5px; line-height: 1.35; box-shadow: 0 6px 18px rgba(0, 0, 0, .3);
+    opacity: 0; transform: translateY(6px); transition: opacity .25s, transform .25s; pointer-events: none;
+  }
+  .tb-say.show { opacity: 1; transform: none; }
+  .tb-say.pop { animation: tb-pop .3s ease-out; }
+  .tail-buddy:has(.think-card.show) .tb-say { display: none; }
+  /* The thought bubble floats above and to the left of Tail; three dots grow
+     from the top of its head up into the bubble's corner. */
+  .tb-bubble-slot { position: absolute; right: 56px; bottom: 88px; }
+  .tail-buddy.playing .tb-bubble-slot { right: 0; bottom: 0; }
+  .tail-buddy.playing .tail-mascot { display: none; }
+  .tail-buddy .tm-dot {
+    position: absolute; display: none; border-radius: 50%; background: color-mix(in srgb, var(--cyan) 18%, var(--bg-2));
+    border: 1.5px solid color-mix(in srgb, var(--cyan) 55%, transparent); animation: tm-rise 1.5s ease-in-out infinite;
+  }
+  .tail-buddy:has(.think-card.show):not(.playing) .tm-dot { display: block; }
+  .tail-buddy .tm-dot.d1 { right: 40px; bottom: 64px; width: 5px; height: 5px; }
+  .tail-buddy .tm-dot.d2 { right: 46px; bottom: 71px; width: 8px; height: 8px; animation-delay: .25s; }
+  .tail-buddy .tm-dot.d3 { right: 54px; bottom: 79px; width: 11px; height: 11px; animation-delay: .5s; }
+  .think-card {
+    position: relative; pointer-events: none; visibility: hidden; opacity: 0; transform: translateY(10px) scale(.97); transform-origin: bottom right;
+    transition: opacity .3s, transform .3s, visibility 0s .3s;
+  }
+  .think-card.show { visibility: visible; opacity: 1; transform: none; transition: opacity .3s, transform .3s; }
+  .tc-bubble {
+    display: flex; align-items: center; gap: 14px; width: 310px; max-width: calc(100vw - 160px); padding: 11px 16px 12px; outline: none;
+    background: color-mix(in srgb, var(--cyan) 5%, var(--bg-badge-88));
+    border: 1.5px solid color-mix(in srgb, var(--cyan) 42%, transparent); border-radius: 22px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, .32), 0 0 0 5px color-mix(in srgb, var(--cyan) 5%, transparent);
+  }
+  .tc-text { flex: 1; min-width: 0; }
+  .tc-head { display: flex; align-items: center; gap: 8px; }
+  .tc-head b { color: var(--cyan); font-size: 10.5px; letter-spacing: .16em; }
+  .tc-time { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tc-glyph {
+    margin-left: auto; min-width: 34px; padding: 1px 8px; border-radius: 9px; text-align: center;
+    border: 1px solid color-mix(in srgb, var(--cyan) 35%, transparent); color: var(--text-strong);
+    font-family: var(--mono); font-size: 11px; font-weight: 700;
+  }
+  .tc-quip { margin-top: 5px; color: var(--text-strong); font-size: 12.5px; line-height: 1.4; }
+  .tc-quip:empty { display: none; }
+  .tc-game { margin-top: 3px; color: var(--muted); font-size: 10.5px; letter-spacing: .04em; }
+  .tc-game:empty { display: none; }
+  .tc-line { margin-top: 3px; color: var(--text-think); font-size: 11px; font-style: italic; line-height: 1.45; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .tc-line:empty { display: none; }
+  /* Games: on a long think Tail plays one; ▶ play hands you the controls. */
+  .tail-game { display: none; flex: none; width: 240px; height: 110px; }
+  .think-card.playing { pointer-events: auto; }
+  .think-card.playing .tc-bubble { width: 520px; }
+  .think-card.playing .tail-game { display: block; }
+  .think-card.playing .tc-glyph { display: none; }
+  .tc-controls { display: none; gap: 6px; margin-top: 7px; }
+  .think-card.playing .tc-controls { display: flex; }
+  .tc-controls button {
+    padding: 1px 9px; border: 1px solid var(--line); border-radius: 9px; background: transparent;
+    color: var(--muted); font-size: 10px; letter-spacing: .06em; cursor: pointer;
+  }
+  .tc-controls button:hover { color: var(--text-strong); border-color: color-mix(in srgb, var(--cyan) 50%, var(--line)); }
+  .tc-controls .tc-play { color: var(--green); border-color: var(--green-dim); }
+  .tc-stop, .think-card.human .tc-play, .think-card.watch-only .tc-play { display: none; }
+  .think-card.human .tc-stop { display: inline-block; }
+  .think-card.human .tc-bubble { border-color: color-mix(in srgb, var(--green) 60%, transparent); box-shadow: 0 10px 30px rgba(0, 0, 0, .32), 0 0 0 5px color-mix(in srgb, var(--green) 10%, transparent); }
+  .think-card.human .tc-head b { color: var(--green); }
+  /* Stalled: amber, and Tail dozes off. */
+  .think-card.stalled .tc-bubble { border-color: color-mix(in srgb, var(--amber) 50%, transparent); }
+  .think-card.stalled .tc-head b { color: var(--amber); }
+  .tail-buddy.stalled .tm-dot, .tail-buddy.stalled .tm-body { animation-duration: 4s; }
+  /* Tail in each watch-wall pane (wall-tail.js): over the stage, above the dock. */
+  .tail-buddy.wall-tail { right: 12px; bottom: 40px; z-index: 7; --green: var(--c); } /* each Tail in its agent's colour */
+  #wall:not(.focus) .tail-buddy.wall-tail { bottom: 10px; }
+  #wall .wall-pane.has-tail .wp-caption { right: 74px; }
+  .wall-tail .tc-bubble { width: 250px; }
+  .wall-tail .think-card.playing .tc-bubble { width: 272px; flex-direction: column; align-items: stretch; gap: 8px; }
+  .wall-tail .tb-say { max-width: 200px; }
+  @keyframes tm-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+  @keyframes tm-shadow { 50% { opacity: .08; transform: scaleX(.78); } }
+  @keyframes tm-blink { 0%, 91%, 100% { transform: scaleY(1); } 94% { transform: scaleY(.12); } }
+  @keyframes tm-rise { 0%, 100% { opacity: .35; transform: scale(.85); } 40% { opacity: 1; transform: scale(1.1); } }
+  @keyframes tb-hop { 30% { transform: translateY(-10px); } 60% { transform: translateY(0); } 75% { transform: translateY(-3px); } }
+  @keyframes tb-cheer { 20% { transform: translateY(-12px) rotate(-8deg); } 40% { transform: translateY(0); } 60% { transform: translateY(-9px) rotate(8deg); } 80% { transform: translateY(0); } }
+  @keyframes tb-shake { 20%, 60% { transform: translateX(-3px); } 40%, 80% { transform: translateX(3px); } }
+  @keyframes tb-sweat { from { transform: translateY(0); } to { transform: translateY(9px); opacity: 0; } }
+  @keyframes tb-perk { 40% { transform: scale(1.14) translateY(-3px); } }
+  @keyframes tb-wiggle { 25% { transform: rotate(-9deg); } 75% { transform: rotate(9deg); } }
+  @keyframes tb-dizzy { to { transform: rotate(360deg); } }
+  @keyframes tb-tap { 50% { transform: translateY(2px); } }
+  @keyframes tb-float { from { opacity: 1; transform: translate(0, 0) scale(.8); } to { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(1.15); } }
+  @keyframes tb-burst { from { opacity: 1; transform: translate(0, 0); } to { opacity: 0; transform: translate(var(--dx), var(--dy)) rotate(220deg); } }
+  @keyframes tb-pop { from { transform: scale(.85); } to { transform: none; } }
+  @keyframes tb-z { from { opacity: 0; transform: translate(0, 0); } 30% { opacity: .9; } to { opacity: 0; transform: translate(10px, -26px); } }
+  @media (prefers-reduced-motion: reduce) {
+    .tm-body, .tm-eye, .tm-shadow, .tail-buddy .tm-dot, .tail-buddy .tm-pose, .tail-mascot:hover .tm-pose, .tb-p, .tb-confetti,
+    .tail-buddy.sleeping .tb-fx::before, .tail-buddy.sleeping .tb-fx::after { animation: none !important; }
+    .think-card, .tb-say { transition: none; }
+  }

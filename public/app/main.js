@@ -2659,7 +2659,6 @@ function drawSpark() {
   ctx.stroke();
 }
 
-/** Output tokens per second over the last windowMs of the log. */
 /** Output tokens per second over the last windowMs of a timeline of { t, tokens } (the wall panes keep their own). */
 function outputRate(windowMs, timeline = tokenTimeline) {
   const now = Date.now();

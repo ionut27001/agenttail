@@ -74,7 +74,8 @@
   document.addEventListener('keyup', onKey, true);
 
   /**
-   * A bubble in `host`. opts: { id, onPlaying(on) }. Feed it update(info) about
+   * A bubble in `host`. opts: { id, onPlaying(on), gameAfterMs (this bubble's
+   * own wait before a game, else cfg.gameAfterMs) }. Feed it update(info) about
    * once a second, where info is { thinking, startedAt, quietMs, label, doing }.
    */
   function create(host, opts = {}) {
@@ -242,7 +243,8 @@
         s.quip = '';
       }
       const since = now - (info.startedAt || now);
-      play(s.human || (s.thinking && !stalled && since > cfg.gameAfterMs && !(reducedMotion && reducedMotion.matches)));
+      const gameAfter = opts.gameAfterMs ?? cfg.gameAfterMs;
+      play(s.human || (s.thinking && !stalled && since > gameAfter && !(reducedMotion && reducedMotion.matches)));
       if (s.human) {
         card.classList.remove('stalled');
         titleEl.textContent = 'YOU PLAY';
@@ -295,6 +297,7 @@
     create,
     cfg,
     clock,
+    colors: themeColors,
     quips: QUIPS,
     records: () => ({ ...records }),
     games: games ? games.names : [],

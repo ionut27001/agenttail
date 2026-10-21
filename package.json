@@ -11,6 +11,7 @@
     "observability"
   ],
   "author": "ionut27001",
+  "homepage": "https://ionut27001.github.io/agenttail/",
   "license": "MIT",
   "engines": {
     "node": ">=24"

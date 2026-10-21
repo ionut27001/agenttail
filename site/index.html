@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>agenttail — tail -f for AI coding agents</title>
+<meta name="description" content="A local, live dashboard for AI coding agents: the file being edited, the command being run, the agent chat and its thinking, for DeepSeek Harness, Claude Code and Antigravity. Read-only, localhost only, no telemetry." />
+<meta name="theme-color" content="#050807" />
+<meta property="og:title" content="agenttail — tail -f for AI coding agents" />
+<meta property="og:description" content="Watch your coding agents work, live: editor, console, chat, a watch wall for the whole team, and Tail, the mascot that thinks out loud." />
+<meta property="og:image" content="https://github.com/ionut27001/agenttail/raw/main/docs/wall.png" />
+<meta property="og:type" content="website" />
+<meta name="twitter:card" content="summary_large_image" />
+<link rel="icon" type="image/svg+xml" href="favicon.svg" />
+<link rel="stylesheet" href="vendor/fonts/fonts.css" />
+<link rel="stylesheet" href="app/themes.css" />
+<link rel="stylesheet" href="app/tail.css" />
+<link rel="stylesheet" href="site.css" />
+<script>
+  // Paint in the chosen theme from the first frame.
+  try {
+    const t = localStorage.getItem('agenttail-site-theme');
+    if (t && t !== 'matrix') document.documentElement.setAttribute('data-theme', t);
+  } catch { /* storage may be blocked */ }
+</script>
+</head>
+<body>
+<canvas id="rain" aria-hidden="true"></canvas>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="nav" id="nav">
+  <a class="brand" href="#top" aria-label="agenttail home">
+    <svg viewBox="8 24 66 48" aria-hidden="true">
+      <path class="b-chev" d="M14 29 L35 48 L14 67"/>
+      <g class="b-eye"><circle cx="21.4" cy="48" r="3.7"/><circle class="b-pupil" cx="22.5" cy="47" r="1.75"/></g>
+      <g class="b-dots"><circle cx="47" cy="48" r="3.8"/><circle cx="58" cy="48" r="3" opacity=".68"/><circle cx="68" cy="48" r="2.2" opacity=".38"/></g>
+    </svg>
+    <span>agenttail</span>
+  </a>
+  <nav class="links" aria-label="Sections">
+    <a href="#demo">Demo</a>
+    <a href="#features">Features</a>
+    <a href="#tail">Tail</a>
+    <a href="#wall">Watch wall</a>
+    <a href="#themes">Themes</a>
+    <a href="#start">Get it</a>
+  </nav>
+  <a class="gh" href="https://github.com/ionut27001/agenttail" rel="noopener">
+    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+    <span>GitHub</span>
+  </a>
+</header>
+
+<main id="main">
+  <!-- Hero: Tail, the pitch, the way in. -->
+  <section class="hero" id="top">
+    <div class="hero-copy">
+      <p class="kicker reveal"><span class="pill">v{{version}}</span> local · read-only by default · no telemetry</p>
+      <h1 class="reveal"><span class="prompt">&gt;</span> tail -f <em>for AI coding agents<span class="caret" aria-hidden="true"></span></em></h1>
+      <p class="lead reveal">One calm, live dashboard for the agents that write your code: the file being edited, the command being run, the chat, the thinking and what it all costs. For <b>DeepSeek Harness</b>, <b>Claude Code</b> and <b>Antigravity</b>.</p>
+      <div class="cta reveal">
+        <a class="btn primary" href="https://github.com/ionut27001/agenttail/releases/latest" rel="noopener">⬇ Download for Windows</a>
+        <button class="btn copy" type="button" data-copy="npx github:ionut27001/agenttail" title="Copy">
+          <code>npx github:ionut27001/agenttail</code><span class="copied">copied</span>
+        </button>
+      </div>
+      <div class="term reveal" aria-label="Starting agenttail">
+        <div class="term-bar"><i></i><i></i><i></i><span>pwsh</span></div>
+        <pre id="heroTerm"></pre>
+      </div>
+    </div>
+    <div class="hero-tail reveal" id="heroTailHost" aria-label="Tail, the agenttail mascot. Click it.">
+      <div class="halo" aria-hidden="true"></div>
+      <p class="hint">this is Tail. it follows your pointer. click it.</p>
+    </div>
+  </section>
+
+  <!-- A simulated session: real Tail, real thought bubble, real games. -->
+  <section class="block" id="demo">
+    <header class="sec-head reveal">
+      <p class="eyebrow">live demo</p>
+      <h2>Watch an agent work</h2>
+      <p>A replay of a small session, in the page: the agent fixes a bug, runs the tests, thinks, fails the lint, fixes it and answers. The console comes up while a command runs, Tail reacts to every result, and on a long think it gets bored and plays.</p>
+    </header>
+    <div class="dash reveal" id="dash">
+      <div class="d-top">
+        <span class="d-brand">&gt;· agenttail</span>
+        <span class="d-session">● Fix the calculator demo</span>
+        <span class="d-metrics">
+          <span>STEPS <b id="mSteps">0</b></span>
+          <span>TOKENS <b id="mTokens">0</b></span>
+          <span>TOK/S <b id="mRate">0</b></span>
+          <span>COST <b id="mCost">$0.0000</b> <i>≈ API</i></span>
+        </span>
+        <span class="d-live" id="dLive">● LIVE</span>
+      </div>
+      <div class="d-activity" id="dAct"><span class="d-icon" id="dActIcon">·</span><b id="dActText">IDLE</b><span id="dActLabel"></span><span class="d-clock" id="dActClock"></span></div>
+      <div class="d-body">
+        <aside class="d-tree" aria-label="Workspace">
+          <div class="d-label">WORKSPACE</div>
+          <div class="t-dir">▾ src</div>
+          <div class="t-file" data-file="calculator.js">calculator.js <span class="heat"></span></div>
+          <div class="t-dir">▾ test</div>
+          <div class="t-file" data-file="calculator.test.js">calculator.test.js <span class="heat"></span></div>
+          <div class="t-file">package.json</div>
+          <div class="t-file">README.md</div>
+        </aside>
+        <div class="d-stage" id="dStage">
+          <div class="d-editor" id="dEditor"><div class="d-file" id="dFile">src/calculator.js</div><ol id="dCode"></ol></div>
+          <div class="d-console" id="dConsole"><div class="d-label">CONSOLE</div><div class="d-lines" id="dLines"></div></div>
+        </div>
+        <aside class="d-chat" id="dChat" aria-label="Agent chat"><div class="d-label">AGENT</div><div class="d-msgs" id="dMsgs"></div></aside>
+      </div>
+    </div>
+    <p class="note reveal">The dashboard here is drawn by this page; Tail, its bubble and its games are the real code from the app.</p>
+  </section>
+
+  <!-- Features -->
+  <section class="block" id="features">
+    <header class="sec-head reveal">
+      <p class="eyebrow">what you get</p>
+      <h2>Everything the agent does, as it does it</h2>
+    </header>
+    <div class="cards">
+      <article class="card reveal"><span class="ic">✍️</span><h3>Live editor typing</h3><p>Follows the file the agent is editing and types each edit in place, with a short highlight sweep. The tree keeps the heat: edits, failures, deleted files.</p></article>
+      <article class="card reveal"><span class="ic">🎭</span><h3>Console on stage</h3><p>A running command brings the console up over the editor; an edit sends it back; a quiet console shrinks to a rail. Job progress, spinners, exit codes.</p></article>
+      <article class="card reveal"><span class="ic">💬</span><h3>Chat and Log</h3><p>Chat reads like a conversation, with thinking and tool calls folded. Log is the full trajectory, with a summary per turn, exportable as Markdown.</p></article>
+      <article class="card reveal"><span class="ic">👥</span><h3>Several agents</h3><p>Every agent active in the last 30 minutes, grouped by git repository, each in its own colour. <kbd>Alt</kbd>+<kbd>W</kbd> opens the watch wall.</p></article>
+      <article class="card reveal"><span class="ic">🐾</span><h3>Tail, the mascot</h3><p>Reacts to passing and failing commands, cheers when a turn ends, thinks out loud and plays one of ten games on a long think. You can take over.</p></article>
+      <article class="card reveal"><span class="ic">🧮</span><h3>Cost, tokens, TOK/S</h3><p>Tokens, output speed and cost per session and per turn. For Claude Code, what the tokens would cost at API list prices, even on a subscription.</p></article>
+      <article class="card reveal"><span class="ic">⏪</span><h3>Replay</h3><p>Finished sessions replay through the same pipeline, typing included, at the speed you pick.</p></article>
+      <article class="card reveal"><span class="ic">🔒</span><h3>Stream mode</h3><p>Secrets and identity are redacted on the server, before anything reaches the browser. If redaction fails, the event is dropped, never sent raw.</p></article>
+      <article class="card reveal"><span class="ic">🎛️</span><h3>Control, opt-in</h3><p>With <code>--allow-control</code>, start and drive your own DeepSeek Harness sessions: messages, approvals, stop, model switch. Token-protected.</p></article>
+    </div>
+  </section>
+
+  <!-- Tail -->
+  <section class="block split" id="tail">
+    <div class="tail-lab reveal" id="tailLab">
+      <div class="lab-stage" id="labStage"></div>
+      <div class="moods" role="group" aria-label="Make Tail react">
+        <button type="button" data-mood="happy">✓ pass</button>
+        <button type="button" data-mood="oops">✗ fail</button>
+        <button type="button" data-mood="cheer">🎉 turn done</button>
+        <button type="button" data-mood="perk">! message</button>
+        <button type="button" data-mood="love">♥ pet</button>
+        <button type="button" data-mood="dizzy">@ dizzy</button>
+        <button type="button" data-mood="think" class="wide">… think</button>
+        <button type="button" data-mood="play" class="wide">▶ play a game</button>
+      </div>
+    </div>
+    <div class="tail-copy">
+      <header class="sec-head left reveal">
+        <p class="eyebrow">meet tail</p>
+        <h2>The logo, come to life</h2>
+      </header>
+      <ul class="ticks reveal">
+        <li><b>It watches.</b> The eye follows your pointer; left alone it glances at whatever the agent is busy with.</li>
+        <li><b>It reacts.</b> A hop when a command passes, a shake and a sweat drop when one fails, confetti when a turn ends.</li>
+        <li><b>It thinks out loud.</b> Dots rise into a bubble with a clock, the latest thought and some nonsense. Five silent minutes and it dozes off under a <b class="amber">STALLED?</b> warning.</li>
+        <li><b>It plays.</b> On a long think it plays one of ten games by itself. <b>▶ play</b> hands you the controls: arrows and space, <kbd>Esc</kbd> to give them back, <kbd>N</kbd> for the next game.</li>
+        <li><b>It likes pets.</b> Not too fast.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- The games -->
+  <section class="block" id="games">
+    <header class="sec-head reveal">
+      <p class="eyebrow">ten games</p>
+      <h2>What Tail plays while the model thinks</h2>
+      <p>Each one is playing itself right now. Click one to take over; <kbd>Esc</kbd> hands it back.</p>
+    </header>
+    <div class="arcade" id="arcade"></div>
+  </section>
+
+  <!-- Watch wall -->
+  <section class="block split rev" id="wall">
+    <div class="wall-copy">
+      <header class="sec-head left reveal">
+        <p class="eyebrow">the whole team</p>
+        <h2>One pane per agent</h2>
+      </header>
+      <ul class="ticks reveal">
+        <li><b>A small agenttail each.</b> Editor, console, scoreboard, TOK/S, context meter, and a Tail in the agent's colour.</li>
+        <li><b>The stage follows the agent.</b> Commands bring the console up; replies run as captions.</li>
+        <li><b>Waiting is visible.</b> <i>waiting on the model</i> with a clock, then <i>stalled?</i>. Quiet agents shrink.</li>
+        <li><b>One tree for the team.</b> Every file the agents touched, with a flash when two of them edit the same one.</li>
+      </ul>
+    </div>
+    <a class="shot tilt reveal" href="img/wall.png"><img src="img/wall.png" alt="The watch wall: three agents side by side, each with its own Tail, a shared file tree and a timeline" loading="lazy" width="1600" height="1000"></a>
+  </section>
+
+  <!-- Themes -->
+  <section class="block" id="themes">
+    <header class="sec-head reveal">
+      <p class="eyebrow">seven themes</p>
+      <h2>Pick one. This page changes with it.</h2>
+    </header>
+    <div class="swatches reveal" role="radiogroup" aria-label="Theme" id="swatches"></div>
+    <a class="shot reveal" href="img/themes.png"><img src="img/themes.png" alt="The seven themes side by side: matrix, amber, red, ice, dracula, neon and paper" loading="lazy" width="1980" height="636"></a>
+  </section>
+
+  <!-- Privacy -->
+  <section class="block split" id="privacy">
+    <div class="redact reveal" aria-label="Stream mode redacting a console">
+      <div class="term-bar"><i></i><i></i><i></i><span>stream mode</span></div>
+      <pre id="redactTerm"></pre>
+    </div>
+    <div>
+      <header class="sec-head left reveal">
+        <p class="eyebrow">safe to stream</p>
+        <h2>Your secrets stay yours</h2>
+      </header>
+      <ul class="ticks reveal">
+        <li><b>Read-only by default.</b> It never writes to your agent's session store, workspace or transcripts.</li>
+        <li><b>Localhost only.</b> Binds to 127.0.0.1, with Host and Origin checks against DNS rebinding and CSRF.</li>
+        <li><b>Stream mode is on by default.</b> Keys, tokens, emails, user names, IPs and opaque ids are redacted on the server. It fails closed.</li>
+        <li><b>No telemetry, no CDN.</b> Fonts and editors are vendored; it works offline.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- Sources -->
+  <section class="block" id="sources">
+    <header class="sec-head reveal">
+      <p class="eyebrow">sources</p>
+      <h2>Reads the logs your agent already writes</h2>
+    </header>
+    <div class="cards three">
+      <article class="card src reveal"><h3>DeepSeek Harness</h3><code>~/.dsh/sessions/**/session.v4.jsonl.zstd</code><p>Edits, commands, background jobs, thinking, tokens and cost by peak band. Opt-in control.</p></article>
+      <article class="card src reveal"><h3>Claude Code</h3><code>~/.claude/projects/**/*.jsonl</code><p>Messages, thinking, tool calls, subagents, custom titles, turns, and what the tokens would cost on the API.</p></article>
+      <article class="card src reveal"><h3>Antigravity CLI</h3><code>~/.gemini/antigravity/**</code><p>Normalized messages, thinking, tool calls and file edits.</p></article>
+    </div>
+  </section>
+
+  <!-- Get it -->
+  <section class="block" id="start">
+    <header class="sec-head reveal">
+      <p class="eyebrow">get it</p>
+      <h2>Running in a minute</h2>
+    </header>
+    <div class="tabs reveal" id="tabs">
+      <div class="tab-row" role="tablist">
+        <button type="button" role="tab" aria-selected="true" data-tab="exe">Windows exe</button>
+        <button type="button" role="tab" aria-selected="false" data-tab="npx">npx</button>
+        <button type="button" role="tab" aria-selected="false" data-tab="src">From source</button>
+      </div>
+      <div class="tab-panel" data-panel="exe">
+        <p>Download <code>agenttail-{{version}}-win-x64.exe</code> from the latest release and run it. It opens the dashboard at <code>http://127.0.0.1:8787</code>. The exe is unsigned; check its SHA-256 against <code>SHA256SUMS.txt</code>.</p>
+        <a class="btn primary" href="https://github.com/ionut27001/agenttail/releases/latest" rel="noopener">⬇ Latest release</a>
+      </div>
+      <div class="tab-panel" data-panel="npx" hidden>
+        <p>With Node 24 or newer:</p>
+        <button class="btn copy block-copy" type="button" data-copy="npx github:ionut27001/agenttail"><code>npx github:ionut27001/agenttail</code><span class="copied">copied</span></button>
+      </div>
+      <div class="tab-panel" data-panel="src" hidden>
+        <p>Clone it, install the dev tools, start it:</p>
+        <button class="btn copy block-copy" type="button" data-copy="git clone https://github.com/ionut27001/agenttail && cd agenttail && npm install && npm start"><code>git clone https://github.com/ionut27001/agenttail &amp;&amp; cd agenttail &amp;&amp; npm install &amp;&amp; npm start</code><span class="copied">copied</span></button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">
+  <img src="img/wordmark.svg" alt="agenttail" width="220" height="62" loading="lazy">
+  <p>
+    <a href="https://github.com/ionut27001/agenttail">GitHub</a> ·
+    <a href="https://github.com/ionut27001/agenttail/releases">Releases</a> ·
+    <a href="https://github.com/ionut27001/agenttail#readme">README</a> ·
+    <a href="https://github.com/ionut27001/agenttail/blob/main/SECURITY.md">Security</a> ·
+    <a href="https://github.com/ionut27001/agenttail/blob/main/LICENSE">MIT license</a>
+  </p>
+  <p class="fine">agenttail is an independent project, not affiliated with DeepSeek, Anthropic or Google. Product names are used only to describe supported sources.</p>
+</footer>
+
+<script src="app/mascot-games.js"></script>
+<script src="app/mascot-games-more.js"></script>
+<script src="app/buddy.js"></script>
+<script src="app/think-bubble.js"></script>
+<script src="site.js"></script>
+</body>
+</html>

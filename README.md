@@ -18,6 +18,7 @@
 </p>
 
 <p align="center">
+  <a href="https://ionut27001.github.io/agenttail/"><b>Website</b></a> ·
   <a href="#quick-start">Download</a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="#meet-tail">Meet Tail</a> ·
@@ -30,6 +31,8 @@
 <p align="center">
   <img src="docs/hero.gif" width="100%" alt="agenttail dashboard: editor typing, console, agent chat and activity bar">
 </p>
+
+> **[See it live on the website](https://ionut27001.github.io/agenttail/)**: a replayed session, Tail to play with, all ten of its games and the themes, in your browser.
 
 agenttail follows the session logs your coding agent already writes and turns them into one calm dashboard: the file being edited, the command being run, the agent chat, and the activity state — live. By default it is read-only and never writes to your agent's session store, workspace or transcripts. With the opt-in `--allow-control` flag it can also start and drive its own DeepSeek Harness sessions.
 

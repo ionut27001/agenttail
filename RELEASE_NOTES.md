@@ -1,3 +1,15 @@
+# Unreleased
+
+- A project site on GitHub Pages: a replayed session with the console on
+  stage, Tail to pet and to play with, all ten games playing themselves in
+  an arcade, the seven themes recolouring the page, and stream mode
+  redacting a console. Tail, its bubble, the games and the themes are the
+  app's own files, assembled by `scripts/build-site.mjs`.
+- Theme colours and Tail's styles moved into their own stylesheets
+  (`themes.css`, `tail.css`) so the app and the site share them.
+
+---
+
 # agenttail v0.3.0
 
 **Meet Tail, the console on stage, and honest numbers for Claude Code.** The

@@ -261,8 +261,12 @@
     };
   }
 
+  window.__tail = { create: createTail };
   // The main view's Tail, in the editor corner while the session is in motion.
-  window.__buddy = createTail($('editorWrap'), {
+  // Pages without the editor (the project site) only use the factory.
+  const editorWrap = document.getElementById('editorWrap');
+  if (!editorWrap) return;
+  window.__buddy = createTail(editorWrap, {
     id: 'tailBuddy',
     shown: () => document.body.classList.contains('console-stage') && document.body.classList.contains('fx-mascot'),
     thinking: () => !!document.getElementById('thinkCard')?.classList.contains('show'),
@@ -278,5 +282,4 @@
     idle: () => state.state === 'idle' || activity.kind === 'idle' || activity.kind === 'done',
     lastEventAt: () => activity.lastEventAt,
   });
-  window.__tail = { create: createTail };
 })();
