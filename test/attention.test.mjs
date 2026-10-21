@@ -131,6 +131,11 @@ try {
     at('approval/decided', 5, { id: 'p1', outcome: 'allowed-once' }, now - 20000),
   ], now);
   check(analysis.openApprovals.length === 1 && analysis.openApprovals[0].id === 'p2' && analysis.openApprovals[0].tool === 'edit', 'the analysis lists the asks still open', J(analysis.openApprovals));
+  const short = analyzeEvents([
+    at('user/message', 1, { content: [{ type: 'text', text: 'review' }], source: { kind: 'user' }, role: 'user' }, now - 5000),
+    at('session/title', 2, { title: 'review', messageSeqs: [1], source: { kind: 'fallback' } }, now - 4900),
+  ], now);
+  check(short.title === 'review' && short.sessionTitle === null, 'a session whose only prompt is short keeps the harness fallback title', J({ title: short.title, sessionTitle: short.sessionTitle }));
 
   /* -------------------------------------------------- status-file reader --- */
   console.log('\nthe Claude Code status-file reader');

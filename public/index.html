@@ -227,14 +227,19 @@
       </div>
       <div id="composer" class="hidden">
         <div id="composerAttachments" class="hidden"></div>
-        <div id="composerRow">
-          <textarea id="composerInput" rows="1" placeholder="Message the agent…  (Enter sends, Shift+Enter newline)"></textarea>
-          <select id="composerModel" title="Model for the next turn"></select>
-          <button id="composerStop" type="button" title="Cancel the running turn">Stop</button>
-          <button id="composerEnd" type="button" title="Close this owned session">End</button>
-          <button id="composerSend" type="button" title="Send">Send</button>
+        <div id="composerBox">
+          <textarea id="composerInput" rows="2" placeholder="Message the agent…"></textarea>
+          <div id="composerBar">
+            <select id="composerModel" title="Model for the next turn"></select>
+            <span class="composer-grow"></span>
+            <button id="composerStop" type="button" title="Cancel the running turn">■ Stop</button>
+            <button id="composerSend" type="button" title="Send (Enter)">Send ↵</button>
+          </div>
         </div>
-        <div id="composerStatus"></div>
+        <div id="composerFoot">
+          <div id="composerStatus"></div>
+          <button id="composerEnd" type="button" title="Stop this agent and close the session">End session</button>
+        </div>
       </div>
       <div id="controlHint" class="control-hint hidden"></div>
     </aside>

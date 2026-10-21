@@ -147,7 +147,10 @@
     showDetails(detailsFold('controlDetails', hint), c && c.owned && c.status === 'exited' ? c.details : '');
     const stop = $c('composerStop');
     const end = $c('composerEnd');
-    if (stop) stop.disabled = !(canType && c && c.running);
+    if (stop) {
+      stop.disabled = !(canType && c && c.running);
+      stop.classList.toggle('hidden', stop.disabled);
+    }
     if (end) end.disabled = !canType;
     if (canType) {
       if (c.running) setStatus('turn running · Stop cancels it · a message sent now will be queued');
@@ -323,6 +326,17 @@
       chip.appendChild(remove);
       box.appendChild(chip);
     });
+    syncComposerInput();
+  }
+
+  /** Grow the message box with its text (up to 40% of the window) and light Send once there is something to send. */
+  function syncComposerInput() {
+    const input = $c('composerInput');
+    const send = $c('composerSend');
+    if (!input || !send) return;
+    input.style.height = 'auto';
+    if (input.value) input.style.height = `${Math.min(Math.round(window.innerHeight * 0.4), input.scrollHeight + 2)}px`;
+    send.classList.toggle('ready', !!input.value.trim() || control.attachments.length > 0);
   }
 
   function readImage(file) {
@@ -555,7 +569,6 @@
         body: JSON.stringify({ id: state.sessionId, text, images }),
       });
       input.value = '';
-      input.style.height = 'auto';
       control.attachments = [];
       renderAttachments();
       control.queued = !!result.queued;
@@ -913,10 +926,10 @@
       sendMessage();
     }
   });
-  $c('composerInput').addEventListener('input', () => {
-    const input = $c('composerInput');
-    input.style.height = 'auto';
-    input.style.height = `${Math.min(150, input.scrollHeight)}px`;
+  $c('composerInput').addEventListener('input', syncComposerInput);
+  // An error from an empty first message goes away once there is a message.
+  $c('dlgMessage').addEventListener('input', () => {
+    if ($c('dlgErr').textContent === 'write the first message' && $c('dlgMessage').value.trim()) $c('dlgErr').textContent = '';
   });
 
   $c('approvalApprove').addEventListener('click', () => resolveApproval('approve'));

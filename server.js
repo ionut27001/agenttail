@@ -401,7 +401,8 @@ async function listSessions() {
     };
   }));
   const order = { live: 0, idle: 1, finished: 2 };
-  sessions.sort((a, b) => (order[a.state] - order[b.state]) || ((b.lastEventAt || 0) - (a.lastEventAt || 0)));
+  // Sessions agenttail drives come first: a log left "live" by a stalled process must not bury them.
+  sessions.sort((a, b) => (b.owned - a.owned) || (order[a.state] - order[b.state]) || ((b.lastEventAt || 0) - (a.lastEventAt || 0)));
   return sessions;
 }
 
