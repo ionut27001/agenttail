@@ -1,9 +1,15 @@
 # agenttail hub: roadmap
 
-Where agenttail goes after v0.3.0: from a viewer of agent sessions to a hub
-that can drive several agent harnesses and let agents on the same project
-work together, call each other for help, share images, and be scripted, while
-a human stays in control.
+Where agenttail goes after v0.3.0: one cockpit for every agent harness you
+use (Claude Code, Antigravity, DeepSeek Harness and more). It shows how each
+one works, live, as today, and lets you work with them and drive them from
+the same place: start a session, send messages and images, approve or reject
+what it wants to do, stop it. On top of that, agents on the same project can
+see each other, work together and call each other for help, while a human
+stays in control.
+
+The point is any harness, watched and driven the same way. Agent-to-agent
+coordination (0.6, 0.7) is a layer on top of that, not the goal by itself.
 
 This roadmap merges three documents written on 2026-10-21:
 
@@ -58,7 +64,7 @@ decisions.
 | Release | Theme | Work (from the two designs) | Size |
 | --- | --- | --- | --- |
 | 0.4 | **Needs you** | Groundwork: harness registry with the old dsh keys still working, control split into manager/session/registry, capabilities probed at runtime, one approval normaliser (allow_once by kind, diffs shown, an `origin` field), caller-supplied `mcpServers`, one shared "needs you" event list. Then the attention state for every source: dsh open approvals, Claude Code `~/.claude/sessions/<pid>.json` status plus open AskUserQuestion/ExitPlanMode, owned ACP approvals; shown in the picker, overview, wall (no shrinking while waiting), title, favicon and notifications; one approvals inbox. Optional user-installed Claude hook helper. | ~9 days |
-| 0.5 | **A second harness** | Claude Code over its ACP adapter (or OpenCode first, see Q1), with images, presets mapped to modes, resume only when supported and no live process owns the session. `AcpStream` for harnesses without a log adapter. Recipes for OpenCode, Codex, Goose, Gemini CLI, Antigravity's ACP server, marked unverified until run. | ~11 days |
+| 0.5 | **Drive any harness** | Claude Code and Antigravity (both installed on the author's machine) next to dsh, then more. Claude Code over its ACP adapter, or over Claude Code's own headless stream mode for people who sign in with a subscription (see decision 1), with images, presets mapped to modes, resume only when supported and no live process owns the session. `AcpStream` for harnesses without a log adapter. Recipes for OpenCode, Codex, Goose, Gemini CLI, Antigravity's ACP server, marked unverified until run. | ~11 days |
 | 0.6 | **Passive hub** | `POST /mcp` plus an `agenttail mcp` stdio shim, behind a new opt-in flag. Identity for owned agents (per-session token through ACP) and external agents (shim facts, then a one-time code the agent echoes into its own log). Tools: whoami, list_agents, board_read/post, claim_files/release_files (advisory leases checked against observed edits), inbox, wait_for. Board drawer and claim locks on the wall, a Connect dialog with per-harness snippets, a frozen read API. | ~9 days |
 | 0.7 | **Agents ask each other** | ask_agent, reply, handoff; by default a helper session agenttail owns, in the chosen harness. Human card on every request (full text, edit before approve, provider-boundary line, 10-minute expiry), limits (6 asks/hour and 2 open per agent, depth 2, no cycles, Pause hub), a sanitising envelope against prompt injection, helper presets never above the asker's (read-only by default). Arrows between panes, "waiting on <agent>", Tail reactions. | ~9 days |
 | 0.8 | Reach and media | Delivery to external sessions (hook nudges, optional claim enforcement), images between agents and the human, API v1 write endpoints with scoped tokens. | ~12 days |
@@ -81,6 +87,22 @@ The full music video ships with 0.7, when agents calling each other is real.
 - Every release keeps the existing test suites green and adds its own
   (`harness.test.mjs`, `attention.test.mjs`, MCP fixtures against fake
   clients). UI suites run in short bursts.
+
+## Decisions taken
+
+2026-10-21, with the author:
+
+- The goal is any harness, watched and driven the same way; Claude Code and
+  Antigravity are the first harnesses after dsh, not OpenCode.
+- Decision 2: yes, read only the status fields of Claude Code's status file
+  in the default mode (never the `.key` files).
+- Decision 3: a separate `--allow-hub` flag.
+- Decision 4: every cross-agent request needs the human in v1.
+- Decision 1 stays open until the 0.5 spike: API-key sign-in through the ACP
+  adapter is fine; for subscription sign-in, test driving Claude Code's own
+  headless stream mode instead, and settle it with the author before release.
+
+These defaults can change; the questions below record the trade-offs.
 
 ## Decisions for the author
 
