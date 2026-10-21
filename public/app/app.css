@@ -1893,8 +1893,9 @@
   .tb-say.show { opacity: 1; transform: none; }
   .tb-say.pop { animation: tb-pop .3s ease-out; }
   #tailBuddy:has(#thinkCard.show) .tb-say { display: none; }
-  /* The thought bubble hangs to the left of Tail; three dots rise from its head. */
-  .tb-bubble-slot { position: absolute; right: 74px; bottom: 14px; }
+  /* The thought bubble floats above and to the left of Tail; three dots grow
+     from the top of its head up into the bubble's corner. */
+  .tb-bubble-slot { position: absolute; right: 56px; bottom: 88px; }
   #tailBuddy.playing .tb-bubble-slot { right: 0; bottom: 0; }
   #tailBuddy.playing .tail-mascot { display: none; }
   #tailBuddy .tm-dot {
@@ -1902,9 +1903,9 @@
     border: 1.5px solid color-mix(in srgb, var(--cyan) 55%, transparent); animation: tm-rise 1.5s ease-in-out infinite;
   }
   #tailBuddy:has(#thinkCard.show):not(.playing) .tm-dot { display: block; }
-  #tailBuddy .tm-dot.d1 { right: 44px; bottom: 64px; width: 6px; height: 6px; }
-  #tailBuddy .tm-dot.d2 { right: 53px; bottom: 72px; width: 9px; height: 9px; animation-delay: .25s; }
-  #tailBuddy .tm-dot.d3 { right: 64px; bottom: 81px; width: 12px; height: 12px; animation-delay: .5s; }
+  #tailBuddy .tm-dot.d1 { right: 40px; bottom: 64px; width: 5px; height: 5px; }
+  #tailBuddy .tm-dot.d2 { right: 46px; bottom: 71px; width: 8px; height: 8px; animation-delay: .25s; }
+  #tailBuddy .tm-dot.d3 { right: 54px; bottom: 79px; width: 11px; height: 11px; animation-delay: .5s; }
   #thinkCard {
     position: relative; pointer-events: none; visibility: hidden; opacity: 0; transform: translateY(10px) scale(.97); transform-origin: bottom right;
     transition: opacity .3s, transform .3s, visibility 0s .3s;

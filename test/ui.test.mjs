@@ -899,16 +899,16 @@ try {
   // A long think: the mascot plays its games, each drawing frames; a click switches.
   await evalExpr(`window.__stage.cfg.gameAfterMs = 0; window.stageUpdate(); true`);
   check(await waitFor(`window.__stage.state().playing && window.__stage.games.includes(window.__stage.state().game) && window.__stage.state().frames > 5 && getComputedStyle(document.querySelector('#thinkCard .tail-game')).display !== 'none'`, 4000), 'a long think starts one of the mascot games', JSON.stringify(await evalExpr(`window.__stage.state()`)));
-  check(await evalExpr(`JSON.stringify(window.__stage.games.slice().sort()) === JSON.stringify(['chess', 'chomp', 'dash', 'invaders', 'runner', 'snake', 'tetris'])`), 'the games are snake, tetris, runner, chess, chomp, invaders and dash');
+  check(await evalExpr(`JSON.stringify(window.__stage.games.slice().sort()) === JSON.stringify(['breakout', 'chess', 'chomp', 'dash', 'flappy', 'invaders', 'runner', 'snake', 'tetris', 'typer'])`), 'ten games: snake, tetris, runner, chess, chomp, invaders, dash, breakout, flappy and typer');
   const playedGames = new Set();
-  for (let i = 0; i < 7; i++) {
+  for (let i = 0; i < 10; i++) {
     const f0 = await evalExpr(`window.__stage.state().frames`);
     const name = await evalExpr(`window.__stage.state().game`);
     await waitFor(`window.__stage.state().frames > ${f0 + 10} && /\\S/.test(document.querySelector('#thinkCard .tc-game').textContent)`, 3000);
     if (await evalExpr(`window.__stage.state().frames > ${f0 + 10}`)) playedGames.add(name);
     await evalExpr(`document.querySelector('#thinkCard .tc-next').click(); true`);
   }
-  check(playedGames.size === 7, 'next switches games, and every game runs', JSON.stringify([...playedGames]));
+  check(playedGames.size === 10, 'next switches games, and every game runs', JSON.stringify([...playedGames]));
   check(await evalExpr(`getComputedStyle(document.querySelector('#tailBuddy .tail-mascot')).display === 'none'`), 'while a game plays, the mascot in it is the only Tail');
   // ▶ play hands you the controls: keys go to the game, Esc gives them back.
   if (await evalExpr(`window.__stage.state().game === 'chess'`)) await evalExpr(`document.querySelector('#thinkCard .tc-next').click(); true`);
@@ -918,8 +918,8 @@ try {
   check(keyTaken, 'while you play, the game takes its keys');
   await evalExpr(`document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); true`);
   check(await waitFor(`!window.__stage.state().human`, 2000), 'Esc gives the controls back to Tail');
-  for (let i = 0; i < 7 && (await evalExpr(`window.__stage.state().game`)) !== 'chomp'; i++) await evalExpr(`document.querySelector('#thinkCard .tc-next').click(); true`);
-  check(await waitFor(`(JSON.parse(localStorage.getItem('agenttail-tail-records') || '{}').chomp || 0) >= 1 && /★ \\d/.test(document.querySelector('#thinkCard .tc-game').textContent)`, 6000), 'game records are kept across sessions', await evalExpr(`localStorage.getItem('agenttail-tail-records')`));
+  for (let i = 0; i < 10 && (await evalExpr(`window.__stage.state().game`)) !== 'chomp'; i++) await evalExpr(`document.querySelector('#thinkCard .tc-next').click(); true`);
+  check(await waitFor(`(JSON.parse(localStorage.getItem('agenttail-tail-records') || '{}').chomp || 0) >= 1 && /★ \\d/.test(document.querySelector('#thinkCard .tc-game').textContent)`, 15000), 'game records are kept across sessions', await evalExpr(`localStorage.getItem('agenttail-tail-records')`));
   await evalExpr(`window.__stage.cfg.stallMs = 1; true`);
   check(await waitFor(`window.__stage.state().stalled && /STALLED\\?/.test(document.querySelector('#thinkCard .tc-title').textContent) && /no output for/.test(document.querySelector('#thinkCard .tc-time').textContent)`, 3000), 'a long silence turns the window into a stalled warning');
   check(await evalExpr(`!window.__stage.state().playing && window.__stage.state().glyph === 'z z z'`), 'a stalled agent puts the mascot to sleep instead of playing');

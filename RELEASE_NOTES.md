@@ -15,6 +15,11 @@
   nothing happens and can be petted. The thought bubble hangs on it, and
   ▶ play hands you the controls of its games (arrows, space; Esc, N), with
   records kept per game. Settings can turn it off.
+- Ten games now, and livelier: speed ramps, levels, bonuses and bursts in
+  every one; new breakout, flappy and a shell-command typing game; dash
+  gets ship sections and jump orbs, chess replays two famous games with
+  sliding pieces, invaders gets shields and a saucer, chomp gets lanes,
+  bombs and combos.
 - Claude Code sessions stay live while the model composes a long reply: a
   turn is open until the transcript says end_turn, not just while it grows.
 - A very long running command no longer pushes the page wider than the window.

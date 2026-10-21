@@ -7,8 +7,8 @@
 // Loaded by index.html as a classic script, before stage.js.
 /* ---------- Tail, the mascot ---------- */
 (() => {
-  const EYE = { x: 26.5, y: 64 };   // eye centre in the SVG's units
-  const LOOK = 3.2;                 // how far the pupil travels
+  const EYE = { x: 24, y: 64 };     // eye centre in the SVG's units: well inside the opening
+  const LOOK = 2.7;                 // how far the pupil travels
   const SLEEP_AFTER_MS = 90_000;    // an idle session this quiet puts Tail to sleep
   const PET_LINES = [
     'hi, I\'m Tail', 'boop!', 'I watch the agent so you don\'t have to', 'pet me more', 'you\'re doing great',
@@ -34,11 +34,11 @@
         <g class="tm-pose">
           <path class="tm-chevron" d="M13 38 L46 64 L13 90"/>
           <g class="tm-eye">
-            <circle class="tm-white" cx="26.5" cy="64" r="7.2"/>
-            <circle class="tm-pupil" cx="28.6" cy="62" r="3.4"/>
-            <circle class="tm-glint" cx="29.7" cy="60.7" r="1.15"/>
+            <circle class="tm-white" cx="24" cy="64" r="5.9"/>
+            <circle class="tm-pupil" cx="25.8" cy="62.4" r="2.8"/>
+            <circle class="tm-glint" cx="26.8" cy="61.2" r="1"/>
           </g>
-          <path class="tm-happy" d="M20.5 66.5 Q26.5 57.5 32.5 66.5"/>
+          <path class="tm-happy" d="M19 66.5 Q24 58.5 29 66.5"/>
           <path class="tm-sweat" d="M41 41 q3.2 5 0 7.4 q-3.2 -2.4 0 -7.4z"/>
         </g>
       </g>

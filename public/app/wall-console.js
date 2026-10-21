@@ -269,12 +269,14 @@
         }
         terms.delete(slot);
         if (pane.root) terms.delete(pane.root);
-        // xterm may still have a viewport refresh queued for the next frame;
-        // disposing under it throws, so let that frame run first.
-        requestAnimationFrame(() => requestAnimationFrame(() => {
+        // xterm may still have a viewport refresh queued for the next frame and
+        // a resize queued for idle time; disposing under either throws, so let
+        // the frames pass and the idle queue drain first.
+        const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 50));
+        requestAnimationFrame(() => requestAnimationFrame(() => idle(() => {
           try { term.dispose(); } catch { /* ignore */ }
           try { label.remove(); host.remove(); } catch { /* ignore */ }
-        }));
+        })));
       }
 
       terms.set(slot, term);

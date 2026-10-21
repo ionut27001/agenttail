@@ -241,7 +241,9 @@
     if (!s.human || !game.current || typing(e.target) || e.ctrlKey || e.metaKey || e.altKey) return;
     const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
     if (e.type === 'keydown' && k === 'Escape') { setHuman(false); e.preventDefault(); return; }
-    if (e.type === 'keydown' && k === 'n') { nextGame(); e.preventDefault(); return; }
+    // Games that take text (typer) keep N for themselves; Tab skips there.
+    const skip = game.current.wantsText ? k === 'Tab' : k === 'n';
+    if (e.type === 'keydown' && skip) { nextGame(); e.preventDefault(); return; }
     if (e.repeat && k !== ' ') { e.preventDefault(); return; }
     if (game.current.input(e.type === 'keydown' ? 'down' : 'up', k)) { e.preventDefault(); e.stopPropagation(); }
   }
