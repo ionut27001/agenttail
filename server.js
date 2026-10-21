@@ -85,7 +85,7 @@ const control = ALLOW_CONTROL
 const SOURCE_DEFS = [
   { key: 'dsh', label: 'dsh', description: 'DeepSeek Harness session logs' },
   { key: 'claude', label: 'Claude Code', description: '~/.claude/projects transcripts (with subagents)' },
-  { key: 'antigravity', label: 'Antigravity CLI', description: '~/.gemini/antigravity conversation transcripts' },
+  { key: 'antigravity', label: 'Antigravity CLI', description: '~/.gemini/antigravity and ~/.gemini/antigravity-cli conversation transcripts' },
 ];
 
 let sourceCache = { at: 0, data: null };
@@ -1841,6 +1841,7 @@ const server = http.createServer(async (req, res) => {
             policy: s.policy ?? null,
             sandbox: s.sandbox ?? null,
             owned: s.owned === true,
+            ...(s.source === 'antigravity' ? { promptsVisible: s.promptsVisible === true } : {}),
             subagents: s.subagents ?? null,
             createdAt: s.createdAt,
             size: s.size,

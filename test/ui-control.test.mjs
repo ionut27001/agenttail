@@ -35,6 +35,8 @@ async function launch(port, args) {
       AGENTTAIL_CONTROL_FILE: controlFile,
       AGENTTAIL_CONTROL_AUDIT_FILE: path.join(tmp, 'control-audit.log'),
       DSH_SESSIONS_ROOT: fixture.sessionsRoot,
+      // Never the machine's own Antigravity folders: a real conversation would join the fixtures.
+      ANTIGRAVITY_ROOT: path.join(tmp, 'no-antigravity', 'brain'),
       DSH_POLL_MS: '200',
       DSH_NICKNAMES_FILE: path.join(tmp, 'nicknames.json'),
       AGENTTAIL_DSH_BIN: process.execPath,

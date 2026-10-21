@@ -191,7 +191,7 @@
     if (!list.length) body.appendChild(el('div', 'ag-empty', 'Nothing needs you right now.'));
     for (const row of list) body.appendChild(rowEl(row));
     const notes = el('div', 'ib-notes dim');
-    notes.appendChild(el('div', '', 'dsh and Claude Code are watched with no setup. Antigravity approval prompts are not visible to agenttail.'));
+    notes.appendChild(el('div', '', 'dsh, Claude Code and the Antigravity CLI are watched with no setup. Approval prompts in the Antigravity editor are not visible to agenttail.'));
     if (!controlUsable()) {
       notes.appendChild(el('div', '', 'Approve and Reject appear here for sessions started from agenttail (start it with --allow-control, outside stream mode).'));
     }

@@ -668,6 +668,8 @@ try {
         AGENTTAIL_CONTROL_FILE: controlFile,
         AGENTTAIL_CONTROL_AUDIT_FILE: path.join(serverDir, 'audit.log'),
         DSH_SESSIONS_ROOT: path.join(tmp, 'sessions'),
+        // Never the machine's own Antigravity folders: a real conversation would join the fixtures.
+        ANTIGRAVITY_ROOT: path.join(tmp, 'no-antigravity', 'brain'),
       },
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,

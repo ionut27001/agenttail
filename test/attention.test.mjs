@@ -14,6 +14,18 @@ const require = createRequire(import.meta.url);
 const attention = require('../lib/attention.js');
 const claudeStatus = require('../lib/claude-status.js');
 const { analyzeEvents } = require('../lib/session-analysis.js');
+const agyStatus = require('../lib/antigravity-status.js');
+
+// Antigravity CLI logs: glog lines in local time, one file per process named after its start.
+const pad = (n, w = 2) => String(n).padStart(w, '0');
+const glog = (ms, text) => { const d = new Date(ms); return `I${pad(d.getMonth() + 1)}${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(), 3)}000     1 x.go:1] ${text}`; };
+const agyLogName = (ms) => { const d = new Date(ms); return `cli-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}.log`; };
+const agyStart = (ms, pid) => glog(ms, `Starting language server process with pid ${pid}`);
+const agySent = (ms, conv) => glog(ms, `Sending user message to conversation ${conv} (items=1, media=0)`);
+const agyOpened = (ms, step, tool = 'RunCommand') => glog(ms, `Surfacing tool confirmation: "${tool}" at step ${step}`);
+const agyDecided = (ms, conv, step, ok) => glog(ms, `Tool confirmation for conversation ${conv} step ${step} (type=*proto.Step_Generic approved=${ok})`);
+/** Windows FILETIME (100 ns ticks since 1601) for a time in ms, as process start lookups report it. */
+const fileTime = (ms) => String((BigInt(Math.round(ms)) + 11644473600000n) * 10000n);
 const { buildAgents } = require('../lib/agents.js');
 
 const PORT = 8907;
@@ -136,6 +148,118 @@ try {
     at('session/title', 2, { title: 'review', messageSeqs: [1], source: { kind: 'fallback' } }, now - 4900),
   ], now);
   check(short.title === 'review' && short.sessionTitle === null, 'a session whose only prompt is short keeps the harness fallback title', J({ title: short.title, sessionTitle: short.sessionTitle }));
+
+  /* ------------------------------------------------ Antigravity CLI log --- */
+  console.log('\nthe Antigravity CLI log');
+  const C1 = '11111111-2222-3333-4444-555555555555';
+  const C2 = '66666666-7777-8888-9999-aaaaaaaaaaaa';
+  const C3 = 'cccccccc-cccc-cccc-cccc-cccccccccccc';
+  const C4 = 'dddddddd-dddd-dddd-dddd-dddddddddddd';
+  const C5 = 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee';
+  const t0 = now - 60000;
+  let parsed = agyStatus.parseLog([agyStart(t0, 4242), agySent(t0 + 1000, C1.toUpperCase()), agyOpened(t0 + 2000, 2), glog(t0 + 2500, 'URL: https://example.invalid/x?q=SECRET_COMMAND_TEXT')].join('\r\n'), agyLogName(t0));
+  check(parsed.pid === 4242 && Math.abs(parsed.startAt - t0) < 1000, 'the log names its process and when it started', J(parsed));
+  check(parsed.open.length === 1 && parsed.open[0].conversation === C1 && parsed.open[0].step === 2 && parsed.open[0].tool === 'RunCommand' && Math.abs(parsed.open[0].since - (t0 + 2000)) < 1000, 'a surfaced confirmation is open for the conversation the process serves, since the line', J(parsed.open));
+  check(!J(parsed).includes('SECRET_COMMAND_TEXT') && !J(parsed).includes('example.invalid'), 'nothing else from the log is kept');
+  parsed = agyStatus.parseLog([agyStart(t0, 1), agySent(t0 + 1000, C1), agyOpened(t0 + 2000, 2), agyDecided(t0 + 9000, C1, 2, true)].join('\n'), agyLogName(t0));
+  check(parsed.open.length === 0, 'an answered confirmation is closed');
+  parsed = agyStatus.parseLog([agyStart(t0, 1), agySent(t0 + 1000, C1), agyOpened(t0 + 2000, 2), glog(t0 + 2001, 'Print mode: soft-denying tool confirmation "RunCommand" at step 2')].join('\n'), agyLogName(t0));
+  check(parsed.open.length === 0, 'a confirmation that print mode denies is closed');
+  parsed = agyStatus.parseLog([agyStart(t0, 1), agySent(t0 + 1000, C1), agyOpened(t0 + 2000, 2), agySent(t0 + 5000, C1)].join('\n'), agyLogName(t0));
+  check(parsed.open.length === 0, 'a new message to the conversation ends its open prompt');
+  parsed = agyStatus.parseLog([agyStart(t0, 1), agySent(t0 + 1000, C1), agyOpened(t0 + 2000, 2), agySent(t0 + 3000, C2), agyOpened(t0 + 4000, 5)].join('\n'), agyLogName(t0));
+  check(parsed.open.length === 2 && parsed.open.some((p) => p.conversation === C1 && p.step === 2) && parsed.open.some((p) => p.conversation === C2 && p.step === 5), 'each prompt belongs to the conversation served when it opened', J(parsed.open));
+  parsed = agyStatus.parseLog([agyStart(t0, 1), agyOpened(t0 + 2000, 2)].join('\n'), agyLogName(t0));
+  check(parsed.open.length === 0, 'a prompt before any conversation is named is not attributed to one');
+  const dec31 = new Date(2026, 11, 31, 23, 59, 50).getTime();
+  parsed = agyStatus.parseLog([agyStart(dec31, 1), agySent(dec31 + 1000, C1), agyOpened(new Date(2027, 0, 1, 0, 0, 5).getTime(), 3)].join('\n'), agyLogName(dec31));
+  check(parsed.open[0] && new Date(parsed.open[0].since).getFullYear() === 2027, 'a log that runs past New Year dates its January lines in the new year', J(parsed.open));
+
+  const agyUnit = path.join(tmp, 'agy-cli-unit');
+  fs.mkdirSync(path.join(agyUnit, 'log'), { recursive: true });
+  const writeAgyLog = (ms, pid, lines) => {
+    const file = path.join(agyUnit, 'log', agyLogName(ms));
+    fs.writeFileSync(file, [agyStart(ms, pid), ...lines].join('\n') + '\n');
+    return file;
+  };
+  const tA = now - 120000;
+  const tB = now - 110000;
+  const tC = now - 100000;
+  const tD = now - 90000;
+  const tE = now - 80000;
+  writeAgyLog(tA, 101, [agySent(tA + 100, C1), agyOpened(tA + 200, 2)]); // alive, started when the log did
+  writeAgyLog(tB, 102, [agySent(tB + 100, C2), agyOpened(tB + 200, 4)]); // exited
+  writeAgyLog(tC, 103, [agySent(tC + 100, C3), agyOpened(tC + 200, 1)]); // pid reused by a later process
+  writeAgyLog(tD, 104, [agySent(tD + 100, C4), agyOpened(tD + 200, 1), agyDecided(tD + 900, C4, 1, false)]); // answered
+  const stale = writeAgyLog(tE, 105, [agySent(tE + 100, C5), agyOpened(tE + 200, 1)]); // alive but a log from two days ago
+  fs.utimesSync(stale, new Date(now - 2 * 86400000), new Date(now - 2 * 86400000));
+  const starts = new Map([[101, fileTime(tA - 400)], [103, fileTime(tC + 3600000)], [105, fileTime(tE)]]);
+  const lookups = [];
+  const startTimes = async (pids) => { lookups.push(pids.join()); return new Map(pids.filter((p) => starts.has(p)).map((p) => [p, starts.get(p)])); };
+  let prompts = await agyStatus.readPrompts({ dir: agyUnit, now, fresh: true, alive: (pid) => pid !== 102, startTimes });
+  check(prompts.get(C1)?.startCheck === 'match' && prompts.get(C1).step === 2 && prompts.get(C1).tool === 'RunCommand', 'an open prompt of a live process that started with its log counts', J([...prompts]));
+  check(!prompts.has(C2), 'a prompt left open by a process that exited does not');
+  check(!prompts.has(C3), 'nor one whose pid now belongs to a process that started later');
+  check(!prompts.has(C4), 'nor an answered one');
+  check(!prompts.has(C5), 'nor one in a log untouched for a day');
+  check(lookups.every((l) => !l.split(',').includes('102') && !l.split(',').includes('104')), 'start times are looked up only for live processes with an open prompt', J(lookups));
+  prompts = await agyStatus.readPrompts({ dir: agyUnit, now, fresh: true, alive: (pid) => pid !== 102, startTimes: null });
+  check(prompts.get(C1)?.startCheck === 'unverified' && prompts.has(C3), 'where start times cannot be read, a live pid is unverified', J([...prompts]));
+  agyStatus.resetCache();
+
+  // A log read while it is being written: half a line, the rest, then the answer.
+  const agyInc = path.join(tmp, 'agy-cli-incremental');
+  fs.mkdirSync(path.join(agyInc, 'log'), { recursive: true });
+  const tI = Date.now() - 5000;
+  const incFile = path.join(agyInc, 'log', agyLogName(tI));
+  const incOpts = () => ({ dir: agyInc, now: Date.now(), fresh: true, alive: () => true, startTimes: null });
+  const openLine = agyOpened(tI + 2000, 3);
+  fs.writeFileSync(incFile, [agyStart(tI, 501), agySent(tI + 1000, C1), ''].join('\n') + openLine.slice(0, 30));
+  check(!(await agyStatus.readPrompts(incOpts())).has(C1), 'half a log line is not read as a prompt');
+  fs.appendFileSync(incFile, openLine.slice(30) + '\n');
+  check((await agyStatus.readPrompts(incOpts())).get(C1)?.step === 3, 'the rest of the line, appended later, opens it');
+  fs.appendFileSync(incFile, agyDecided(tI + 4000, C1, 3, true) + '\n');
+  check(!(await agyStatus.readPrompts(incOpts())).has(C1), 'and the answer appended after that closes it');
+  fs.writeFileSync(incFile, [agyStart(tI, 501), agySent(tI + 1000, C2), agyOpened(tI + 1500, 6)].join('\n') + '\n');
+  prompts = await agyStatus.readPrompts(incOpts());
+  check(prompts.get(C2)?.step === 6 && !prompts.has(C1), 'a log rewritten shorter is read again from the start', J([...prompts]));
+
+  // Overlapping requests share one pass: the appended bytes are read once.
+  fs.appendFileSync(incFile, agySent(tI + 2500, C3) + '\n' + agyOpened(tI + 2600, 7) + '\n');
+  const realOpen = fs.promises.open;
+  let opens = 0;
+  fs.promises.open = (file, ...rest) => { if (String(file) === incFile) opens++; return realOpen(file, ...rest); };
+  let both;
+  try {
+    both = await Promise.all([agyStatus.readPrompts(incOpts()), agyStatus.readPrompts(incOpts())]);
+  } finally {
+    fs.promises.open = realOpen;
+  }
+  check(opens === 1 && both[0] === both[1] && both[0].get(C3)?.step === 7, 'two overlapping reads share one pass over the new bytes', J({ opens, same: both[0] === both[1] }));
+
+  // The hour a clock goes back: the log's wall-clock time is ambiguous, its creation time is not.
+  const agyDst = path.join(tmp, 'agy-cli-dst');
+  fs.mkdirSync(path.join(agyDst, 'log'), { recursive: true });
+  const dstFile = path.join(agyDst, 'log', 'cli-20261025_033000.log');
+  fs.writeFileSync(dstFile, ['I1025 03:30:00.100000     1 server.go:1732] Starting language server process with pid 602', 'I1025 03:30:05.000000     1 server.go:1814] ' + `Sending user message to conversation ${C4} (items=1, media=0)`, 'I1025 03:30:09.000000     1 x.go:1] Surfacing tool confirmation: "RunCommand" at step 2'].join('\n') + '\n');
+  const born = fs.statSync(dstFile).birthtimeMs;
+  if (born > 0) {
+    const dstOpts = (startMs) => ({ dir: agyDst, now: Date.now(), fresh: true, alive: () => true, startTimes: async () => new Map([[602, fileTime(startMs)]]) });
+    agyStatus.resetCache();
+    check((await agyStatus.readPrompts(dstOpts(born - 1500))).get(C4)?.startCheck === 'match', 'a process that started when its log file was created matches, whatever the clock in the log says');
+    agyStatus.resetCache();
+    check(!(await agyStatus.readPrompts(dstOpts(born + 3600000))).has(C4), 'and a process that started an hour later is still a reused pid');
+  } else {
+    console.log('  skip  file creation times are not available here');
+  }
+  agyStatus.resetCache();
+
+  const waitAtt = attention.antigravityAttention({ prompt: { tool: 'RunCommand', step: 2, since: now - 5000, startCheck: 'match' }, maxStep: 1 });
+  check(waitAtt.level === 'needs-you' && waitAtt.reason === 'permission' && waitAtt.via === 'log' && waitAtt.certainty === 'probable' && waitAtt.tool === 'RunCommand' && waitAtt.detail === 'permission prompt' && waitAtt.since === now - 5000, 'an open Antigravity prompt is a probable permission need', J(waitAtt));
+  const guessAtt = attention.antigravityAttention({ prompt: { tool: 'RunCommand', step: 2, since: now - 5000, startCheck: 'unverified' }, maxStep: 1 });
+  check(guessAtt.certainty === 'guess' && !attention.notifiable(guessAtt) && attention.notifiable(waitAtt), 'with an unchecked process it is a quiet guess that never notifies', J(guessAtt));
+  check(attention.antigravityAttention({ prompt: { tool: 'RunCommand', step: 2, since: now, startCheck: 'match' }, maxStep: 2 }).level === 'none', 'once its step is in the transcript it has been answered');
+  check(attention.antigravityAttention({ prompt: null, maxStep: 3 }).level === 'none' && attention.antigravityAttention({ prompt: { tool: 'a b c', step: 1, since: now, startCheck: 'match' }, maxStep: 0 }).tool === undefined, 'no prompt is no signal, and an odd tool name is dropped');
 
   /* -------------------------------------------------- status-file reader --- */
   console.log('\nthe Claude Code status-file reader');
@@ -415,14 +539,29 @@ try {
   const keyFile = path.join(statusDir, `${pids.permission}.key`);
   const keyMtime = fs.statSync(keyFile).mtimeMs;
 
-  // Antigravity: no signal for an open prompt, whatever the transcript holds.
-  const agyConv = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
-  const agyFile = path.join(agyRoot, 'brain', agyConv, '.system_generated', 'logs', 'transcript.jsonl');
-  fs.mkdirSync(path.dirname(agyFile), { recursive: true });
-  fs.writeFileSync(agyFile, [
-    { step_index: 0, source: 'USER_EXPLICIT', type: 'USER_INPUT', created_at: iso(20000), content: '<USER_REQUEST>\nClean the build folder\n</USER_REQUEST>' },
-    { step_index: 1, source: 'MODEL', type: 'PLANNER_RESPONSE', created_at: iso(10000), content: 'Running it.', tool_calls: [{ name: 'run_command', args: { CommandLine: J(SECRET_CMD), Cwd: J(workspace) } }] },
-  ].map((l) => J(l)).join('\n') + '\n');
+  // Antigravity: the transcript never shows an open prompt; the CLI log does, while its process lives.
+  const agyTranscript = (conv, extra = []) => {
+    const file = path.join(agyRoot, 'brain', conv, '.system_generated', 'logs', 'transcript.jsonl');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, [
+      { step_index: 0, source: 'USER_EXPLICIT', type: 'USER_INPUT', created_at: iso(20000), content: '<USER_REQUEST>\nClean the build folder\n</USER_REQUEST>' },
+      { step_index: 1, source: 'MODEL', type: 'PLANNER_RESPONSE', created_at: iso(10000), content: 'Running it.', tool_calls: [{ name: 'run_command', args: { CommandLine: J(SECRET_CMD), Cwd: J(workspace) } }] },
+      ...extra,
+    ].map((l) => J(l)).join('\n') + '\n');
+  };
+  const agyConv = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'; // no log line about it
+  const agyWait = 'a1a1a1a1-bbbb-cccc-dddd-eeeeeeeeeeee'; // open prompt, live process
+  const agyGone = 'a2a2a2a2-bbbb-cccc-dddd-eeeeeeeeeeee'; // open prompt, process exited
+  const agyRan = 'a3a3a3a3-bbbb-cccc-dddd-eeeeeeeeeeee'; // open in the log, but the step is in the transcript
+  for (const conv of [agyConv, agyWait, agyGone]) agyTranscript(conv);
+  agyTranscript(agyRan, [{ step_index: 2, source: 'MODEL', type: 'GENERIC', status: 'DONE', created_at: iso(5000), content: 'done' }]);
+  fs.mkdirSync(path.join(agyRoot, 'log'), { recursive: true });
+  const agyLog = (ms, pid, conv) => fs.writeFileSync(path.join(agyRoot, 'log', agyLogName(ms)),
+    [agyStart(ms, pid), agySent(ms + 50, conv), glog(ms + 60, `URL: https://example.invalid/${SECRET_CMD}`), agyOpened(ms + 100, 2)].join('\n') + '\n');
+  const agyNow = Date.now();
+  agyLog(agyNow, sleeper(), agyWait);
+  agyLog(agyNow - 2000, deadPid(), agyGone);
+  agyLog(agyNow - 4000, sleeper(), agyRan);
 
   const procs = [];
   async function launch(args = [], env = {}) {
@@ -537,15 +676,23 @@ try {
     const all = (agents.body.groups || []).flatMap((g) => g.agents);
     const needing = all.filter((x) => x.attention?.level === 'needs-you');
     check(needing.length === agents.body.needsYou, 'the overview counts the sessions that need you once each', `${needing.length} vs ${agents.body.needsYou}`);
-    const expectNeeding = [D.open, D.two, ids.permission, ids.input, ids.sandbox, ids.dialog, ids.worker, ids.novel, ids.deadWaiting, ids.question, ids.plan];
-    check(expectNeeding.every((id) => needing.some((x) => x.id === id)) && needing.length === expectNeeding.length, 'every source is in it: dsh, status-file Claude Code and transcript Claude Code', J(needing.map((x) => [x.source, x.id.slice(-2), x.attention.via])));
+    const expectNeeding = [D.open, D.two, ids.permission, ids.input, ids.sandbox, ids.dialog, ids.worker, ids.novel, ids.deadWaiting, ids.question, ids.plan, agyWait];
+    check(expectNeeding.every((id) => needing.some((x) => x.id === id)) && needing.length === expectNeeding.length, 'every source is in it: dsh, status-file and transcript Claude Code, and the Antigravity CLI log', J(needing.map((x) => [x.source, x.id.slice(-2), x.attention.via])));
     const firstReady = all.findIndex((x) => x.attention?.level !== 'needs-you');
     check(all.slice(0, needing.length).every((x) => x.attention?.level === 'needs-you') && (firstReady === -1 || firstReady >= needing.length), 'sessions that need you come first');
     const group = agents.body.groups.find((g) => g.agents.some((x) => x.attention?.level === 'needs-you'));
     check(group && group.needsYou === group.agents.filter((x) => x.attention?.level === 'needs-you').length && agents.body.groups[0].needsYou > 0, 'a group says how many need you and groups that do come first');
     const agySessions = (await getJson('/api/sessions?source=antigravity')).body.sessions || [];
-    check(agySessions.length === 1 && agySessions[0].attention?.level === 'none', 'Antigravity gives no attention, whatever it is doing', J(agySessions[0]?.attention));
-    check(all.filter((x) => x.source === 'antigravity').every((x) => x.attention?.level === 'none'), 'and the overview agrees');
+    const g = byId(agySessions);
+    const wait = g[agyWait]?.attention;
+    check(agySessions.length === 4 && g[agyConv]?.attention?.level === 'none', 'an Antigravity transcript alone gives no attention, whatever it holds', J(agySessions.map((s) => [s.id.slice(0, 2), s.attention])));
+    check(wait?.level === 'needs-you' && wait.reason === 'permission' && wait.via === 'log' && wait.tool === 'RunCommand' && wait.detail === 'permission prompt' && wait.since > 0, 'an open prompt in the CLI log of a live process needs you', J(wait));
+    check(wait?.certainty === (process.platform === 'win32' ? 'probable' : 'guess'), 'probable where the process start is checked, a guess elsewhere', J(wait));
+    check(g[agyGone]?.attention?.level === 'none', 'a prompt left open by a process that exited does not', J(g[agyGone]?.attention));
+    check(g[agyRan]?.attention?.level === 'none', 'nor one whose step is already in the transcript', J(g[agyRan]?.attention));
+    check(!J(agySessions.map((s) => s.attention)).includes('SECRET_COMMAND_TEXT') && !J(agySessions).includes('example.invalid'), 'nothing from the log but the tool name reaches the page');
+    check(agySessions.every((s) => s.promptsVisible === true), 'sessions beside a CLI log folder say their prompts are visible', J(agySessions.map((s) => s.promptsVisible)));
+    check(all.filter((x) => x.source === 'antigravity' && x.attention?.level === 'needs-you').map((x) => x.id).join() === agyWait, 'and the overview agrees', J(all.filter((x) => x.source === 'antigravity').map((x) => [x.id.slice(0, 2), x.attention?.level])));
     check(!J(needing.map((x) => x.attention)).includes('SECRET_COMMAND_TEXT') && !J(needing.map((x) => x.attention)).includes('/'), 'attention records in the overview hold no command text and no path');
 
     console.log('\nthe live status event');

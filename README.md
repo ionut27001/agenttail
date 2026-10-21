@@ -49,7 +49,7 @@ A zero-runtime-dependency Node 24 server plus a single-page UI. It reads local l
 | --- | --- | --- | --- | --- |
 | DeepSeek Harness | ✓ | `~/.dsh/sessions/**/session.v4.jsonl.zstd` | edits, commands, background jobs, thinking, tool calls, tokens/cost | permission prompts, from the log |
 | Claude Code | ✓ | `~/.claude/projects/**/*.jsonl`, plus the status fields of `~/.claude/sessions/*.json` | messages, thinking, tool calls, subagents, custom titles, turns, tokens/API-equivalent cost | permission and input prompts (status file), questions and plans (transcript) |
-| Antigravity CLI | ◐ | `~/.gemini/antigravity/**` | normalized messages, thinking, tool calls and file edits | not visible: it writes no signal for an open approval prompt |
+| Antigravity | ◐ | `~/.gemini/antigravity-cli/**` (CLI) and `~/.gemini/antigravity/**` (editor) | normalized messages, thinking, tool calls and file edits | CLI permission prompts, from the CLI log; none for the editor |
 
 ✓ full adapter · ◐ normalized/partial. Only sessions whose logs exist locally are listed; empty sessions are hidden behind a picker toggle. **Needs you** is described [below](#needs-you).
 
@@ -58,7 +58,7 @@ A zero-runtime-dependency Node 24 server plus a single-page UI. It reads local l
 
 - **DeepSeek Harness** reads `session.v4.jsonl.zstd` frames from `~/.dsh/sessions`, decodes them with Node's built-in zlib and understands edits, commands, background jobs, thinking and token/cost usage. The title prefers the local nickname, then a real `session/title` (fallback titles derived from the first prompt are ignored), then the last real user message (first 60 characters), then the first prompt.
 - **Claude Code** reads `~/.claude/projects` transcripts, including custom titles, thinking blocks, tool calls, subagents and pending live writes. Each reply counts once (Claude Code repeats a reply's usage on every content-block line), turns run from a real prompt to `end_turn`, and every reply is priced at Anthropic's API list price for its own model: cache reads, 5-minute and 1-hour cache writes, Haiku 5.5's long-prompt rate card, Opus 5.5 fast mode and web searches included. The header labels it **≈ API**: on a subscription it is a yardstick for how much work the session was, not your bill. While a Claude Code process is alive, the status fields of its `~/.claude/sessions/<pid>.json` (busy, idle or waiting, and what it waits for) decide the live state and the [needs-you](#needs-you) signal; only those fields are read and the `.key` files next to them are never opened.
-- **Antigravity CLI** reads `~/.gemini/antigravity` conversations and normalizes messages, thinking, tool calls and file edits.
+- **Antigravity** reads the conversations of the CLI (`~/.gemini/antigravity-cli/brain`) and of the editor (`~/.gemini/antigravity/brain`) and normalizes messages, thinking, tool calls and file edits. For the CLI it also reads `~/.gemini/antigravity-cli/log/cli-*.log` for [needs-you](#needs-you), keeping only conversation ids, step numbers, tool names, the process id and times. Antigravity's databases are never opened.
 - Sessions sort live first, then by last activity. The header shows only the short id; the picker carries the full title and details. Nicknames live in `nicknames.json` in the config directory (never in `.dsh`) and are redacted like every other label.
 
 </details>
@@ -215,7 +215,7 @@ Each signal says how it was seen (`acp`, status file, log, transcript) and how s
 | --- | --- | --- |
 | dsh | an `approval/asked` in the session log with no matching `approval/decided`, while the session still looks live. A decision of `unavailable` (nobody could be asked) and an ask older than 30 minutes (a crash) do not count. | sure |
 | Claude Code | `status: waiting` in `~/.claude/sessions/<pid>.json` while that process is alive: a permission prompt, input needed, a sandbox request, a worker request or an open dialog. Without it, an unanswered `AskUserQuestion` or `ExitPlanMode` in the transcript. Any other open tool call says nothing: it looks the same whether you are deciding or the command is slow. | sure (status file), probable (transcript) |
-| Antigravity | none yet. agenttail says so: approval prompts are not visible for Antigravity. | n/a |
+| Antigravity CLI | a `Surfacing tool confirmation` line in the CLI's own log with no matching `Tool confirmation for conversation ... step N` after it, while the process that wrote the log is alive (pid and start time, as for Claude Code) and before the step appears in the transcript. The transcript alone never shows the wait: a waiting step is written only once it has run. The Antigravity editor writes no such log, so its prompts are not visible and agenttail says so. | probable (guess where the process start time cannot be read) |
 | owned by agenttail (`--allow-control`) | a pending ACP permission request, known exactly | sure |
 
 One session is counted once however many signals saw it (an owned session shows up in the log and over ACP). Where it shows: the session picker (needs-you rows first), the agents overview, the watch wall, the tab title (`(2) ⚠ agenttail`) and favicon, an opt-in desktop notification (Settings, only while the tab is in the background) and the inbox button in the activity bar (`Alt+I`), which lists everything that needs you with **Open session**; for owned sessions it also has **Approve** and **Reject** in place. Tail perks up when something starts needing you. In stream mode every one of these shows the kind of wait and the tool name only, never a command or a path, and the inbox has no Approve or Reject buttons (control is locked).
@@ -347,7 +347,8 @@ Each entry takes `label`, `kind` (`dsh` or `acp`), `command` and `args` (absolut
 | `DSH_SESSIONS_ROOT` | `~/.dsh/sessions` | DeepSeek Harness session root |
 | `CLAUDE_PROJECTS_ROOT` | `~/.claude/projects` | Claude Code transcripts |
 | `AGENTTAIL_CLAUDE_SESSIONS_DIR` | `~/.claude/sessions` | Claude Code status files (status fields only) |
-| `ANTIGRAVITY_ROOT` | `~/.gemini/antigravity` | Antigravity transcripts |
+| `ANTIGRAVITY_ROOT` | `~/.gemini/antigravity/brain` and `~/.gemini/antigravity-cli/brain` | One Antigravity brain folder to read instead of both |
+| `ANTIGRAVITY_CLI_DIR` | `~/.gemini/antigravity-cli` (the parent of `ANTIGRAVITY_ROOT` when that is set) | Antigravity CLI folder whose `log/` is read for needs-you |
 | `AGENTTAIL_NO_OPEN` | unset | Set `1` to skip opening the browser |
 
 `--allow-control`, `--no-open` and `--no-stream-mode` are accepted on the command line.
@@ -407,7 +408,7 @@ The control design and the dsh ACP evidence are recorded in [docs/dev/input-desi
 - `sources` — Claude custom titles/subagents/thinking/pending live, replies counted once, turns and API-equivalent prices, Antigravity normalization, tokens, deletes and live tail.
 - `control` — opt-in gate (404), token (401), stream-mode lockout (403), foreign Origin (403), ACP start/message/approve/stop/close, queueing, audit-without-bodies.
 - `agents` — the agents overview API, repository and worktree grouping, colours, `/app/` asset security, stream tail and lite mode.
-- `attention` — the needs-you model and merge, dsh open asks (closed, `unavailable`, crashed), Claude Code status files (busy, each waiting reason, dead pid, unknown shape, a `.key` file left unread) and transcript rules, Antigravity, an owned session counted once, and the inbox endpoint.
+- `attention` — the needs-you model and merge, dsh open asks (closed, `unavailable`, crashed), Claude Code status files (busy, each waiting reason, dead pid, unknown shape, a `.key` file left unread) and transcript rules, the Antigravity CLI log (open, answered, denied, a new message, an exited or reused process, a stale log, New Year), an owned session counted once, and the inbox endpoint.
 - `ui` — headless Edge: header, compact picker, meters, activity states, follow, tree legend/tooltips/show-hidden, skeleton/loading bar, chat Chat|Log and grouped tools, replay, splitter persistence, themes, the console stage, Tail and its ten games, the watch wall (panes, focus stage, chat modes, team tree, timeline, quiet agents, a Tail per pane), needs-you (header, tab title and favicon count, notification, picker, overview, wall, inbox, no command text), vendored assets, reduced motion and 900/720 px layouts.
 
 Build a standalone Windows exe and the package/portable archives with `node scripts/build-sea.mjs`. Artifacts go to `dist/` (git-ignored).
@@ -417,7 +418,7 @@ Build a standalone Windows exe and the package/portable archives with `node scri
 - Only the newest sessions per source are listed (60 dsh/Claude, 40 Antigravity).
 - Control starts one `dsh --profile acp` process per owned session, because the permission preset is process-level in dsh. ACP is automation-only: no plans, commands, terminals or client filesystem operations.
 - Sessions started outside agenttail are view-only; dsh rejects a second controller for an active session.
-- Needs-you for Claude Code relies on a status file Claude Code writes for itself; its layout is not a documented contract, so an unexpected shape means no signal and the transcript rules take over. A permission prompt is invisible in the transcript alone. Antigravity has no signal. Browser notifications work only while the agenttail tab is open.
+- Needs-you for Claude Code relies on a status file Claude Code writes for itself; its layout is not a documented contract, so an unexpected shape means no signal and the transcript rules take over. A permission prompt is invisible in the transcript alone. Needs-you for the Antigravity CLI reads its log, which is not a documented interface either; it has been seen closing a prompt in print mode, so it stays probable until an interactive approval has been checked. The Antigravity editor has no signal. Browser notifications work only while the agenttail tab is open.
 - The tree is a snapshot (2,500 nodes, 12 levels); files created later appear when touched if their parent is known.
 - Peak/off-peak pricing ignores public holidays; the Claude API-equivalent cost uses list prices (no batch, regional or long-context surcharges) and skips models without a list price; GPU metering needs `nvidia-smi`.
 - Windows is tested. macOS and Linux are untested. The Windows exe is unsigned, so SmartScreen may warn.

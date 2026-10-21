@@ -153,6 +153,8 @@ function startServer(port, extraArgs = []) {
       PORT: String(port),
       AGENTTAIL_NO_OPEN: '1',
       DSH_SESSIONS_ROOT: sessionsRoot,
+      // Never the machine's own Antigravity folders: a real conversation would join the fixtures.
+      ANTIGRAVITY_ROOT: path.join(tmp, 'no-antigravity', 'brain'),
       DSH_ROOTS_FILE: path.join(tmp, 'roots.json'),
       DSH_REDACT_FILE: redactFile,
       DSH_POLL_MS: '150',

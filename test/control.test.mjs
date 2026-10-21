@@ -47,6 +47,8 @@ async function launch({ port, allow = false, stream = false, token = true, profi
     AGENTTAIL_CONTROL_FILE: controlFile,
     AGENTTAIL_CONTROL_AUDIT_FILE: auditFile,
     DSH_SESSIONS_ROOT: sessions,
+    // Never the machine's own Antigravity folders: a real conversation would join the fixtures.
+    ANTIGRAVITY_ROOT: path.join(tmp, 'no-antigravity', 'brain'),
     AGENTTAIL_DSH_BIN: process.execPath,
     AGENTTAIL_DSH_ARGS: JSON.stringify([fakeAcp]),
     OLLAMA_API_KEY: 'fake-key',

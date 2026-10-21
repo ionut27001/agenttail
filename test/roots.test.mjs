@@ -64,6 +64,8 @@ const server = spawn(process.execPath, [path.join(import.meta.dirname, '..', 'se
     PORT: String(PORT),
       AGENTTAIL_NO_OPEN: '1',
     DSH_SESSIONS_ROOT: sessionsRoot,
+    // Never the machine's own Antigravity folders: a real conversation would join the fixtures.
+    ANTIGRAVITY_ROOT: path.join(tmp, 'no-antigravity', 'brain'),
     DSH_ROOTS_FILE: rootsFile,
     DSH_POLL_MS: '150',
   },

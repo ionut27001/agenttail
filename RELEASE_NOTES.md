@@ -5,12 +5,15 @@
   approval prompts in the log; Claude Code from its own status files (status
   fields only, never the key files next to them, checked against the process
   start time) and from open questions or plan approvals in the transcript;
-  owned sessions from their pending approvals. Antigravity says plainly that
-  its prompts are not visible yet. It shows in the session picker, the agents
+  owned sessions from their pending approvals; the Antigravity CLI from its
+  own log while its process is alive (the editor's prompts stay invisible,
+  and agenttail says so). It shows in the session picker, the agents
   overview, the watch wall (a pane that needs you never shrinks away), the
   tab title and favicon, and desktop notifications. An inbox (`Alt+I`) lists
   everything that needs you, with Approve and Reject in place for owned
   sessions. Idle sessions now read "ready".
+- Antigravity: conversations of the Antigravity CLI, which keeps them in
+  `~/.gemini/antigravity-cli`, are listed next to the editor's.
 - Safer approvals: Approve always means "allow once" and never picks an
   agent's "always allow" option; cards show the command, paths and diff
   before the agent's own title; a card whose details change after you saw it

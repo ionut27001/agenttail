@@ -166,6 +166,8 @@ const server = spawn(process.execPath, [path.join(root, 'server.js')], {
     PORT: String(PORT),
       AGENTTAIL_NO_OPEN: '1',
     DSH_SESSIONS_ROOT: fixture.sessionsRoot,
+    // Never the machine's own Antigravity folders: a real conversation would join the fixtures.
+    ANTIGRAVITY_ROOT: path.join(tmp, 'no-antigravity', 'brain'),
     CLAUDE_PROJECTS_ROOT: claudeRoot,
     AGENTTAIL_CLAUDE_SESSIONS_DIR: path.join(tmp, 'claude-sessions'),
     DSH_POLL_MS: '200',
@@ -866,7 +868,7 @@ try {
   check(await waitFor('!document.getElementById("inboxPanel").classList.contains("hidden") && document.querySelectorAll("#inboxPanel .ib-item").length === 2', 4000), 'it lists everything that needs you', String(await evalExpr('document.querySelectorAll("#inboxPanel .ib-item").length')));
   check(await evalExpr('[...document.querySelectorAll("#inboxPanel .ib-item")].every((r) => !!r.querySelector(".ib-open") && /NEEDS YOU · permission · pwsh/.test(r.querySelector(".ib-label").textContent))'), 'each row names the wait and offers to open the session');
   check(await evalExpr('document.querySelectorAll("#inboxPanel .ib-approve, #inboxPanel .ib-reject").length === 0 && /--allow-control/.test(document.querySelector("#inboxPanel .ib-notes").textContent)'), 'without control there are no Approve or Reject buttons, and it says why');
-  check(await evalExpr('/Antigravity approval prompts are not visible/.test(document.querySelector("#inboxPanel .ib-notes").textContent)'), 'it says Antigravity approval prompts are not visible');
+  check(await evalExpr('/Approval prompts in the Antigravity editor are not visible/.test(document.querySelector("#inboxPanel .ib-notes").textContent)'), 'it says approval prompts in the Antigravity editor are not visible');
   check(await evalExpr('fetch("/api/control/approvals").then((r) => r.status)', true) === 404, 'the approvals endpoint does not exist without --allow-control');
   await evalExpr('document.querySelector("#inboxPanel .ib-item[data-key=\\"' + needKey + '\\"] .ib-open").click(); true');
   check(await waitFor('location.hash === "#' + needId + '" && document.getElementById("inboxPanel").classList.contains("hidden")', 4000), 'open session goes to that session and closes the inbox', await evalExpr('location.hash'));

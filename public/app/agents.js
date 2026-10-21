@@ -195,9 +195,9 @@
           const chip = el('span', 'ag-ready', '✓ ready');
           chip.title = attnTitle(att);
           meta.appendChild(chip);
-        } else if (agent.source === 'antigravity') {
+        } else if (agent.source === 'antigravity' && !agent.promptsVisible) {
           const chip = el('span', 'ag-note', 'approval prompts not visible');
-          chip.title = 'Antigravity does not show agenttail when it waits for an approval';
+          chip.title = 'The Antigravity editor does not show agenttail when it waits for an approval (the Antigravity CLI does, in its log)';
           meta.appendChild(chip);
         }
         if (agent.repo && agent.repo.branch) meta.appendChild(el('span', 'br', `⎇ ${agent.repo.branch}${agent.repo.removed ? ' (worktree removed)' : agent.repo.worktree ? ' (worktree)' : ''}`));
