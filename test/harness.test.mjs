@@ -370,6 +370,13 @@ try {
           ],
         }),
         legacy: fake('legacy-modes', { presets: [{ id: 'code', mode: 'code' }] }),
+        guarded: fake('modes,free-option', {
+          presets: [
+            { id: 'ask', label: 'Ask', mode: 'default' },
+            { id: 'yolo', label: 'Bypass', mode: 'bypass', danger: true },
+            { id: 'hi', label: 'High effort', config: { configId: 'reasoning_effort', value: 'high' }, danger: true },
+          ],
+        }),
         nomode: fake('', { presets: [{ id: 'plan', mode: 'plan' }] }),
         nomodel: fake('no-model,no-images,no-close'),
         crash: fake('crash-on-start'),
@@ -401,8 +408,8 @@ try {
     const asking = await mgr.begin({ cwd: workspace, harness: 'moded', preset: 'plan' });
     const modeOpt = asking.session.caps.config.find((o) => o.category === 'mode');
     check(modeOpt && modeOpt.current === 'plan' && marks().includes('config:mode=plan'), 'a mode preset is applied right after session/new', JSON.stringify(modeOpt));
-    const switched = await mgr.setConfig(asking.session.id, 'mode', 'bypass');
-    check(switched.session.caps.config.find((o) => o.id === 'mode').current === 'bypass', 'the mode can be changed in the session');
+    const switched = await mgr.setConfig(asking.session.id, 'mode', 'plan');
+    check(switched.session.caps.config.find((o) => o.id === 'mode').current === 'plan', 'the mode can be changed in the session');
     const badValue = await expectStatus(mgr.setConfig(asking.session.id, 'mode', 'nonsense'), 400);
     const badId = await expectStatus(mgr.setConfig(asking.session.id, 'nope', 'x'), 400);
     check(badValue.ok && badId.ok, 'only settings and values the agent listed are accepted');
@@ -410,6 +417,26 @@ try {
     const cfg = await mgr.begin({ cwd: workspace, harness: 'moded', preset: 'cfg' });
     check(marks().includes('config:reasoning_effort=high') && cfg.session.preset === 'cfg', 'a config preset is applied through set_config_option');
     await mgr.close(cfg.session.id);
+
+    // The mode picker lists every value the agent offers: a value that is a danger preset needs the same confirmation as starting in it.
+    const guarded = await mgr.begin({ cwd: workspace, harness: 'guarded', preset: 'ask' });
+    const modeOf = () => mgr.get(guarded.session.id).statePayload().caps.config.find((o) => o.id === 'mode').current;
+    fs.rmSync(mark, { force: true });
+    const sneaky = await expectStatus(mgr.setConfig(guarded.session.id, 'mode', 'bypass'), 400);
+    check(sneaky.ok && /yolo requires explicit confirmation/.test(sneaky.message), 'switching a live session to a danger mode needs the confirmation', sneaky.message);
+    check(modeOf() === 'default' && !marks().includes('config:mode=bypass'), 'the refused switch never reached the agent');
+    const sneakyFalse = await expectStatus(mgr.setConfig(guarded.session.id, 'mode', 'bypass', 'true'), 400);
+    check(sneakyFalse.ok, 'only an explicit true confirms');
+    const sneakyConfig = await expectStatus(mgr.setConfig(guarded.session.id, 'reasoning_effort', 'high'), 400);
+    check(sneakyConfig.ok && /hi requires explicit confirmation/.test(sneakyConfig.message), 'a danger preset set through a config value is guarded too', sneakyConfig.message);
+    const safeSwitch = await mgr.setConfig(guarded.session.id, 'mode', 'plan');
+    check(safeSwitch.session.caps.config.find((o) => o.id === 'mode').current === 'plan', 'a mode that is no danger preset switches without a confirmation');
+    const confirmed = await mgr.setConfig(guarded.session.id, 'mode', 'bypass', true);
+    check(confirmed.session.caps.config.find((o) => o.id === 'mode').current === 'bypass', 'a confirmed switch to the danger mode is applied');
+    const free = await expectStatus(mgr.setConfig(guarded.session.id, 'note', 'anything at all'), 400);
+    check(free.ok && /no choices/.test(free.message), 'an option with no declared choices accepts no value', free.message);
+    check(!marks().some((line) => line.startsWith('config:note=')), 'nothing was sent to the agent for it');
+    await mgr.close(guarded.session.id);
 
     const noConfirm = await expectStatus(mgr.begin({ cwd: workspace, harness: 'moded', preset: 'yolo' }), 400);
     check(noConfirm.ok && /yolo requires explicit confirmation/.test(noConfirm.message), 'a danger preset still needs the confirmation', noConfirm.message);
@@ -479,6 +506,13 @@ try {
           envPass: ['AGENTTAIL_TEST_PASS'],
           presets: [{ id: 'ask', label: 'Ask', mode: 'default' }, { id: 'plan', label: 'Plan', mode: 'plan' }],
         },
+        guarded: {
+          label: 'Guarded agent',
+          command: process.execPath,
+          args: [fakeAcp],
+          env: fakeEnv('modes'),
+          presets: [{ id: 'ask', label: 'Ask', mode: 'default' }, { id: 'yolo', label: 'Bypass', mode: 'bypass', danger: true }],
+        },
         broken: { label: 'Broken agent', command: process.execPath, args: [fakeAcp], env: fakeEnv('crash-on-start') },
         dies: { label: 'Dying agent', command: process.execPath, args: [fakeAcp], env: fakeEnv('crash-on-prompt') },
       },
@@ -521,7 +555,7 @@ try {
         return { status: res.status, data };
       };
       const options = await call('GET', '/api/control/options');
-      check(options.status === 200 && options.data.harnesses.length === 4 && options.data.defaultHarness === 'dsh', 'options list every configured harness', JSON.stringify(options.data));
+      check(options.status === 200 && options.data.harnesses.length === 5 && options.data.defaultHarness === 'dsh', 'options list every configured harness', JSON.stringify(options.data));
       const moded = options.data.harnesses.find((h) => h.id === 'moded');
       check(moded.label === 'Moded agent' && moded.commandLine.includes('fake-acp.mjs') && moded.presets.length === 2 && moded.viewable === false, 'a harness is described by label, command line and presets');
       check(!JSON.stringify(options.data).includes('FAKE_ACP_PROFILE') && !JSON.stringify(options.data).includes('AGENTTAIL_TEST_PASS'), 'options never include a harness environment');
@@ -535,6 +569,10 @@ try {
       check(bad.status === 400, 'the config endpoint refuses a value the agent did not list', String(bad.status));
       const closed = await call('POST', '/api/control/close', { id: begun.data.session.id });
       check(closed.status === 200, 'the session closes');
+      const guardedBegin = await call('POST', '/api/control/session/begin', { cwd: workspace, harness: 'guarded', preset: 'ask' });
+      const unconfirmed = await call('POST', '/api/control/config', { id: guardedBegin.data.session.id, configId: 'mode', value: 'bypass' });
+      check(unconfirmed.status === 400 && /requires explicit confirmation/.test(unconfirmed.data.error), 'the config endpoint will not switch to a danger mode unconfirmed', JSON.stringify(unconfirmed.data));
+      await call('POST', '/api/control/close', { id: guardedBegin.data.session.id });
 
       const unknown = await call('POST', '/api/control/session/begin', { cwd: workspace, harness: 'nope' });
       check(unknown.status === 400, 'an unknown harness is a 400', String(unknown.status));

@@ -223,12 +223,25 @@
     if (!option || !select.value || select.value === option.current) return;
     control.modelBusy = true;
     select.disabled = true;
+    const post = (confirmDanger) => controlFetch('/api/control/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: state.sessionId, configId: option.id, value: select.value, ...(confirmDanger ? { confirmDanger: true } : {}) }),
+    });
     try {
-      const data = await controlFetch('/api/control/config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: state.sessionId, configId: option.id, value: select.value }),
-      });
+      let data;
+      try {
+        data = await post(false);
+      } catch (err) {
+        // A mode that removes the agent's permission checks needs the same yes as starting in it.
+        if (err.status === 400 && /requires explicit confirmation/.test(err.message)
+          && window.confirm(`${select.selectedOptions[0]?.textContent || select.value} removes the agent's permission checks (${err.message}). Switch anyway?`)) {
+          data = await post(true);
+        } else {
+          select.value = option.current || select.value;
+          throw err;
+        }
+      }
       if (data && data.session) control.current = { ...control.current, ...data.session };
       setStatus(`${option.name || 'mode'} → ${select.selectedOptions[0]?.textContent || select.value}`);
     } catch (err) {

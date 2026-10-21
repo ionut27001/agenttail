@@ -13,6 +13,7 @@
 //   deceptive-title      a harmless title over a destructive command (argv array)
 //   modes                a `mode` config option (default, plan, bypass)
 //   legacy-modes         Session Modes (ask, code) in session/new and session/set_mode
+//   free-option         a select option (`note`) that declares no choices
 //   one-model, no-model  a one-value model option, or none
 //   no-images            promptCapabilities.image false (FAKE_ACP_NO_IMAGES does the same)
 //   embedded-context, mcp-http, auth-methods   other declared capabilities
@@ -92,6 +93,9 @@ function modelOptions() {
     currentValue: 'high',
     options: [{ value: 'high', name: 'High' }],
   });
+  if (PROFILE.has('free-option')) {
+    out.push({ id: 'note', name: 'Note', category: 'other', type: 'select', currentValue: 'a', options: [] });
+  }
   if (PROFILE.has('modes')) {
     out.push({
       id: 'mode',
