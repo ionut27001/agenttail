@@ -2,6 +2,12 @@
   "workspaces": [
     "C:\\Users\\you\\agenttail-scratch"
   ],
-  "dshProfile": "acp",
-  "maxSessions": 8
+  "maxSessions": 8,
+  "harnesses": {
+    "dsh": {
+      "label": "DeepSeek Harness",
+      "kind": "dsh",
+      "profile": "acp"
+    }
+  }
 }
