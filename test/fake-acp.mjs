@@ -7,6 +7,7 @@
 //   only-allow-always    permission options are allow_always and reject_once only
 //   reject-always-only   permission options are allow_once and reject_always only
 //   reject-always-first  permission options listed reject_always, reject_once, allow_once
+//   no-reject-option     permission options are allow_once only
 //   diff-only            the tool call has a diff content block and no rawInput
 //   diff-inline          no tool_call update; the request carries two diffs (one a new file)
 //   deceptive-title      a harmless title over a destructive command (argv array)
@@ -142,6 +143,7 @@ function permissionOptions() {
   if (PROFILE.has('only-allow-always')) return [allowAlways, rejectOnce];
   if (PROFILE.has('reject-always-only')) return [allowOnce, rejectAlways];
   if (PROFILE.has('reject-always-first')) return [rejectAlways, rejectOnce, allowOnce];
+  if (PROFILE.has('no-reject-option')) return [allowOnce];
   return [allowOnce, rejectOnce];
 }
 

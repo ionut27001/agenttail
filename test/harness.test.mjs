@@ -115,6 +115,17 @@ try {
     const r4 = await mgr.approval(fourth.id, fourth.approval.approvalId, 'reject');
     check(r4.optionId === 'reject-always', 'Reject uses reject_always when it is the only reject option', r4.optionId);
     await mgr.close(fourth.id);
+
+    // No reject option at all: the request is cancelled, which is a success and is audited.
+    const fifth = await beginAndAsk(mgr, 'no-reject-option');
+    check(fifth.approval && fifth.approval.canReject === false, 'the agent really offered no reject option');
+    const cancelled = await mgr.approval(fifth.id, fifth.approval.approvalId, 'reject', 'not this');
+    check(cancelled.decision === 'cancelled' && cancelled.optionId === null && cancelled.hadReason === true, 'rejecting without a reject option answers cancelled and succeeds', JSON.stringify(cancelled));
+    check(fifth.session.pendingApprovals().length === 0, 'the cancelled request is closed');
+    await mgr.audit.chain;
+    const auditLines = fs.readFileSync(path.join(tmp, 'options-audit.log'), 'utf8').trim().split(/\r?\n/).map((line) => JSON.parse(line));
+    check(auditLines.some((entry) => entry.action === 'reject' && entry.outcome === 'cancelled' && entry.approvalId === fifth.approval.approvalId), 'the cancellation is audited', JSON.stringify(auditLines.slice(-2)));
+    await mgr.close(fifth.id);
   }
 
   console.log('\napproval normaliser');

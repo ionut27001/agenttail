@@ -488,14 +488,15 @@
     $c('approvalApprove').disabled = true;
     $c('approvalReject').disabled = true;
     try {
-      await controlFetch('/api/control/approval', {
+      const result = await controlFetch('/api/control/approval', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: state.sessionId, approvalId: approval.approvalId, decision, reason }),
       });
       control.approvals = control.approvals.filter((a) => a.approvalId !== approval.approvalId);
       $c('approvalReason').value = '';
-      setStatus(decision === 'approve' ? 'approved' : 'rejected');
+      if (result && result.decision === 'cancelled') setStatus('rejected: the agent offered no reject option, so the request was cancelled');
+      else setStatus(decision === 'approve' ? 'approved' : 'rejected');
     } catch (err) {
       control.lastError = err.message;
       setStatus(err.message, 'err');
