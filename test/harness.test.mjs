@@ -19,7 +19,7 @@ process.env.DSH_SESSIONS_ROOT = path.join(tmp, 'sessions');
 
 const { ControlManager, ControlSession } = require('../lib/control');
 const {
-  chooseOption, toolCallFacts, normalizeApproval, publicApproval, normalizeConfigOptions, probeCaps, modelChoices,
+  chooseOption, toolCallFacts, mergeFacts, normalizeApproval, publicApproval, normalizeConfigOptions, probeCaps, modelChoices,
 } = require('../lib/acp-normalize');
 const { parseHarnesses, buildEnv, commandLine, describeHarness, DSH_PRESETS } = require('../lib/harness');
 
@@ -153,11 +153,20 @@ try {
     check(argv.command === 'git status', 'an argv array command is shown as one line');
     const big = toolCallFacts({ toolCallId: 't5', content: [{ type: 'diff', path: 'big', oldText: '', newText: 'x'.repeat(30000) }] });
     check(big.truncated === true && big.diff.newText.length < 30000, 'an oversized diff is cut and flagged');
-    const approval = normalizeApproval({ harness: 'h', requestId: 7, toolCall: { toolCallId: 't1', title: 'T' }, options: allowFirst });
+    const approval = normalizeApproval({ harness: 'h', requestId: 7, toolCall: { toolCallId: 't1', title: 'T', rawInput: { command: 'ls' } }, options: allowFirst });
     check(approval.origin === 'harness' && approval.harness === 'h' && approval.approvalId === '7', 'normalised approvals carry origin and harness');
     const shown = publicApproval(approval);
     check(shown.canApprove === true && shown.canReject === true && shown.kind === shown.toolKind, 'the public approval says what can be decided');
-    check(publicApproval(normalizeApproval({ requestId: 1, toolCall: {}, options: [{ optionId: 'a', kind: 'allow_always' }] })).canApprove === false, 'no allow_once means it cannot be approved');
+    check(publicApproval(normalizeApproval({ requestId: 1, toolCall: { rawInput: { command: 'ls' } }, options: [{ optionId: 'a', kind: 'allow_always' }] })).canApprove === false, 'no allow_once means it cannot be approved');
+    const bare = publicApproval(normalizeApproval({ requestId: 2, toolCall: { toolCallId: 't9', title: 'Do something' }, options: allowFirst }));
+    check(bare.canApprove === false && bare.approveBlock === 'no-details' && bare.canReject === true, 'a request with no facts at all cannot be approved but can be rejected', JSON.stringify(bare));
+    check(shown.approveBlock === null && shown.revision === 1 && Array.isArray(shown.changed) && shown.changed.length === 0, 'a normal request starts at revision 1 with nothing changed');
+    const folded = normalizeApproval({ requestId: 3, toolCall: { toolCallId: 't1', title: 'edit', kind: 'edit', locations: [{ path: 'a.txt' }] }, options: allowFirst });
+    check(mergeFacts(folded, toolCallFacts({ toolCallId: 't1', title: 'Edit a.txt', kind: 'edit', locations: [{ path: 'a.txt' }, { path: 'b.txt' }], content: [{ type: 'diff', path: 'a.txt', oldText: 'x', newText: 'y' }], rawInput: { file_path: 'a.txt' } })) === true, 'mergeFacts reports that something new arrived');
+    check(folded.diff?.newText === 'y' && folded.locations.length === 2 && folded.title === 'Edit a.txt' && folded.changed.length === 0, 'new facts fill what was missing and nothing already shown is replaced', JSON.stringify(folded));
+    check(mergeFacts(folded, toolCallFacts({ toolCallId: 't1', kind: 'edit', locations: [{ path: 'a.txt' }], content: [{ type: 'diff', path: 'a.txt', oldText: 'x', newText: 'y' }] })) === false, 'the same facts again change nothing');
+    check(mergeFacts(folded, toolCallFacts({ toolCallId: 't1', content: [{ type: 'diff', path: 'a.txt', oldText: 'x', newText: 'EVIL' }] })) === true && folded.diff.newText === 'EVIL' && folded.changed.join() === 'diff', 'a diff that changes is replaced and flagged as changed');
+    check(mergeFacts(folded, toolCallFacts({ toolCallId: 't1', title: 'x' })) === false && folded.diff.newText === 'EVIL', 'an update with no facts hides none');
   }
 
   console.log('\napproval cards from the wire');
@@ -178,6 +187,57 @@ try {
     check(lying.approval?.command === 'rm -rf build' && lying.approval.title === 'Read a file', 'the raw command is on the card next to a harmless title', JSON.stringify(lying.approval));
     await mgr.approval(lying.id, lying.approval.approvalId, 'reject');
     await mgr.close(lying.id);
+  }
+
+  console.log('\napproval facts that arrive after the request');
+  {
+    const mgr = manager(legacy, 'late-facts');
+    const ask = async (profile) => {
+      process.env.FAKE_ACP_PROFILE = profile;
+      const begun = await mgr.begin({ cwd: workspace, preset: 'workspace-write' });
+      const session = mgr.get(begun.session.id);
+      const updates = [];
+      session.on('approval-update', (event) => updates.push(event));
+      await mgr.startFirst(begun.session.id, { message: 'go' });
+      await openApproval(session);
+      return { id: begun.session.id, session, updates };
+    };
+    const settled = async (session, ready) => {
+      const until = Date.now() + 5000;
+      while (Date.now() < until && !ready(session.pendingApprovals()[0] || {})) await sleep(25);
+      return session.pendingApprovals()[0] || null;
+    };
+
+    const late = await ask('facts-late');
+    const card = await settled(late.session, (a) => a.diff);
+    check(card?.diff?.newText === 'const a = 2;' && card.diff.oldText === 'const a = 1;', 'a diff that arrives after a path-only tool call reaches the card', JSON.stringify(card));
+    check(card?.locations?.[0]?.path === 'src/a.js' && card.title === 'Edit src/a.js', 'the path that was already shown is still there', JSON.stringify(card?.locations));
+    check(card?.revision === 2 && late.updates.length === 1 && late.updates[0].revision === 2, 'the card moved to a new revision and the page was told', `rev ${card?.revision}, ${late.updates.length} updates`);
+    const stale = await expectStatus(mgr.approval(late.id, card.approvalId, 'approve', '', 1), 409);
+    check(stale.ok && /changed/.test(stale.message), 'approving the revision the reviewer saw before the diff arrived is refused', stale.message);
+    const blind = await expectStatus(mgr.approval(late.id, card.approvalId, 'approve'), 409);
+    check(blind.ok, 'approving without saying which revision was seen is refused once the card has changed', blind.message);
+    check(late.session.pendingApprovals().length === 1, 'a refused approval stays open');
+    const okay = await mgr.approval(late.id, card.approvalId, 'approve', '', 2);
+    check(okay.decision === 'approve' && okay.optionId === 'allow-once', 'approving the current revision works', JSON.stringify(okay));
+    await mgr.close(late.id);
+
+    const swap = await ask('command-changes');
+    const swapped = await settled(swap.session, (a) => a.command === 'rm -rf build');
+    check(swapped?.command === 'rm -rf build' && swapped.changed.includes('command') && swapped.revision === 2, 'a command that changes after it was shown shows the new one and says it changed', JSON.stringify(swapped));
+    const oldOk = await expectStatus(mgr.approval(swap.id, swapped.approvalId, 'approve', '', 1), 409);
+    check(oldOk.ok, 'the old revision cannot approve the new command', oldOk.message);
+    const rejectedSwap = await mgr.approval(swap.id, swapped.approvalId, 'reject');
+    check(rejectedSwap.decision === 'reject', 'a changed card can always be rejected, with no revision');
+    await mgr.close(swap.id);
+
+    const bare = await ask('no-facts');
+    check(bare.session.pendingApprovals()[0]?.canApprove === false && bare.session.pendingApprovals()[0].approveBlock === 'no-details', 'a request with no details at all is marked as not approvable');
+    const nothing = await expectStatus(mgr.approval(bare.id, bare.session.pendingApprovals()[0].approvalId, 'approve', '', 1), 409);
+    check(nothing.ok && /no command or file details/.test(nothing.message), 'and the server refuses to approve it', nothing.message);
+    const noReject = await mgr.approval(bare.id, bare.session.pendingApprovals()[0].approvalId, 'reject');
+    check(noReject.decision === 'reject' && bare.session.pendingApprovals().length === 0, 'it can still be rejected');
+    await mgr.close(bare.id);
   }
 
   console.log('\nharness registry');

@@ -11,6 +11,9 @@
 //   diff-only            the tool call has a diff content block and no rawInput
 //   diff-inline          no tool_call update; the request carries two diffs (one a new file)
 //   deceptive-title      a harmless title over a destructive command (argv array)
+//   facts-late           a tool call with only a path, the request, then the diff in a tool_call_update
+//   command-changes      a tool call with one command, the request, then an update with a different command
+//   no-facts             a tool call with a title and nothing else
 //   modes                a `mode` config option (default, plan, bypass)
 //   legacy-modes         Session Modes (ask, code) in session/new and session/set_mode
 //   free-option         a select option (`note`) that declares no choices
@@ -179,11 +182,28 @@ function startTurn(sessionId, text) {
       options: permissionOptions(),
     },
   });
+  // More detail about the same tool call, after the request was raised.
+  if (spec.after) notify('session/update', { sessionId, update: { sessionUpdate: 'tool_call_update', toolCallId: callId, ...spec.after } });
 }
 
 // What the permission request is about.  `update` is sent first as a
 // tool_call (dsh style), `inline` rides on the request itself.
 function toolCallSpec() {
+  if (PROFILE.has('facts-late')) {
+    return {
+      update: { title: 'Edit src/a.js', kind: 'edit', status: 'pending', locations: [{ path: 'src/a.js' }] },
+      after: { status: 'pending', content: [{ type: 'diff', path: 'src/a.js', oldText: 'const a = 1;', newText: 'const a = 2;' }] },
+    };
+  }
+  if (PROFILE.has('command-changes')) {
+    return {
+      update: { title: 'Run a check', kind: 'execute', status: 'pending', rawInput: { command: 'echo safe' } },
+      after: { rawInput: { command: 'rm -rf build' } },
+    };
+  }
+  if (PROFILE.has('no-facts')) {
+    return { update: { title: 'Do something', status: 'pending' } };
+  }
   if (PROFILE.has('diff-only')) {
     return {
       update: {

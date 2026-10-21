@@ -420,8 +420,16 @@
   function upsertApproval(approval) {
     if (!approval || !approval.approvalId) return;
     const index = control.approvals.findIndex((a) => a.approvalId === approval.approvalId);
-    if (index >= 0) control.approvals[index] = approval;
-    else control.approvals.push(approval);
+    if (index >= 0) {
+      // The card changed under the reviewer: hold Approve for a moment so a click aimed at the old one cannot land on the new one.
+      if ((control.approvals[index].revision || 1) !== (approval.revision || 1)) {
+        control.holdApproveUntil = Date.now() + 1200;
+        setTimeout(renderApproval, 1250);
+      }
+      control.approvals[index] = approval;
+    } else {
+      control.approvals.push(approval);
+    }
     renderApproval();
   }
 
@@ -439,8 +447,16 @@
    */
   function approvalText(approval) {
     const parts = [];
-    if (approval.canApprove === false) {
+    if (approval.approveBlock === 'no-details') {
+      parts.push('The agent sent no command or file details, so there is nothing to review. It cannot be approved here. Reject it, or Stop the turn.');
+    } else if (approval.canApprove === false) {
       parts.push('This agent offered no allow-once option, so it cannot be approved here. Reject it, or Stop the turn.');
+    }
+    if ((approval.revision || 1) > 1) {
+      const what = Array.isArray(approval.changed) && approval.changed.length
+        ? `the agent changed its ${approval.changed.join(' and ')} after this first appeared. What is shown is the latest version.`
+        : 'the agent added details after this first appeared. What is shown is the latest version.';
+      parts.push(`UPDATED: ${what}`);
     }
     if (approval.command) parts.push(`$ ${approval.command}`);
     const diffs = approval.diffs && approval.diffs.length ? approval.diffs : (approval.diff ? [approval.diff] : []);
@@ -451,7 +467,7 @@
     if (!parts.length || (!approval.command && !diffs.length && !places.length)) {
       if (approval.content) parts.push(approval.content);
       else if (approval.rawInput) parts.push(JSON.stringify(approval.rawInput, null, 2));
-      else parts.push('(the agent sent no command or file details)');
+      else if (approval.approveBlock !== 'no-details') parts.push('(the agent sent no command or file details)');
     }
     if (approval.truncated) parts.push('(the input is larger than what is shown here)');
     if (approval.title) parts.push(`the agent calls this: ${approval.title}`);
@@ -479,8 +495,11 @@
     }
     $c('approvalTool').textContent = approvalHead(approval);
     $c('approvalDetail').textContent = approvalText(approval);
-    $c('approvalApprove').disabled = control.busy || approval.canApprove === false;
-    $c('approvalApprove').title = approval.canApprove === false ? 'No allow-once option was offered' : '';
+    const held = Date.now() < (control.holdApproveUntil || 0);
+    $c('approvalApprove').disabled = control.busy || approval.canApprove === false || held;
+    $c('approvalApprove').title = approval.approveBlock === 'no-details'
+      ? 'The agent sent no details to review'
+      : (approval.canApprove === false ? 'No allow-once option was offered' : (held ? 'This request just changed: read it again' : ''));
     panel.classList.remove('hidden');
     badge.classList.remove('hidden');
     badge.textContent = control.approvals.length > 1
@@ -504,7 +523,8 @@
       const result = await controlFetch('/api/control/approval', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: state.sessionId, approvalId: approval.approvalId, decision, reason }),
+        // The revision says which version of the card was on screen; a card that changed since is refused.
+        body: JSON.stringify({ id: state.sessionId, approvalId: approval.approvalId, decision, reason, revision: approval.revision || 1 }),
       });
       control.approvals = control.approvals.filter((a) => a.approvalId !== approval.approvalId);
       $c('approvalReason').value = '';
