@@ -382,6 +382,9 @@ try {
         crash: fake('crash-on-start'),
         dies: fake('crash-on-prompt'),
         mcp: fake('mcp-http,auth-methods,embedded-context'),
+        cardfinish: fake('finish-with-card'),
+        carderror: fake('error-with-card'),
+        late: fake('late-permission'),
         huge: fake('oversize-line'),
         refuses: fake('prompt-error'),
       },
@@ -473,6 +476,45 @@ try {
     const after = dying.statePayload();
     check(after.status === 'exited' && /Fake agent exited \(3\)/.test(after.error || ''), 'an exit is reported with the harness label', after.error);
     check(/model backend went away/.test(after.details), 'an exited session shows the child stderr in details', after.details);
+
+    // An approval never outlives its turn, and none is taken once Stop was pressed.
+    const turnOf = async (session, ms = 8000) => {
+      const until = Date.now() + ms;
+      while (Date.now() < until && session.running) await sleep(25);
+    };
+    for (const [name, label] of [['cardfinish', 'finishes'], ['carderror', 'fails']]) {
+      fs.rmSync(mark, { force: true });
+      const begun = await mgr.begin({ cwd: workspace, harness: name });
+      const session = mgr.get(begun.session.id);
+      const done = [];
+      session.on('approval-done', (event) => done.push(event));
+      await mgr.message(begun.session.id, 'go');
+      await sleep(150);
+      await turnOf(session);
+      check(session.running === false && session.pendingApprovals().length === 0, `a turn that ${label} with a card open leaves no card behind`, JSON.stringify(session.pendingApprovals()));
+      check(done.length === 1 && done[0].decision === 'cancelled' && session.statePayload().approvalCount === 0, 'the page is told the approval is gone', JSON.stringify(done));
+      check(marks().some((line) => /^reply:\d+:cancelled$/.test(line)), 'and the agent is answered "cancelled"', marks().join());
+      await mgr.close(begun.session.id);
+    }
+    {
+      fs.rmSync(mark, { force: true });
+      const begun = await mgr.begin({ cwd: workspace, harness: 'late' });
+      const session = mgr.get(begun.session.id);
+      const asked = [];
+      const done = [];
+      session.on('approval', (event) => asked.push(event));
+      session.on('approval-done', (event) => done.push(event));
+      await mgr.message(begun.session.id, 'go');
+      const first = await openApproval(session);
+      const stopped = await mgr.stop(begun.session.id);
+      check(stopped.cancelled === true && !!first, 'Stop cancels the open card');
+      await turnOf(session);
+      await sleep(100);
+      check(asked.length === 1 && session.pendingApprovals().length === 0, 'a permission request that arrives after Stop is not taken', `asked ${asked.length}, pending ${session.pendingApprovals().length}`);
+      check(marks().filter((line) => /^reply:\d+:cancelled$/.test(line)).length === 2, 'both the open one and the late one are answered "cancelled"', marks().join());
+      check(done.length === 1, 'only the card the page showed is reported done', JSON.stringify(done));
+      await mgr.close(begun.session.id);
+    }
 
     // One oversized line from the agent must end that session, not the server.
     const huge = await mgr.begin({ cwd: workspace, harness: 'huge' });

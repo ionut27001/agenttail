@@ -22,9 +22,13 @@
 //   crash-on-prompt      exit 3 with a line on stderr when a prompt arrives
 //   oversize-line        a prompt is answered with 9 MiB on stdout and no newline
 //   prompt-error         a prompt is answered with a JSON-RPC error
+//   finish-with-card     a permission request goes out and the prompt ends at once, unanswered
+//   error-with-card      the same, but the prompt ends with a JSON-RPC error
+//   late-permission      a session/cancel is answered by one more permission request, then the prompt ends
 //   no-log               do not write the dsh-shaped session log (for non-dsh harnesses)
 // FAKE_ACP_MARK=<file> appends one line per session/new, config, mode and close
-// request; FAKE_ACP_ENV_FILE=<file> receives the names of the environment variables.
+// request, and one `reply:<id>:<outcome>` per answer to a permission request;
+// FAKE_ACP_ENV_FILE=<file> receives the names of the environment variables.
 import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
@@ -304,6 +308,22 @@ rl.on('line', (line) => {
       process.stdout.write('x'.repeat(9 * 1024 * 1024));
       return;
     }
+    if (PROFILE.has('finish-with-card') || PROFILE.has('error-with-card')) {
+      const callId = 'call_card';
+      notify('session/update', {
+        sessionId: message.params.sessionId,
+        update: { sessionUpdate: 'tool_call', toolCallId: callId, title: 'pwsh', kind: 'other', rawInput: { command: 'echo card' } },
+      });
+      write({
+        jsonrpc: '2.0',
+        id: permissionId++,
+        method: 'session/request_permission',
+        params: { sessionId: message.params.sessionId, toolCall: { toolCallId: callId }, options: permissionOptions() },
+      });
+      if (PROFILE.has('error-with-card')) fail(message.id, -32000, 'the turn failed with a request still open (synthetic failure)');
+      else respond(message.id, { stopReason: 'end_turn' });
+      return;
+    }
     if (PROFILE.has('prompt-error')) { fail(message.id, -32000, 'the model backend refused the request (synthetic failure)'); return; }
     if (PROFILE.has('crash-on-prompt')) {
       process.stderr.write('fake-acp: the model backend went away (synthetic failure)\n');
@@ -326,6 +346,14 @@ rl.on('line', (line) => {
     return;
   }
   if (message.method === 'session/cancel') {
+    if (pendingPrompt && PROFILE.has('late-permission')) {
+      write({
+        jsonrpc: '2.0',
+        id: permissionId++,
+        method: 'session/request_permission',
+        params: { sessionId: pendingPrompt.sessionId, toolCall: { toolCallId: pendingPrompt.callId }, options: permissionOptions() },
+      });
+    }
     if (pendingPrompt) {
       const cancelled = pendingPrompt;
       append([
@@ -350,6 +378,9 @@ rl.on('line', (line) => {
   }
   if (message.id !== undefined && message.method === undefined) {
     // Permission response.
+    mark(`reply:${message.id}:${message.result?.outcome?.outcome || 'none'}`);
+    // late-permission keeps the turn open until the session/cancel itself arrives.
+    if (PROFILE.has('late-permission') && message.result?.outcome?.outcome === 'cancelled') return;
     if (pendingPrompt && message.id === pendingPrompt.id) {
       const outcome = message.result?.outcome;
       if (outcome?.outcome === 'selected' && outcome.optionId === 'allow-once') {
