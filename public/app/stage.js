@@ -14,6 +14,7 @@
     glyphMs: 900,
     quipMs: 4500,       // a new line of nonsense this often
     stallMs: 5 * 60_000, // no event for this long: the agent may be stuck
+    gameAfterMs: 8000,  // a long think: the mascot gets bored and plays
   };
   const GLYPHS = ['{ }', '( )', ';', 'λ', '?', '</>', '#', '=>', '…', '[ ]'];
   // What the mascot is up to while the model thinks. Not true, mostly.
@@ -49,7 +50,11 @@
     glyphTimer: 0,
     quip: '',
     quipAt: 0,
+    playing: false,
   };
+  const reducedMotion = (() => {
+    try { return window.matchMedia('(prefers-reduced-motion: reduce)'); } catch { return null; }
+  })();
 
   /** A random line, never the one just shown. */
   function nextQuip(list) {
@@ -97,27 +102,34 @@
   const card = document.createElement('div');
   card.id = 'thinkCard';
   card.setAttribute('aria-hidden', 'true');
-  // Static markup only: the mascot is the logo's prompt chevron with an eye,
-  // and the logo's trailing dots float up into a thought bubble.
+  // Static markup only: the mascot is the logo's prompt chevron with an eye in
+  // its opening, and the logo's trailing dots float up into a thought bubble.
+  // On a long think it plays: the chevron's opening is a mouth, food comes
+  // from the left, and it chomps.
   card.innerHTML = `
-    <svg class="tail-mascot" viewBox="0 0 128 96" aria-hidden="true">
-      <ellipse class="tm-shadow" cx="31" cy="91" rx="13" ry="2.4"/>
+    <svg class="tail-mascot" viewBox="0 0 128 100" aria-hidden="true">
+      <ellipse class="tm-shadow" cx="30" cy="96" rx="15" ry="2.6"/>
       <g class="tm-body">
-        <path class="tm-chevron" d="M18 44 L44 64 L18 84"/>
-        <circle class="tm-eye" cx="28" cy="64" r="3.6"/>
-        <circle class="tm-glint" cx="29.3" cy="62.7" r="1.05"/>
+        <path class="tm-chevron" d="M13 38 L46 64 L13 90"/>
+        <g class="tm-eye">
+          <circle class="tm-white" cx="26.5" cy="64" r="7.2"/>
+          <circle class="tm-pupil" cx="28.6" cy="62" r="3.4"/>
+          <circle class="tm-glint" cx="29.7" cy="60.7" r="1.15"/>
+        </g>
       </g>
       <g class="tm-thought">
-        <circle class="tm-dot d1" cx="54" cy="56" r="2.6"/>
-        <circle class="tm-dot d2" cx="63" cy="45" r="3.4"/>
-        <circle class="tm-dot d3" cx="73" cy="34" r="4.2"/>
-        <rect class="tm-cloud" x="76" y="6" width="48" height="28" rx="14"/>
-        <text class="tm-glyph" x="100" y="24.5" text-anchor="middle">{ }</text>
+        <circle class="tm-dot d1" cx="52" cy="47" r="2.3"/>
+        <circle class="tm-dot d2" cx="60" cy="38" r="3.2"/>
+        <circle class="tm-dot d3" cx="70" cy="29" r="4.2"/>
+        <ellipse class="tm-cloud" cx="98" cy="20" rx="25" ry="15"/>
+        <text class="tm-glyph" x="98" y="24.5" text-anchor="middle">{ }</text>
       </g>
     </svg>
+    <canvas class="tail-game" aria-hidden="true"></canvas>
     <div class="tc-text">
       <div class="tc-head"><b class="tc-title">THINKING</b><span class="tc-time"></span></div>
       <div class="tc-quip"></div>
+      <div class="tc-game"></div>
       <div class="tc-line"></div>
     </div>`;
   wrap.appendChild(card);
@@ -126,6 +138,81 @@
   const timeEl = card.querySelector('.tc-time');
   const quipEl = card.querySelector('.tc-quip');
   const lineEl = card.querySelector('.tc-line');
+
+  /* --- the mascot's games (mascot-games.js): snake, tetris, runner, chess, chomp --- */
+  const games = window.__mascotGames || null;
+  const canvas = card.querySelector('.tail-game');
+  const gameEl = card.querySelector('.tc-game');
+  const game = { current: null, order: [], colors: null, raf: 0, last: 0, frames: 0, captionAt: 0 };
+
+  function themeColors() {
+    const cs = getComputedStyle(document.documentElement);
+    const v = (name) => cs.getPropertyValue(name).trim();
+    return {
+      accent: v('--green'), dim: v('--green-dim'), cyan: v('--cyan'), amber: v('--amber'), red: v('--red'),
+      ok: v('--ok'), purple: v('--purple'), orange: v('--orange'), text: v('--text-strong'), muted: v('--muted'),
+      line: v('--line'), bg: v('--bg-deep'), panel: v('--panel'),
+    };
+  }
+
+  /** The next game in a shuffled round, so every game comes up before one repeats. */
+  function nextGame() {
+    if (!game.order.length) {
+      game.order = games.names.slice();
+      for (let i = game.order.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [game.order[i], game.order[j]] = [game.order[j], game.order[i]];
+      }
+    }
+    game.current = games.create(game.order.shift());
+    game.colors = themeColors();
+    game.captionAt = 0;
+  }
+
+  function frame(t) {
+    if (!s.playing || !game.current) return;
+    const dt = Math.min(0.05, (t - (game.last || t)) / 1000);
+    game.last = t;
+    game.current.step(dt, t / 1000);
+    const dpr = window.devicePixelRatio || 1;
+    const ctx = canvas.getContext('2d');
+    if (canvas.width !== Math.round(games.W * dpr)) {
+      canvas.width = Math.round(games.W * dpr);
+      canvas.height = Math.round(games.H * dpr);
+    }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, games.W, games.H);
+    game.current.draw(ctx, game.colors, t / 1000);
+    game.frames += 1;
+    if (t - game.captionAt > 300) {
+      game.captionAt = t;
+      gameEl.textContent = game.current.caption();
+    }
+    game.raf = requestAnimationFrame(frame);
+  }
+
+  function play(on) {
+    if (on && !games) return;
+    if (on === s.playing) return;
+    s.playing = on;
+    card.classList.toggle('playing', on);
+    card.title = on ? 'Click for another game' : '';
+    if (on) {
+      nextGame();
+      game.last = 0;
+      game.raf = requestAnimationFrame(frame);
+    } else {
+      cancelAnimationFrame(game.raf);
+      game.current = null;
+      gameEl.textContent = '';
+    }
+  }
+
+  // A click on the window switches to the next game.
+  card.addEventListener('click', () => {
+    if (!s.playing) return;
+    nextGame();
+  });
 
   try {
     term.onLineFeed(() => { s.consoleAt = Date.now(); });
@@ -203,11 +290,19 @@
 
     card.classList.toggle('show', s.thinking);
     card.setAttribute('aria-hidden', String(!s.thinking));
-    showGlyphs(s.thinking);
+    // The log's own clock, so a stuck session reads as stuck right after a reload too.
+    const quiet = now - (state.stats.lastTime || activity.lastEventAt || now);
+    const stalled = s.thinking && quiet > cfg.stallMs;
+    // A stalled agent puts the mascot to sleep; a long think gets it playing.
+    showGlyphs(s.thinking && !stalled);
+    if (stalled !== s.wasStalled) {
+      // Falling asleep or waking up changes the bubble and the line at once.
+      s.wasStalled = stalled;
+      glyphEl.textContent = stalled ? 'z z z' : GLYPHS[s.glyph];
+      s.quip = '';
+    }
+    play(s.thinking && !stalled && now - activity.startedAt > cfg.gameAfterMs && !(reducedMotion && reducedMotion.matches));
     if (s.thinking) {
-      // The log's own clock, so a stuck session reads as stuck right after a reload too.
-      const quiet = now - (state.stats.lastTime || activity.lastEventAt || now);
-      const stalled = quiet > cfg.stallMs;
       card.classList.toggle('stalled', stalled);
       titleEl.textContent = stalled ? 'STALLED?' : 'THINKING';
       timeEl.textContent = stalled ? `no output for ${clock(quiet)}` : clock(now - activity.startedAt);
@@ -245,7 +340,8 @@
     get mode() { return mode; },
     setMode,
     cfg,
-    state: () => ({ staged: s.staged, min: s.min, thinking: s.thinking, glyph: glyphEl.textContent, quip: s.quip, stalled: card.classList.contains('stalled') }),
+    state: () => ({ staged: s.staged, min: s.min, thinking: s.thinking, glyph: glyphEl.textContent, quip: s.quip, stalled: card.classList.contains('stalled'), playing: s.playing, game: game.current ? game.current.name : null, frames: game.frames }),
+    games: games ? games.names : [],
     quips: QUIPS,
   };
   update();

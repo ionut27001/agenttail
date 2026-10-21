@@ -896,9 +896,23 @@ try {
   check(await waitFor(`window.__stage.state().glyph !== ${JSON.stringify(glyph1)}`, 3000), 'stage: the mascot thinks in changing code glyphs');
   check(await evalExpr(`!!document.querySelector('#thinkCard .tm-chevron') && !!document.querySelector('#thinkCard .tm-eye') && document.querySelectorAll('#thinkCard .tm-dot').length === 3`), 'the mascot is the logo: a chevron with an eye and the three tail dots');
   check(await evalExpr(`window.__stage.quips.includes(window.__stage.state().quip) && document.querySelector('#thinkCard .tc-quip').textContent === window.__stage.state().quip + '…'`), 'the mascot window shows a line of nonsense from its list', JSON.stringify(await evalExpr(`window.__stage.state()`)));
+  // A long think: the mascot plays its games, each drawing frames; a click switches.
+  await evalExpr(`window.__stage.cfg.gameAfterMs = 0; window.stageUpdate(); true`);
+  check(await waitFor(`window.__stage.state().playing && window.__stage.games.includes(window.__stage.state().game) && window.__stage.state().frames > 5 && getComputedStyle(document.querySelector('#thinkCard .tail-game')).display !== 'none'`, 4000), 'a long think starts one of the mascot games', JSON.stringify(await evalExpr(`window.__stage.state()`)));
+  check(await evalExpr(`JSON.stringify(window.__stage.games.slice().sort()) === JSON.stringify(['chess', 'chomp', 'runner', 'snake', 'tetris'])`), 'the games are snake, tetris, runner, chess and chomp');
+  const playedGames = new Set();
+  for (let i = 0; i < 5; i++) {
+    const f0 = await evalExpr(`window.__stage.state().frames`);
+    const name = await evalExpr(`window.__stage.state().game`);
+    await waitFor(`window.__stage.state().frames > ${f0 + 10} && /\\S/.test(document.querySelector('#thinkCard .tc-game').textContent)`, 3000);
+    if (await evalExpr(`window.__stage.state().frames > ${f0 + 10}`)) playedGames.add(name);
+    await evalExpr(`document.getElementById('thinkCard').click(); true`);
+  }
+  check(playedGames.size === 5, 'a click switches games, and every game runs', JSON.stringify([...playedGames]));
   await evalExpr(`window.__stage.cfg.stallMs = 1; true`);
   check(await waitFor(`window.__stage.state().stalled && /STALLED\\?/.test(document.querySelector('#thinkCard .tc-title').textContent) && /no output for/.test(document.querySelector('#thinkCard .tc-time').textContent)`, 3000), 'a long silence turns the window into a stalled warning');
-  await evalExpr(`window.__stage.cfg.stallMs = 5 * 60000; true`);
+  check(await evalExpr(`!window.__stage.state().playing && window.__stage.state().glyph === 'z z z'`), 'a stalled agent puts the mascot to sleep instead of playing');
+  await evalExpr(`window.__stage.cfg.stallMs = 5 * 60000; window.__stage.cfg.gameAfterMs = 8000; true`);
   check(await evalExpr(`(() => { const rows = [...document.querySelectorAll('.chat-think summary')]; return rows.every((s) => !s.textContent.includes('▸')); })()`), 'thinking rows never show a double caret');
   await evalExpr(`document.getElementById('chatViewLog').click(); true`);
   const liveLog = await waitFor(`document.getElementById('chatLog').textContent.includes('Live chat message while the rail') && document.querySelectorAll('#chatLog .log-tool').length > 0`, 10000);

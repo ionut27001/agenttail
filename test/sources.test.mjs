@@ -273,6 +273,36 @@ try {
   check(cUsage === 100 + 40 + 1000 + 10 + 50 + 20 + 2000 + 30 + 10 + 3000 + 5 + 5 + 1 + 1, 'usage is mapped to token counts', String(cUsage));
   check(claudeEvs.some((e) => e.agent && e.agent.startsWith('agent-') && e.text?.includes('subagent')), 'subagent transcript events are included', JSON.stringify(claudeEvs.filter((e) => e.agent).slice(0, 2)));
 
+  // A quiet transcript is not idle while the turn is open: the model may be composing.
+  const { createRequire } = await import('node:module');
+  const claudeLib = createRequire(import.meta.url)('../lib/claude.js');
+  const sig = claudeLib._turnSignal;
+  check(sig({ type: 'user', message: { content: 'Please add a test' } }) === true, 'a user prompt opens the turn');
+  check(sig({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'x', content: 'ok' }] } }) === true, 'a tool result keeps the turn open');
+  check(sig({ type: 'assistant', message: { stop_reason: 'tool_use', content: [] } }) === true, 'an assistant step that calls a tool keeps the turn open');
+  check(sig({ type: 'assistant', message: { stop_reason: 'end_turn', content: [] } }) === false, 'end_turn closes the turn');
+  check(sig({ type: 'user', message: { content: [{ type: 'text', text: '[Request interrupted by user]' }] } }) === false, 'an interrupted request closes the turn');
+  check(sig({ type: 'user', message: { content: '<local-command-stdout>ok</local-command-stdout>' } }) === null && sig({ type: 'attachment' }) === null && sig({ type: 'user', isSidechain: true, message: { content: 'x' } }) === null, 'injected text, attachments and subagent lines say nothing about the turn');
+  const turnDir = path.join(tmp, 'turn-meta');
+  fs.mkdirSync(turnDir, { recursive: true });
+  const at = new Date().toISOString();
+  const writeTurn = (name, entries) => {
+    const f = path.join(turnDir, `${name}.jsonl`);
+    fs.writeFileSync(f, entries.map((e) => JSON.stringify({ timestamp: at, sessionId: name, cwd: workspace, ...e })).join('\n') + '\n');
+    return claudeLib._readMeta(f, fs.statSync(f));
+  };
+  const composing = await writeTurn('composing', [
+    { type: 'user', message: { role: 'user', content: 'Write the big file' } },
+    { type: 'assistant', message: { role: 'assistant', stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 't1', name: 'Read', input: { file_path: 'a.txt' } }] } },
+    { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: 'text' }] } },
+  ]);
+  check(composing.turnOpen === true && composing.pending === 0, 'a transcript between tool calls has an open turn and no pending call', JSON.stringify({ open: composing.turnOpen, pending: composing.pending }));
+  const answered = await writeTurn('answered', [
+    { type: 'user', message: { role: 'user', content: 'Say hi' } },
+    { type: 'assistant', message: { role: 'assistant', stop_reason: 'end_turn', content: [{ type: 'text', text: 'hi' }] } },
+  ]);
+  check(answered.turnOpen === false, 'a transcript that ends with end_turn has a closed turn');
+
   const cTree = await getJson(`/api/tree?source=claude&id=${encodeURIComponent(claudeId)}`);
   const cPaths = [];
   (function walk(nodes) { for (const n of nodes || []) { cPaths.push(n.path); walk(n.children); } })(cTree.body.tree?.children);

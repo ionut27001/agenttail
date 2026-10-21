@@ -642,6 +642,8 @@
   #app {
     display: grid;
     grid-template-rows: 52px 28px minmax(0, 1fr) 6px var(--bottom-h, 28vh) 0;
+    /* One column that never grows past the window, whatever a row holds. */
+    grid-template-columns: minmax(0, 1fr);
     width: calc(100vw / var(--ui-scale, 1));
     height: calc(100vh / var(--ui-scale, 1));
     zoom: var(--ui-scale, 1);
@@ -663,7 +665,7 @@
     background: var(--bg-2); border-bottom: 1px solid var(--line); overflow: hidden;
     box-shadow: inset 3px 0 0 var(--act-color);
     color: var(--green-soft); font-size: 12px; letter-spacing: .04em;
-    position: relative; --act-color: var(--green); overflow: visible;
+    position: relative; --act-color: var(--green); overflow: visible; min-width: 0;
   }
   #activityBar::after {
     content: ""; position: absolute; left: 0; bottom: 0; height: 2px; width: 100%;
@@ -682,7 +684,9 @@
   #activityIcon { color: var(--act-color); width: 16px; text-align: center; font-size: 13px; }
   #activityLabel { flex: none; padding: 1px 7px; border: 1px solid var(--act-color); border-radius: 3px; color: var(--act-color); font-size: 10px; font-weight: 700; letter-spacing: .14em; background: var(--bg-label); }
   #activityText { font-size: 13px; font-weight: 600; color: var(--text); }
-  #activityText { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #activityText { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto; }
+  #activityBar > * { flex-shrink: 0; }
+  #activityBar > #activityText { flex-shrink: 1; }
   .activity-spacer { flex: 1; }
   .activity-pulse { width: 7px; height: 7px; border-radius: 50%; background: var(--act-color); animation: pulse 1.2s infinite; flex: none; }
   #activityBar.idle .activity-pulse { display: none; }
@@ -1850,12 +1854,24 @@
     transition: opacity .3s, transform .3s, visibility 0s .3s;
   }
   #thinkCard.show { visibility: visible; opacity: 1; transform: none; transition: opacity .3s, transform .3s; }
-  .tail-mascot { flex: none; width: 128px; height: 96px; overflow: visible; }
+  .tail-mascot { flex: none; width: 128px; height: 100px; overflow: visible; }
   .tail-mascot * { transform-box: fill-box; transform-origin: center; }
   .tm-body { animation: tm-bob 1.8s ease-in-out infinite; }
   .tm-chevron { fill: none; stroke: var(--green); stroke-width: 8.5; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 5px color-mix(in srgb, var(--green) 55%, transparent)); }
-  .tm-eye { fill: var(--green); animation: tm-blink 4.2s infinite; }
-  .tm-glint { fill: var(--bg-2); animation: tm-blink 4.2s infinite; }
+  .tm-eye { animation: tm-blink 4.2s infinite; }
+  .tm-white { fill: var(--green); }
+  .tm-pupil { fill: var(--bg-deep); }
+  .tm-glint { fill: var(--text-strong); }
+  /* Stalled: the mascot dozes off. */
+  #thinkCard.stalled .tm-eye { animation: none; transform: scaleY(.14); }
+  #thinkCard.stalled .tm-glyph { font-size: 10px; letter-spacing: .1em; }
+  /* Games (mascot-games.js): on a long think the mascot plays; click for another game. */
+  .tail-game { display: none; flex: none; width: 240px; height: 110px; }
+  #thinkCard.playing { width: 520px; pointer-events: auto; cursor: pointer; }
+  #thinkCard.playing .tail-mascot { display: none; }
+  #thinkCard.playing .tail-game { display: block; }
+  .tc-game { margin-top: 3px; color: var(--muted); font-size: 10.5px; letter-spacing: .04em; }
+  .tc-game:empty { display: none; }
   .tm-shadow { fill: var(--green); opacity: .16; animation: tm-shadow 1.8s ease-in-out infinite; }
   .tm-dot { fill: var(--cyan); opacity: .25; animation: tm-rise 1.5s ease-in-out infinite; }
   .tm-dot.d2 { animation-delay: .25s; }
