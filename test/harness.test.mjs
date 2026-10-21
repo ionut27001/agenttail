@@ -286,6 +286,7 @@ try {
     const auditText = fs.readFileSync(path.join(tmp, 'env-audit.log'), 'utf8');
     check(!auditText.includes('shh-secret') && !auditText.includes('pass-me'), 'no environment value reaches the audit log');
     check(/"harness":"fake"/.test(auditText) && /"harness":"dsh"/.test(auditText), 'the audit log names the harness of each start');
+    check(/"agent":"fake-acp","agentVersion":"0.0.0","protocol":1/.test(auditText), 'the audit log records the agent name, version and protocol');
     delete process.env.AGENTTAIL_TEST_SECRET;
     delete process.env.AGENTTAIL_TEST_PASS;
   }
