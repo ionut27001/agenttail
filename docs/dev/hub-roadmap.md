@@ -64,7 +64,7 @@ decisions.
 | Release | Theme | Work (from the two designs) | Size |
 | --- | --- | --- | --- |
 | 0.4 | **Needs you** | Groundwork: harness registry with the old dsh keys still working, control split into manager/session/registry, capabilities probed at runtime, one approval normaliser (allow_once by kind, diffs shown, an `origin` field), caller-supplied `mcpServers`, one shared "needs you" event list. Then the attention state for every source: dsh open approvals, Claude Code `~/.claude/sessions/<pid>.json` status plus open AskUserQuestion/ExitPlanMode, owned ACP approvals; shown in the picker, overview, wall (no shrinking while waiting), title, favicon and notifications; one approvals inbox. Optional user-installed Claude hook helper. | ~9 days |
-| 0.5 | **Drive any harness** | Claude Code and Antigravity (both installed on the author's machine) next to dsh, then more. Claude Code over its ACP adapter, or over Claude Code's own headless stream mode for people who sign in with a subscription (see decision 1), with images, presets mapped to modes, resume only when supported and no live process owns the session. `AcpStream` for harnesses without a log adapter. Recipes for OpenCode, Codex, Goose, Gemini CLI, Antigravity's ACP server, marked unverified until run. | ~11 days |
+| 0.5 | **Drive any harness** | Claude Code and Antigravity (both installed on the author's machine) next to dsh, then more. Claude Code driven through its own headless stream mode on the user's existing sign-in (subscription or API key), with the ACP adapter as an option for API keys (see decision 1), with images, presets mapped to modes, resume only when supported and no live process owns the session. `AcpStream` for harnesses without a log adapter. Recipes for OpenCode, Codex, Goose, Gemini CLI, Antigravity's ACP server, marked unverified until run. | ~11 days |
 | 0.6 | **Passive hub** | `POST /mcp` plus an `agenttail mcp` stdio shim, behind a new opt-in flag. Identity for owned agents (per-session token through ACP) and external agents (shim facts, then a one-time code the agent echoes into its own log). Tools: whoami, list_agents, board_read/post, claim_files/release_files (advisory leases checked against observed edits), inbox, wait_for. Board drawer and claim locks on the wall, a Connect dialog with per-harness snippets, a frozen read API. | ~9 days |
 | 0.7 | **Agents ask each other** | ask_agent, reply, handoff; by default a helper session agenttail owns, in the chosen harness. Human card on every request (full text, edit before approve, provider-boundary line, 10-minute expiry), limits (6 asks/hour and 2 open per agent, depth 2, no cycles, Pause hub), a sanitising envelope against prompt injection, helper presets never above the asker's (read-only by default). Arrows between panes, "waiting on <agent>", Tail reactions. | ~9 days |
 | 0.8 | Reach and media | Delivery to external sessions (hook nudges, optional claim enforcement), images between agents and the human, API v1 write endpoints with scoped tokens. | ~12 days |
@@ -98,9 +98,17 @@ The full music video ships with 0.7, when agents calling each other is real.
   in the default mode (never the `.key` files).
 - Decision 3: a separate `--allow-hub` flag.
 - Decision 4: every cross-agent request needs the human in v1.
-- Decision 1 stays open until the 0.5 spike: API-key sign-in through the ACP
-  adapter is fine; for subscription sign-in, test driving Claude Code's own
-  headless stream mode instead, and settle it with the author before release.
+- Decision 1: Claude Code with a subscription is a first-class path, not an
+  afterthought. agenttail drives the user's own installed `claude` binary in
+  its headless stream mode, signed in as the user already is; it never sees or
+  handles credentials. Checked on Claude Code 2.1.304 (the copy the desktop app
+  ships): `--print --input-format stream-json --output-format stream-json`
+  for a live two-way session, `--permission-prompts host` so permission
+  prompts go to the process that runs it (agenttail shows its approval card),
+  plus `--resume <session-id>`, `--mcp-config` and `--permission-mode`. The
+  ACP adapter stays as the option for API-key users. Before release, the
+  README states plainly that users must follow Anthropic's terms for their
+  plan when Claude Code is driven by another program.
 
 These defaults can change; the questions below record the trade-offs.
 
