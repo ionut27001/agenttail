@@ -188,6 +188,56 @@ try {
   check(claudeStatus.pidAlive(process.pid) && !claudeStatus.pidAlive(dead) && !claudeStatus.pidAlive(0) && !claudeStatus.pidAlive(-5) && !claudeStatus.pidAlive('12'), 'process liveness: running, exited, and nonsense pids');
   check((await claudeStatus.readStatuses({ dir: path.join(tmp, 'does-not-exist'), fresh: true })).size === 0, 'a missing folder is no signal, not an error');
 
+  // A <pid>.json that is a link to a .key file must not be followed.
+  const ldir = path.join(tmp, 'link-sessions');
+  fs.mkdirSync(ldir, { recursive: true });
+  const linkTarget = path.join(ldir, '4000011.key');
+  fs.writeFileSync(linkTarget, J(status(4000011, 'unit-symlink')));
+  fs.writeFileSync(path.join(ldir, '4000012.json'), J(status(4000012, 'unit-regular')));
+  let linkMade = true;
+  try {
+    fs.symlinkSync(linkTarget, path.join(ldir, '4000011.json'), 'file');
+  } catch (err) {
+    linkMade = false;
+    console.log(`  skip  real symlink check: this OS refused to create a symlink (${err.code || 'error'}); the simulated one below still runs`);
+  }
+  if (linkMade) {
+    const linkRead = [];
+    const origReadFile = fsp.readFile;
+    fsp.readFile = (...args) => { linkRead.push(String(args[0])); return origReadFile(...args); };
+    let linked;
+    try {
+      linked = await claudeStatus.readStatuses({ dir: ldir, now, alive: () => true, fresh: true });
+    } finally {
+      fsp.readFile = origReadFile;
+    }
+    check(!linked.has('unit-symlink'), 'a <pid>.json that is a symlink to a .key file gives no signal', J([...linked.keys()]));
+    check(!linkRead.some((p) => p.endsWith('4000011.json') || p.endsWith('.key')), 'a symlink is never opened, and neither is its target', J(linkRead));
+    check(linked.has('unit-regular'), 'a regular file next to the symlink is still read');
+  }
+  // Where symlinks cannot be made, the same shape is simulated: the folder
+  // holds a regular file, but lstat reports it as a link. Going through lstat
+  // is what keeps the reader from following it.
+  {
+    const sdir2 = path.join(tmp, 'sim-link-sessions');
+    fs.mkdirSync(sdir2, { recursive: true });
+    fs.writeFileSync(path.join(sdir2, '4000013.json'), J(status(4000013, 'unit-simlink')));
+    fs.writeFileSync(path.join(sdir2, '4000014.json'), J(status(4000014, 'unit-simplain')));
+    const origLstat = fsp.lstat;
+    fsp.lstat = async (file, ...rest) => {
+      const st = await origLstat(file, ...rest);
+      if (String(file).endsWith('4000013.json')) return Object.assign(Object.create(Object.getPrototypeOf(st)), st, { isFile: () => false, isSymbolicLink: () => true });
+      return st;
+    };
+    let simmed;
+    try {
+      simmed = await claudeStatus.readStatuses({ dir: sdir2, now, alive: () => true, fresh: true });
+    } finally {
+      fsp.lstat = origLstat;
+    }
+    check(!simmed.has('unit-simlink') && simmed.has('unit-simplain'), 'an entry that lstat reports as a link is skipped, a regular one is read', J([...simmed.keys()]));
+  }
+
   /* ------------------------------------------------------------- server --- */
   const workspace = path.join(tmp, 'workspace');
   fs.mkdirSync(workspace, { recursive: true });
