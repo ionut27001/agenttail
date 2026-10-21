@@ -1871,7 +1871,11 @@
   .tc-head { display: flex; align-items: baseline; gap: 8px; }
   .tc-head b { color: var(--cyan); font-size: 10.5px; letter-spacing: .16em; }
   .tc-time { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
-  .tc-line { margin-top: 4px; color: var(--text-think); font-size: 11.5px; font-style: italic; line-height: 1.45; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+  .tc-quip { margin-top: 3px; color: var(--text-strong); font-size: 12.5px; line-height: 1.4; }
+  .tc-line { margin-top: 3px; color: var(--text-think); font-size: 11px; font-style: italic; line-height: 1.45; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  #thinkCard.stalled { border-color: color-mix(in srgb, var(--amber) 45%, var(--line)); }
+  #thinkCard.stalled .tc-head b { color: var(--amber); }
+  #thinkCard.stalled .tm-dot, #thinkCard.stalled .tm-body { animation-duration: 4s; }
   .tc-line:empty { display: none; }
   @media (prefers-reduced-motion: reduce) {
     .tm-body, .tm-eye, .tm-shadow, .tm-dot, .tm-cloud, #consoleRail .cr-state.run, #terminalPane.staged { animation: none; }

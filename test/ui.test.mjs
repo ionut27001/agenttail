@@ -895,6 +895,10 @@ try {
   const glyph1 = await evalExpr(`window.__stage.state().glyph`);
   check(await waitFor(`window.__stage.state().glyph !== ${JSON.stringify(glyph1)}`, 3000), 'stage: the mascot thinks in changing code glyphs');
   check(await evalExpr(`!!document.querySelector('#thinkCard .tm-chevron') && !!document.querySelector('#thinkCard .tm-eye') && document.querySelectorAll('#thinkCard .tm-dot').length === 3`), 'the mascot is the logo: a chevron with an eye and the three tail dots');
+  check(await evalExpr(`window.__stage.quips.includes(window.__stage.state().quip) && document.querySelector('#thinkCard .tc-quip').textContent === window.__stage.state().quip + '…'`), 'the mascot window shows a line of nonsense from its list', JSON.stringify(await evalExpr(`window.__stage.state()`)));
+  await evalExpr(`window.__stage.cfg.stallMs = 1; true`);
+  check(await waitFor(`window.__stage.state().stalled && /STALLED\\?/.test(document.querySelector('#thinkCard .tc-title').textContent) && /no output for/.test(document.querySelector('#thinkCard .tc-time').textContent)`, 3000), 'a long silence turns the window into a stalled warning');
+  await evalExpr(`window.__stage.cfg.stallMs = 5 * 60000; true`);
   check(await evalExpr(`(() => { const rows = [...document.querySelectorAll('.chat-think summary')]; return rows.every((s) => !s.textContent.includes('▸')); })()`), 'thinking rows never show a double caret');
   await evalExpr(`document.getElementById('chatViewLog').click(); true`);
   const liveLog = await waitFor(`document.getElementById('chatLog').textContent.includes('Live chat message while the rail') && document.querySelectorAll('#chatLog .log-tool').length > 0`, 10000);
@@ -976,6 +980,8 @@ try {
   await evalExpr(`location.hash = '${chatSessionId}'; true`);
   const chatLoaded = await waitFor(`document.getElementById('chatLog').textContent.includes('All long checks are done')`, 20000);
   check(chatLoaded, 'long chat fixture loads', await evalExpr(`JSON.stringify({ sel: document.getElementById('sessionSelect').value, id: location.hash, text: document.getElementById('chatLog').textContent.slice(-240) })`));
+  // The file loads asynchronously after the session; give it a moment.
+  await waitFor(`/a-very-long-file-name/.test(document.getElementById('fileBadge').textContent) && (document.querySelector('.view-lines')?.innerText || '').length > 0`, 5000);
   const autoOpen = await evalExpr(`(() => ({ badge: document.getElementById('fileBadge').textContent, empty: !document.getElementById('editorEmpty').classList.contains('hidden'), hasText: (document.querySelector('.view-lines')?.innerText || '').length > 0 }))()`);
   check(!autoOpen.empty && /a-very-long-file-name/.test(autoOpen.badge) && autoOpen.hasText, 'follow mode opens the last edited file when idle', JSON.stringify(autoOpen));
   const trail = await evalExpr(`(() => {

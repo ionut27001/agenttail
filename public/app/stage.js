@@ -12,8 +12,22 @@
     holdMs: 45000,      // opening the rail keeps the console out this long
     thinkDelayMs: 900,  // short thoughts do not flash the window
     glyphMs: 900,
+    quipMs: 4500,       // a new line of nonsense this often
+    stallMs: 5 * 60_000, // no event for this long: the agent may be stuck
   };
   const GLYPHS = ['{ }', '( )', ';', 'λ', '?', '</>', '#', '=>', '…', '[ ]'];
+  // What the mascot is up to while the model thinks. Not true, mostly.
+  const QUIPS = [
+    'coding life', 'catching kittens', 'what is 42', 'chasing its own tail', 'counting semicolons',
+    'asking the rubber duck', 'untangling spaghetti', 'reading the docs (for once)', 'negotiating with the compiler',
+    'petting the linter', 'sharpening regexes', 'off by one, back by two', 'renaming things (the hard part)',
+    'looking for the missing bracket', 'tail -f /dev/thoughts', 'grepping the universe', 'it works on my machine',
+    'turning it off and on again', 'mining for edge cases', 'folding the call stack', 'brewing tea for the tests',
+    'dividing by zero, carefully', 'warming up the cache', 'polishing the diff', 'consulting the stack trace tarot',
+    'herding race conditions', 'teaching the cat git', 'waiting for npm', 'befriending the borrow checker',
+    'naming a variable x2', 'shaving a yak', 'wagging the tail',
+  ];
+  const STALL_QUIPS = ['chasing its own tail', 'staring into the void', 'still here, probably', 'waiting for the model to wake up'];
 
   let mode = 'stage';
   try { if (localStorage.getItem(MODE_KEY) === 'docked') mode = 'docked'; } catch { /* ignore */ }
@@ -33,7 +47,25 @@
     holdUntil: 0,
     glyph: 0,
     glyphTimer: 0,
+    quip: '',
+    quipAt: 0,
   };
+
+  /** A random line, never the one just shown. */
+  function nextQuip(list) {
+    let q = s.quip;
+    for (let i = 0; i < 5 && q === s.quip; i++) q = list[Math.floor(Math.random() * list.length)];
+    return q;
+  }
+
+  /** 42 s, 3m 05s, 1h 02m */
+  function clock(ms) {
+    const sec = Math.max(0, Math.floor(ms / 1000));
+    if (sec < 60) return `${sec} s`;
+    const min = Math.floor(sec / 60);
+    if (min < 60) return `${min}m ${String(sec % 60).padStart(2, '0')}s`;
+    return `${Math.floor(min / 60)}h ${String(min % 60).padStart(2, '0')}m`;
+  }
 
   /* --- the rail the console shrinks to --- */
   const rail = document.createElement('button');
@@ -72,8 +104,8 @@
       <ellipse class="tm-shadow" cx="31" cy="91" rx="13" ry="2.4"/>
       <g class="tm-body">
         <path class="tm-chevron" d="M18 44 L44 64 L18 84"/>
-        <circle class="tm-eye" cx="36" cy="45" r="3"/>
-        <circle class="tm-glint" cx="37.1" cy="43.9" r=".9"/>
+        <circle class="tm-eye" cx="28" cy="64" r="3.6"/>
+        <circle class="tm-glint" cx="29.3" cy="62.7" r="1.05"/>
       </g>
       <g class="tm-thought">
         <circle class="tm-dot d1" cx="54" cy="56" r="2.6"/>
@@ -84,12 +116,15 @@
       </g>
     </svg>
     <div class="tc-text">
-      <div class="tc-head"><b>THINKING</b><span class="tc-time"></span></div>
+      <div class="tc-head"><b class="tc-title">THINKING</b><span class="tc-time"></span></div>
+      <div class="tc-quip"></div>
       <div class="tc-line"></div>
     </div>`;
   wrap.appendChild(card);
   const glyphEl = card.querySelector('.tm-glyph');
+  const titleEl = card.querySelector('.tc-title');
   const timeEl = card.querySelector('.tc-time');
+  const quipEl = card.querySelector('.tc-quip');
   const lineEl = card.querySelector('.tc-line');
 
   try {
@@ -170,8 +205,20 @@
     card.setAttribute('aria-hidden', String(!s.thinking));
     showGlyphs(s.thinking);
     if (s.thinking) {
-      timeEl.textContent = `${Math.max(0, Math.round((now - activity.startedAt) / 1000))} s`;
+      // The log's own clock, so a stuck session reads as stuck right after a reload too.
+      const quiet = now - (state.stats.lastTime || activity.lastEventAt || now);
+      const stalled = quiet > cfg.stallMs;
+      card.classList.toggle('stalled', stalled);
+      titleEl.textContent = stalled ? 'STALLED?' : 'THINKING';
+      timeEl.textContent = stalled ? `no output for ${clock(quiet)}` : clock(now - activity.startedAt);
+      if (!s.quip || now - s.quipAt > cfg.quipMs) {
+        s.quip = nextQuip(stalled ? STALL_QUIPS : QUIPS);
+        s.quipAt = now;
+        quipEl.textContent = `${s.quip}…`;
+      }
       lineEl.textContent = activity.label && activity.label !== 'command finished' ? activity.label : '';
+    } else {
+      s.quip = '';
     }
 
     modeBtn.textContent = mode === 'stage' ? '⇱ STAGE' : '▭ DOCKED';
@@ -198,7 +245,8 @@
     get mode() { return mode; },
     setMode,
     cfg,
-    state: () => ({ staged: s.staged, min: s.min, thinking: s.thinking, glyph: glyphEl.textContent }),
+    state: () => ({ staged: s.staged, min: s.min, thinking: s.thinking, glyph: glyphEl.textContent, quip: s.quip, stalled: card.classList.contains('stalled') }),
+    quips: QUIPS,
   };
   update();
 })();
