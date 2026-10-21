@@ -26,12 +26,59 @@
     lastError: '',
     attachments: [],
     modelBusy: false,
+    options: null,
   };
   const MAX_ATTACHMENTS = 4;
   const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;
   const ATTACHMENT_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
 
   const $c = (id) => document.getElementById(id);
+
+  /* ---------- what the agent said it can do (caps) ---------- */
+  // Controls appear from the capabilities the agent declared, never from which
+  // harness it is.
+  const capsOf = (session) => (session && session.caps) || null;
+  const canSendImages = (session) => !!(capsOf(session) && capsOf(session).prompt && capsOf(session).prompt.image === true);
+  const configList = (session) => (capsOf(session) && Array.isArray(capsOf(session).config) ? capsOf(session).config : []);
+  const modelOption = (session) => {
+    const list = configList(session).filter((o) => Array.isArray(o.options) && o.options.length);
+    return list.find((o) => o.category === 'model') || list.find((o) => o.id === 'model') || null;
+  };
+  const modeOption = (session) => {
+    const list = configList(session);
+    return list.find((o) => o.category === 'mode' && Array.isArray(o.options) && o.options.length >= 2) || null;
+  };
+  /** A model value is a JSON [provider, model] pair, provider/model, or a plain id. */
+  function providerOfModel(value) {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed) && parsed.length >= 2) return String(parsed[0]);
+    } catch { /* plain value */ }
+    const cut = String(value).indexOf('/');
+    return cut > 0 ? String(value).slice(0, cut) : '';
+  }
+  /** Fill a <select> with a config option's choices, grouped when the agent grouped them. */
+  function fillChoices(select, option, groupFor) {
+    const groups = new Map();
+    for (const choice of option.options) {
+      const key = groupFor(choice);
+      let parent = select;
+      if (key) {
+        if (!groups.has(key)) {
+          const group = document.createElement('optgroup');
+          group.label = key;
+          groups.set(key, group);
+          select.appendChild(group);
+        }
+        parent = groups.get(key);
+      }
+      const opt = document.createElement('option');
+      opt.value = choice.value;
+      opt.textContent = choice.name || choice.value;
+      parent.appendChild(opt);
+    }
+  }
+  const modelGroup = (choice) => choice.group || providerOfModel(choice.value) || 'other';
 
   async function controlStatus() {
     try {
@@ -54,6 +101,7 @@
     if (!res.ok) {
       const err = new Error((data && data.error) || `HTTP ${res.status}`);
       err.status = res.status;
+      if (data && data.details) err.details = data.details;
       throw err;
     }
     return data;
@@ -86,7 +134,7 @@
     } else if (control.enabled && c && !c.owned && state.source === 'dsh') {
       text = 'started outside agenttail, view only';
     } else if (control.enabled && c && c.owned && c.controllable === false) {
-      text = 'this owned session ended — view only';
+      text = `this owned session ended${c.status === 'exited' && c.error ? ` (${c.error})` : ''} — view only`;
     } else if (control.enabled && !control.token) {
       text = 'control token missing — reopen the URL printed by the server';
       kind = 'err';
@@ -95,6 +143,8 @@
     hint.className = `control-hint${text ? '' : ' hidden'}${kind ? ' ' + kind : ''}`;
 
     renderModelPicker(canType ? c : null);
+    renderModePicker(canType ? c : null);
+    showDetails(detailsFold('controlDetails', hint), c && c.owned && c.status === 'exited' ? c.details : '');
     const stop = $c('composerStop');
     const end = $c('composerEnd');
     if (stop) stop.disabled = !(canType && c && c.running);
@@ -103,45 +153,110 @@
       if (c.running) setStatus('turn running · Stop cancels it · a message sent now will be queued');
       else if (control.queued) setStatus('queued — sends when the current turn ends');
       else if (control.lastError) setStatus(control.lastError, 'err');
-      else setStatus(`Enter sends · Shift+Enter newline${c.model ? ` · ${c.provider ? c.provider + '/' : ''}${c.model}` : ''}`);
+      else {
+        const mode = modeOption(c);
+        const modeName = mode && mode.current ? (mode.options.find((o) => o.value === mode.current) || {}).name : '';
+        setStatus(`Enter sends · Shift+Enter newline${c.model ? ` · ${c.provider ? c.provider + '/' : ''}${c.model}` : ''}${modeName ? ` · ${modeName}` : ''}`);
+      }
     }
     const badge = $c('approvalBadge');
     if (badge) badge.classList.toggle('hidden', control.approvals.length === 0 || control.locked || !control.enabled);
   }
 
-  /** The live dsh catalog for this session; switching applies to the next turn. */
+  /** The agent's own model list for this session; switching applies to the next turn. */
   function renderModelPicker(session) {
     const select = $c('composerModel');
     if (!select) return;
-    const models = session && Array.isArray(session.models) ? session.models : [];
-    select.classList.toggle('hidden', models.length < 2);
-    const signature = models.map((m) => m.value).join('|');
+    const option = modelOption(session);
+    const choices = option ? option.options : [];
+    select.classList.toggle('hidden', choices.length < 2);
+    const signature = choices.map((m) => m.value).join('|');
     if (select.dataset.signature !== signature) {
       select.textContent = '';
-      if (!models.length) {
+      if (!choices.length) {
         const none = document.createElement('option');
         none.value = '';
         none.textContent = '—';
         select.appendChild(none);
-      }
-      const groups = new Map();
-      for (const model of models) {
-        const key = model.provider || 'other';
-        if (!groups.has(key)) {
-          const group = document.createElement('optgroup');
-          group.label = key;
-          groups.set(key, group);
-          select.appendChild(group);
-        }
-        const opt = document.createElement('option');
-        opt.value = model.value;
-        opt.textContent = model.name || model.value;
-        groups.get(key).appendChild(opt);
+      } else {
+        fillChoices(select, option, modelGroup);
       }
       select.dataset.signature = signature;
     }
-    if (session && session.modelValue && document.activeElement !== select) select.value = session.modelValue;
+    if (option && option.current && document.activeElement !== select) select.value = option.current;
     select.disabled = control.modelBusy;
+  }
+
+  /** Mode picker: only for an agent that declared a `mode` option with a choice to make. */
+  function modeSelect() {
+    let select = $c('composerMode');
+    if (!select) {
+      select = document.createElement('select');
+      select.id = 'composerMode';
+      select.className = 'hidden';
+      select.title = 'Mode for the next turn';
+      $c('composerModel').after(select);
+      select.addEventListener('change', switchMode);
+    }
+    return select;
+  }
+
+  function renderModePicker(session) {
+    const select = modeSelect();
+    const option = modeOption(session);
+    select.classList.toggle('hidden', !option);
+    if (!option) { select.dataset.signature = ''; return; }
+    const signature = `${option.id}|${option.options.map((m) => m.value).join('|')}`;
+    if (select.dataset.signature !== signature) {
+      select.textContent = '';
+      fillChoices(select, option, () => '');
+      select.dataset.signature = signature;
+    }
+    if (option.current && document.activeElement !== select) select.value = option.current;
+    select.title = `${option.name || 'Mode'} for the next turn`;
+    select.disabled = control.modelBusy;
+  }
+
+  async function switchMode() {
+    const select = modeSelect();
+    const option = modeOption(control.current);
+    if (!option || !select.value || select.value === option.current) return;
+    control.modelBusy = true;
+    select.disabled = true;
+    try {
+      const data = await controlFetch('/api/control/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: state.sessionId, configId: option.id, value: select.value }),
+      });
+      if (data && data.session) control.current = { ...control.current, ...data.session };
+      setStatus(`${option.name || 'mode'} → ${select.selectedOptions[0]?.textContent || select.value}`);
+    } catch (err) {
+      setStatus(err.message, 'err');
+    } finally {
+      control.modelBusy = false;
+      updateControlChrome();
+    }
+  }
+
+  /** What the child wrote to stderr when it exited or failed to start, in a fold. */
+  function detailsFold(id, after) {
+    let fold = $c(id);
+    if (!fold) {
+      fold = document.createElement('details');
+      fold.id = id;
+      fold.className = 'control-details hidden';
+      fold.appendChild(document.createElement('summary')).textContent = 'details: what the agent wrote to stderr';
+      fold.appendChild(document.createElement('pre'));
+      after.after(fold);
+    }
+    return fold;
+  }
+
+  function showDetails(fold, text) {
+    const body = String(text || '').trim();
+    fold.classList.toggle('hidden', !body);
+    fold.querySelector('pre').textContent = body;
   }
 
   async function switchModel() {
@@ -206,8 +321,8 @@
 
   async function addImages(files) {
     if (!files.length) return false;
-    if (!control.current || control.current.images !== true) {
-      setStatus('this agent does not accept images (dsh ACP has no image prompts)', 'warn');
+    if (!canSendImages(control.current)) {
+      setStatus('this agent does not accept images', 'warn');
       return true;
     }
     for (const file of files) {
@@ -446,10 +561,61 @@
   }
 
   /* ---------- new session dialog ---------- */
+  /** The harness picked in the dialog, from the options the server sent. */
+  function dialogHarness() {
+    const list = (control.options && control.options.harnesses) || [];
+    const picked = $c('dlgHarness') ? $c('dlgHarness').value : '';
+    return list.find((h) => h.id === picked) || list.find((h) => h.id === (control.options && control.options.defaultHarness)) || list[0] || null;
+  }
+
+  function dialogPreset() {
+    const harness = dialogHarness();
+    const id = $c('dlgPreset').value;
+    return harness ? harness.presets.find((p) => p.id === id) || null : null;
+  }
+
+  /** The harness picker exists only when there is a choice; dsh alone shows nothing new. */
+  function harnessRow() {
+    let row = $c('dlgHarnessRow');
+    if (!row) {
+      row = document.createElement('label');
+      row.id = 'dlgHarnessRow';
+      row.className = 'hidden';
+      row.appendChild(document.createTextNode('HARNESS'));
+      const select = document.createElement('select');
+      select.id = 'dlgHarness';
+      row.appendChild(select);
+      $c('dlgPreset').closest('label').before(row);
+      select.addEventListener('change', applyDialogHarness);
+    }
+    return row;
+  }
+
+  /** Presets and the command line that will run, for the chosen harness. */
+  function applyDialogHarness() {
+    const harness = dialogHarness();
+    const select = $c('dlgPreset');
+    if (harness) {
+      select.textContent = '';
+      for (const preset of harness.presets) {
+        const opt = document.createElement('option');
+        opt.value = preset.id;
+        opt.textContent = preset.label || preset.id;
+        select.appendChild(opt);
+      }
+      select.value = harness.defaultPreset;
+      $c('dlgProfile').textContent = `runs: ${harness.commandLine}`;
+    }
+    const preset = dialogPreset();
+    $c('dangerRow').classList.toggle('hidden', !(preset && preset.danger));
+    $c('dlgDanger').checked = false;
+  }
+
   async function openNewSession() {
     if (!control.enabled || control.locked) return;
     const dialog = $c('newSessionDialog');
     $c('dlgErr').textContent = '';
+    showDetails(detailsFold('dlgDetails', $c('dlgErr')), '');
     $c('dlgStep').textContent = 'workspace';
     $c('dlgStep2').classList.add('hidden');
     $c('dlgContinue').classList.remove('hidden');
@@ -463,10 +629,13 @@
     control.dialogSession = null;
     control.dialogCancelled = false;
     control.starting = false;
+    harnessRow().classList.add('hidden');
+    $c('dlgHarness').disabled = false;
     $c('dangerRow').classList.toggle('hidden', $c('dlgPreset').value !== 'danger-full-access');
     dialog.showModal();
     try {
       const data = await controlFetch('/api/control/options');
+      control.options = data;
       const select = $c('dlgWorkspace');
       select.innerHTML = '';
       if (!data.workspaces.length) {
@@ -482,7 +651,19 @@
           select.appendChild(opt);
         }
       }
-      $c('dlgProfile').textContent = `profile: ${data.dshProfile || 'acp'}`;
+      const harnesses = Array.isArray(data.harnesses) ? data.harnesses : [];
+      const picker = $c('dlgHarness');
+      picker.textContent = '';
+      for (const harness of harnesses) {
+        const opt = document.createElement('option');
+        opt.value = harness.id;
+        opt.textContent = harness.label || harness.id;
+        picker.appendChild(opt);
+      }
+      if (harnesses.length) picker.value = data.defaultHarness || harnesses[0].id;
+      harnessRow().classList.toggle('hidden', harnesses.length < 2);
+      if (harnesses.length) applyDialogHarness();
+      else $c('dlgProfile').textContent = `profile: ${data.dshProfile || 'acp'}`;
     } catch (err) {
       $c('dlgErr').textContent = err.message;
     }
@@ -492,21 +673,29 @@
     if (!control.enabled || control.locked) return;
     if (control.dialogSession) return;
     const cwd = $c('dlgWorkspace').value;
+    const harness = dialogHarness();
     const preset = $c('dlgPreset').value;
+    const danger = !!(dialogPreset() && dialogPreset().danger);
     if (!cwd) { $c('dlgErr').textContent = 'choose a workspace from the allowlist'; return; }
-    if (preset === 'danger-full-access' && !$c('dlgDanger').checked) {
-      $c('dlgErr').textContent = 'tick the confirmation to use danger-full-access';
+    if (danger && !$c('dlgDanger').checked) {
+      $c('dlgErr').textContent = `tick the confirmation to use ${preset}`;
+      return;
+    }
+    if (harness && !harness.viewable) {
+      // Without a log adapter the page has nothing to render the session from.
+      $c('dlgErr').textContent = `agenttail cannot show sessions of ${harness.label} yet, so it will not start one`;
       return;
     }
     $c('dlgErr').textContent = '';
+    showDetails(detailsFold('dlgDetails', $c('dlgErr')), '');
     control.starting = true;
     $c('dlgContinue').disabled = true;
-    $c('dlgContinue').textContent = 'Starting dsh…';
+    $c('dlgContinue').textContent = 'Starting the agent…';
     try {
       const data = await controlFetch('/api/control/session/begin', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cwd, preset, confirmDanger: preset === 'danger-full-access' }),
+        body: JSON.stringify({ cwd, preset, confirmDanger: danger, ...(harness ? { harness: harness.id } : {}) }),
       });
       if (control.dialogCancelled) {
         await controlFetch('/api/control/close', {
@@ -519,32 +708,23 @@
       control.dialogSession = data.session;
       const modelSelect = $c('dlgModel');
       modelSelect.innerHTML = '';
-      const groups = new Map();
-      for (const model of data.models || []) {
-        const key = model.provider || 'other';
-        if (!groups.has(key)) {
-          const group = document.createElement('optgroup');
-          group.label = key;
-          groups.set(key, group);
-          modelSelect.appendChild(group);
-        }
-        const opt = document.createElement('option');
-        opt.value = model.value;
-        opt.textContent = model.name || model.model || model.value;
-        groups.get(key).appendChild(opt);
-      }
+      const option = modelOption(data.session);
+      if (option) fillChoices(modelSelect, option, modelGroup);
+      // An agent with no model list has nothing to choose; hide the row.
+      modelSelect.closest('label').classList.toggle('hidden', !modelSelect.options.length);
       if (modelSelect.options.length) modelSelect.value = data.currentModel || modelSelect.options[0].value;
-      else $c('dlgErr').textContent = 'dsh did not advertise a model for this profile';
-      $c('dlgStep').textContent = 'model + first message';
+      $c('dlgStep').textContent = modelSelect.options.length ? 'model + first message' : 'first message';
       $c('dlgStep2').classList.remove('hidden');
       $c('dlgWorkspace').disabled = true;
       $c('dlgPreset').disabled = true;
       $c('dlgDanger').disabled = true;
+      $c('dlgHarness').disabled = true;
       $c('dlgContinue').classList.add('hidden');
       $c('dlgStart').classList.remove('hidden');
       $c('dlgMessage').focus();
     } catch (err) {
       $c('dlgErr').textContent = err.message;
+      showDetails(detailsFold('dlgDetails', $c('dlgErr')), err.details);
     } finally {
       control.starting = false;
       $c('dlgContinue').disabled = false;
@@ -654,7 +834,9 @@
   $c('dlgStart').addEventListener('click', startNewSession);
   $c('dlgCancel').addEventListener('click', closeNewSession);
   $c('dlgPreset').addEventListener('change', () => {
-    $c('dangerRow').classList.toggle('hidden', $c('dlgPreset').value !== 'danger-full-access');
+    const preset = dialogPreset();
+    const danger = preset ? preset.danger : $c('dlgPreset').value === 'danger-full-access';
+    $c('dangerRow').classList.toggle('hidden', !danger);
   });
   $c('newSessionDialog').addEventListener('cancel', (event) => {
     event.preventDefault();
