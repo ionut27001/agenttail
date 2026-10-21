@@ -20,6 +20,8 @@
 //   no-close             sessionCapabilities without close
 //   crash-on-start       exit 7 with a line on stderr when initialize arrives
 //   crash-on-prompt      exit 3 with a line on stderr when a prompt arrives
+//   oversize-line        a prompt is answered with 9 MiB on stdout and no newline
+//   prompt-error         a prompt is answered with a JSON-RPC error
 //   no-log               do not write the dsh-shaped session log (for non-dsh harnesses)
 // FAKE_ACP_MARK=<file> appends one line per session/new, config, mode and close
 // request; FAKE_ACP_ENV_FILE=<file> receives the names of the environment variables.
@@ -298,6 +300,11 @@ rl.on('line', (line) => {
     return;
   }
   if (message.method === 'session/prompt') {
+    if (PROFILE.has('oversize-line')) {
+      process.stdout.write('x'.repeat(9 * 1024 * 1024));
+      return;
+    }
+    if (PROFILE.has('prompt-error')) { fail(message.id, -32000, 'the model backend refused the request (synthetic failure)'); return; }
     if (PROFILE.has('crash-on-prompt')) {
       process.stderr.write('fake-acp: the model backend went away (synthetic failure)\n');
       process.exit(3);

@@ -382,6 +382,8 @@ try {
         crash: fake('crash-on-start'),
         dies: fake('crash-on-prompt'),
         mcp: fake('mcp-http,auth-methods,embedded-context'),
+        huge: fake('oversize-line'),
+        refuses: fake('prompt-error'),
       },
     }, 'sessions');
 
@@ -472,6 +474,37 @@ try {
     check(after.status === 'exited' && /Fake agent exited \(3\)/.test(after.error || ''), 'an exit is reported with the harness label', after.error);
     check(/model backend went away/.test(after.details), 'an exited session shows the child stderr in details', after.details);
 
+    // One oversized line from the agent must end that session, not the server.
+    const huge = await mgr.begin({ cwd: workspace, harness: 'huge' });
+    const hugeSession = mgr.get(huge.session.id);
+    await mgr.message(huge.session.id, 'hello');
+    const hugeUntil = Date.now() + 10000;
+    while (Date.now() < hugeUntil && hugeSession.status !== 'exited') await sleep(25);
+    const hugeState = hugeSession.statePayload();
+    check(hugeState.status === 'exited' && hugeState.controllable === false && hugeState.running === false, 'an oversized agent line ends the session instead of the server', JSON.stringify({ status: hugeState.status, running: hugeState.running }));
+    check(/exceeded the limit/.test(hugeState.error || ''), 'and the state says why', hugeState.error);
+    const again = await expectStatus(mgr.message(huge.session.id, 'again'), 409);
+    check(again.ok || again.status === 404, 'the dead session takes no more input', again.message);
+    const hugeExit = Date.now() + 10000;
+    while (Date.now() < hugeExit && mgr.sessions.has(huge.session.id)) await sleep(25);
+    check(!mgr.sessions.has(huge.session.id) && !!hugeSession.exit, 'its child is gone and the session is forgotten');
+
+    // A failing prompt with nobody listening for errors must not throw out of the session.
+    const direct0 = (await mgr.config.load()).harnesses.get('refuses');
+    const lonely = new ControlSession({ cwd: workspace, harness: direct0, preset: direct0.presets[0] });
+    await lonely.start();
+    check(lonely.listenerCount('error') === 0, 'the session under test really has no error listener');
+    lonely.send('hello');
+    const lonelyUntil = Date.now() + 8000;
+    while (Date.now() < lonelyUntil && lonely.running) await sleep(25);
+    check(lonely.running === false && /refused the request/.test(lonely.statePayload().error || ''), 'a failed prompt is recorded on a session nobody listens to', lonely.statePayload().error);
+    await lonely.close();
+    const refuses = await mgr.begin({ cwd: workspace, harness: 'refuses' });
+    await mgr.message(refuses.session.id, 'hello');
+    await sleep(300);
+    check(mgr.get(refuses.session.id).statePayload().status === 'idle' && /refused the request/.test(mgr.get(refuses.session.id).statePayload().error || ''), 'a manager session stays usable after a failed turn and shows the error');
+    await mgr.close(refuses.session.id);
+
     const rich = await mgr.begin({ cwd: workspace, harness: 'mcp' });
     check(rich.session.caps.mcp.http === true && rich.session.caps.prompt.embeddedContext === true && rich.session.caps.authMethods[0] === 'login', 'mcp, embedded context and auth methods reach the caps');
     await mgr.close(rich.session.id);
@@ -515,6 +548,8 @@ try {
         },
         broken: { label: 'Broken agent', command: process.execPath, args: [fakeAcp], env: fakeEnv('crash-on-start') },
         dies: { label: 'Dying agent', command: process.execPath, args: [fakeAcp], env: fakeEnv('crash-on-prompt') },
+        huge: { label: 'Chatty agent', command: process.execPath, args: [fakeAcp], env: fakeEnv('oversize-line') },
+        refuses: { label: 'Refusing agent', command: process.execPath, args: [fakeAcp], env: fakeEnv('prompt-error') },
       },
     }));
     const { spawn } = await import('node:child_process');
@@ -555,7 +590,7 @@ try {
         return { status: res.status, data };
       };
       const options = await call('GET', '/api/control/options');
-      check(options.status === 200 && options.data.harnesses.length === 5 && options.data.defaultHarness === 'dsh', 'options list every configured harness', JSON.stringify(options.data));
+      check(options.status === 200 && options.data.harnesses.length === 7 && options.data.defaultHarness === 'dsh', 'options list every configured harness', JSON.stringify(options.data));
       const moded = options.data.harnesses.find((h) => h.id === 'moded');
       check(moded.label === 'Moded agent' && moded.commandLine.includes('fake-acp.mjs') && moded.presets.length === 2 && moded.viewable === false, 'a harness is described by label, command line and presets');
       check(!JSON.stringify(options.data).includes('FAKE_ACP_PROFILE') && !JSON.stringify(options.data).includes('AGENTTAIL_TEST_PASS'), 'options never include a harness environment');
@@ -584,6 +619,17 @@ try {
       await sleep(600);
       const alive = await fetch(`${base}/api/sessions`);
       check(alive.ok, 'the server survives an agent dying mid-turn with nobody watching');
+      await call('POST', '/api/control/close', { id: dying.data.session.id });
+
+      const chatty = await call('POST', '/api/control/session/begin', { cwd: workspace, harness: 'huge' });
+      await call('POST', '/api/control/message', { id: chatty.data.session.id, text: 'hello' });
+      await sleep(2500);
+      check((await fetch(`${base}/api/sessions`)).ok, 'the server survives an agent that writes one oversized line, with nobody watching');
+      const refusing = await call('POST', '/api/control/session/begin', { cwd: workspace, harness: 'refuses' });
+      const refused = await call('POST', '/api/control/message', { id: refusing.data.session.id, text: 'hello' });
+      await sleep(600);
+      check(refused.status === 200 && (await fetch(`${base}/api/sessions`)).ok, 'the server survives a failed turn with nobody watching');
+      await call('POST', '/api/control/close', { id: refusing.data.session.id });
     } finally {
       try { proc.kill(); } catch { /* ignore */ }
     }
