@@ -102,13 +102,12 @@
   const card = document.createElement('div');
   card.id = 'thinkCard';
   card.setAttribute('aria-hidden', 'true');
-  // Static markup only: the mascot is the logo's prompt chevron with an eye in
-  // its opening, and the logo's trailing dots float up into a thought bubble.
-  // On a long think it plays: the chevron's opening is a mouth, food comes
-  // from the left, and it chomps.
+  // Static markup only. The window is a thought bubble: the mascot (the logo's
+  // prompt chevron with an eye in its opening) stands at its corner and the
+  // logo's trailing dots rise from its head to the bubble. Games play inside.
   card.innerHTML = `
-    <svg class="tail-mascot" viewBox="0 0 128 100" aria-hidden="true">
-      <ellipse class="tm-shadow" cx="30" cy="96" rx="15" ry="2.6"/>
+    <svg class="tail-mascot" viewBox="4 30 50 68" aria-hidden="true">
+      <ellipse class="tm-shadow" cx="30" cy="95" rx="15" ry="2.6"/>
       <g class="tm-body">
         <path class="tm-chevron" d="M13 38 L46 64 L13 90"/>
         <g class="tm-eye">
@@ -117,23 +116,19 @@
           <circle class="tm-glint" cx="29.7" cy="60.7" r="1.15"/>
         </g>
       </g>
-      <g class="tm-thought">
-        <circle class="tm-dot d1" cx="52" cy="47" r="2.3"/>
-        <circle class="tm-dot d2" cx="60" cy="38" r="3.2"/>
-        <circle class="tm-dot d3" cx="70" cy="29" r="4.2"/>
-        <ellipse class="tm-cloud" cx="98" cy="20" rx="25" ry="15"/>
-        <text class="tm-glyph" x="98" y="24.5" text-anchor="middle">{ }</text>
-      </g>
     </svg>
-    <canvas class="tail-game" aria-hidden="true"></canvas>
-    <div class="tc-text">
-      <div class="tc-head"><b class="tc-title">THINKING</b><span class="tc-time"></span></div>
-      <div class="tc-quip"></div>
-      <div class="tc-game"></div>
-      <div class="tc-line"></div>
+    <i class="tm-dot d1"></i><i class="tm-dot d2"></i><i class="tm-dot d3"></i>
+    <div class="tc-bubble">
+      <canvas class="tail-game" aria-hidden="true"></canvas>
+      <div class="tc-text">
+        <div class="tc-head"><b class="tc-title">THINKING</b><span class="tc-time"></span><span class="tc-glyph">{ }</span></div>
+        <div class="tc-quip"></div>
+        <div class="tc-game"></div>
+        <div class="tc-line"></div>
+      </div>
     </div>`;
   wrap.appendChild(card);
-  const glyphEl = card.querySelector('.tm-glyph');
+  const glyphEl = card.querySelector('.tc-glyph');
   const titleEl = card.querySelector('.tc-title');
   const timeEl = card.querySelector('.tc-time');
   const quipEl = card.querySelector('.tc-quip');

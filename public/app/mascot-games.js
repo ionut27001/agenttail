@@ -317,7 +317,6 @@
         // the next piece, and the mascot watching the board
         label(ctx, c, 'next', 74, 16);
         for (const [cx, cy] of SHAPES[next]) { ctx.fillStyle = palette[next]; ctx.fillRect(76 + cx * CELL, 22 + cy * CELL, CELL - 1, CELL - 1); }
-        label(ctx, c, `lines ${lines}`, 74, 54, c.text, 10);
         const happy = !!flash;
         drawMascot(ctx, c, 150, 70 + Math.sin(t * 3) * 1.5 - (happy ? 4 : 0), 30, { lookX: -0.9, lookY: 0.1, mouth: happy ? 0.45 : 0, sleep: over > 0 });
       },
@@ -493,10 +492,10 @@
         ctx.strokeRect(OX - 0.5, OY - 0.5, SQ * 8 + 1, SQ * 8 + 1);
         const move = ply ? `${Math.ceil(ply / 2)}.${ply % 2 ? '' : '..'} ${SAN[ply - 1]}` : 'Morphy to move';
         label(ctx, c, move, 116, 24, done ? c.amber : c.text, 11);
-        label(ctx, c, done ? 'checkmate' : 'Paris, 1858', 116, 38, c.muted, 9);
+        if (done) label(ctx, c, 'checkmate', 116, 38, c.amber, 9);
         drawMascot(ctx, c, 168, 76 + Math.sin(t * 2.4) * 1.2, 28, { lookX: -0.9, lookY: 0.2, mouth: done ? 0.4 : 0 });
       },
-      caption: () => `chess · the Opera Game · move ${Math.ceil(Math.max(1, ply) / 2)}`,
+      caption: () => 'chess · the Opera Game, Paris 1858',
     };
   }
 
@@ -545,7 +544,216 @@
     };
   }
 
-  const GAMES = { snake, tetris, runner, chess, chomp };
+  /* ---------- invaders: the mascot is the cannon, its tail dots are the shots ---------- */
+  function invaders() {
+    const ALIEN = [
+      ['..XXXX..', '.XXXXXX.', 'XX.XX.XX', 'XXXXXXXX', '.X.XX.X.', 'X......X'],
+      ['..XXXX..', '.XXXXXX.', 'XX.XX.XX', 'XXXXXXXX', '..X..X..', '.X.XX.X.'],
+    ];
+    const PX = 1.4;
+    const AW = 8 * PX;
+    const AH = 6 * PX;
+    const COLS = 8;
+    const ROWS = 3;
+    const GX = 20;
+    const GY = 13;
+    const Y0 = 98;
+    let aliens; let ox; let oy; let dir; let march; let frame; let shots; let bombs; let cx; let cool;
+    let lives; let score; let wave; let hit; let best = 0;
+    const alive = () => aliens.filter((a) => a.alive);
+    const at = (a) => ({ x: ox + a.c * GX, y: oy + a.r * GY });
+    function newWave() {
+      aliens = [];
+      for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) aliens.push({ c, r, alive: true });
+      ox = 22; oy = 10 + Math.min(wave, 4) * 3; dir = 1; march = 0;
+    }
+    function reset() { wave = 0; score = 0; lives = 3; shots = []; bombs = []; cx = W / 2; cool = 0; hit = 0; frame = 0; newWave(); }
+    /** The lowest living alien in each column: the ones that shoot and get shot. */
+    function front() {
+      const out = new Map();
+      for (const a of alive()) if (!out.has(a.c) || out.get(a.c).r < a.r) out.set(a.c, a);
+      return [...out.values()];
+    }
+    reset();
+    return {
+      name: 'invaders',
+      step(dt) {
+        if (hit) {
+          hit -= dt;
+          if (hit <= 0) { hit = 0; if (lives <= 0) { best = Math.max(best, score); reset(); } }
+          return;
+        }
+        const left = alive().length;
+        march += dt;
+        if (march > Math.max(0.1, 0.5 - wave * 0.05 - (1 - left / (COLS * ROWS)) * 0.3)) {
+          march = 0;
+          frame ^= 1;
+          const xs = alive().map((a) => at(a).x);
+          if ((dir > 0 && Math.max(...xs) + AW + 6 > W) || (dir < 0 && Math.min(...xs) - 6 < 0)) { dir = -dir; oy += 4; } else ox += dir * 4;
+          if (Math.random() < 0.4) {
+            const shooters = front();
+            const s = shooters[rand(shooters.length)];
+            if (s) { const p = at(s); bombs.push({ x: p.x + AW / 2, y: p.y + AH }); }
+          }
+        }
+        // The AI: line up under the nearest front alien, sidestep falling bombs.
+        const targets = front();
+        let goal = cx;
+        if (targets.length) {
+          const t = targets.reduce((m, a) => (Math.abs(at(a).x + AW / 2 - cx) < Math.abs(at(m).x + AW / 2 - cx) ? a : m));
+          goal = at(t).x + AW / 2;
+        }
+        const danger = bombs.find((b) => Math.abs(b.x - cx) < 9 && b.y > Y0 - 45);
+        if (danger) goal = cx + (danger.x < cx ? 20 : -20);
+        cx += Math.max(-75 * dt, Math.min(75 * dt, goal - cx));
+        cx = Math.max(8, Math.min(W - 8, cx));
+        cool -= dt;
+        if (cool <= 0 && !danger && Math.abs(goal - cx) < 3) { shots.push({ x: cx, y: Y0 - 9 }); cool = 0.42; }
+        for (const s of shots) {
+          s.y -= 170 * dt;
+          for (const a of alive()) {
+            const p = at(a);
+            if (s.x > p.x && s.x < p.x + AW && s.y > p.y && s.y < p.y + AH) { a.alive = false; s.gone = true; score += 10 * (ROWS - a.r); break; }
+          }
+        }
+        shots = shots.filter((s) => !s.gone && s.y > 0);
+        for (const b of bombs) {
+          b.y += 72 * dt;
+          if (Math.abs(b.x - cx) < 7 && b.y > Y0 - 7 && b.y < Y0 + 6) { b.gone = true; lives -= 1; hit = lives > 0 ? 0.9 : 1.6; bombs = []; break; }
+        }
+        bombs = bombs.filter((b) => !b.gone && b.y < H);
+        best = Math.max(best, score);
+        if (!alive().length) { wave += 1; shots = []; bombs = []; newWave(); }
+        else if (oy + ROWS * GY > Y0 - 12) { lives = 0; hit = 1.6; }
+      },
+      draw(ctx, c, t) {
+        const colors = [c.cyan, c.purple, c.amber];
+        for (const a of alive()) {
+          const p = at(a);
+          ctx.fillStyle = colors[a.r % colors.length];
+          ALIEN[frame].forEach((row, y) => {
+            for (let x = 0; x < row.length; x++) if (row[x] === 'X') ctx.fillRect(p.x + x * PX, p.y + y * PX, PX, PX);
+          });
+        }
+        ctx.fillStyle = c.accent;
+        for (const s of shots) { ctx.beginPath(); ctx.arc(s.x, s.y, 1.9, 0, TAU); ctx.fill(); }
+        ctx.strokeStyle = c.red;
+        ctx.lineWidth = 1.2;
+        for (const b of bombs) {
+          ctx.beginPath(); ctx.moveTo(b.x, b.y - 4); ctx.lineTo(b.x + 1.5, b.y - 2); ctx.lineTo(b.x - 1.5, b.y); ctx.lineTo(b.x, b.y + 2); ctx.stroke();
+        }
+        ctx.strokeStyle = c.line;
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(0, Y0 + 9.5); ctx.lineTo(W, Y0 + 9.5); ctx.stroke();
+        if (hit && Math.floor(t * 12) % 2) return;
+        drawMascot(ctx, c, cx, Y0, 15, { angle: -Math.PI / 2, mouth: cool > 0.3 ? 0.4 : 0, lookX: 0.2, lookY: 0.6, sleep: hit > 0 && lives <= 0 });
+      },
+      caption: () => `invaders · wave ${wave + 1} · ${score} pts · ${'♥'.repeat(Math.max(0, lives))}`,
+    };
+  }
+
+  /* ---------- dash: geometry-dash style, the chevron flips over the spikes ---------- */
+  function dash() {
+    const G = 96;
+    const MX = 52;
+    const S = 13;
+    const SPEED = 125;
+    const LEVEL = 2600;
+    let dist; let y; let vy; let rot; let ents; let gap; let attempt = 1; let best = 0; let dead; let parts; let trail; let won;
+    function reset() { dist = 0; y = G; vy = 0; rot = 0; ents = []; gap = 140; dead = 0; parts = []; trail = []; won = 0; }
+    function spawn(at) {
+      const r = Math.random();
+      if (r < 0.35) ents.push({ k: 'spike', x: at, w: 12, h: 12 });
+      else if (r < 0.55) { ents.push({ k: 'spike', x: at, w: 12, h: 12 }); ents.push({ k: 'spike', x: at + 12, w: 12, h: 12 }); }
+      else if (r < 0.8) ents.push({ k: 'block', x: at, w: 14, h: 14 });
+      else { ents.push({ k: 'block', x: at, w: 48, h: 14 }); ents.push({ k: 'spike', x: at + 70, w: 12, h: 12 }); }
+    }
+    function crash() {
+      dead = 0.9;
+      best = Math.max(best, Math.floor((dist / LEVEL) * 100));
+      parts = Array.from({ length: 14 }, (_, i) => ({ a: (i / 14) * TAU, r: 0 }));
+    }
+    reset();
+    return {
+      name: 'dash',
+      step(dt) {
+        if (dead) { dead -= dt; for (const p of parts) p.r += 60 * dt; if (dead <= 0) { attempt += 1; reset(); } return; }
+        if (won) { won -= dt; if (won <= 0) { attempt = 1; reset(); } return; }
+        const dx = SPEED * dt;
+        dist += dx;
+        if (dist >= LEVEL) { best = 100; won = 2; return; }
+        gap -= dx;
+        if (gap <= 0 && dist < LEVEL - 260) { spawn(W + 10); gap = 75 + Math.random() * 85; }
+        for (const e of ents) e.x -= dx;
+        ents = ents.filter((e) => e.x + e.w > -10);
+        const under = ents.filter((e) => e.k === 'block' && e.x < MX + S / 2 - 1 && e.x + e.w > MX - S / 2 + 1);
+        const floor = under.length ? Math.min(...under.map((e) => G - e.h)) : G;
+        const grounded = y >= floor - 0.5 && vy >= 0;
+        if (grounded) {
+          // The AI: jump when the next spike or wall is in reach. Now and then it is a frame late.
+          const next = ents.find((e) => e.x + e.w > MX - S / 2 && (e.k === 'spike' || G - e.h < y - 1));
+          if (next) {
+            const d = next.x - (MX + S / 2);
+            if (d > 4 && d < (next.k === 'spike' ? 20 : 16) && Math.random() > 0.006) vy = -300;
+          }
+        }
+        vy += 1100 * dt;
+        y += vy * dt;
+        if (y >= floor && vy > 0) { y = floor; vy = 0; }
+        rot = y < floor - 0.5 ? rot + dt * 11.5 : 0;
+        trail.push({ x: MX, y: y - S / 2 });
+        if (trail.length > 7) trail.shift();
+        for (const tp of trail) tp.x -= dx;
+        for (const e of ents) {
+          const overlapX = e.x + 2 < MX + S / 2 && e.x + e.w - 2 > MX - S / 2;
+          if (!overlapX) continue;
+          if (e.k === 'spike' && y > G - e.h + 4) { crash(); break; }
+          if (e.k === 'block' && y > G - e.h + 3 && e.x > MX - S / 2) { crash(); break; }
+        }
+      },
+      draw(ctx, c, t) {
+        // a beat in the background: slow vertical bars
+        ctx.strokeStyle = c.line;
+        ctx.globalAlpha = 0.25 + 0.12 * Math.max(0, Math.sin(t * 8));
+        for (let i = 0; i < 10; i++) {
+          const bx = (i * 30 - (dist * 0.4) % 30);
+          ctx.beginPath(); ctx.moveTo(bx, 10); ctx.lineTo(bx, G); ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = c.panel;
+        ctx.fillRect(0, G, W, H - G);
+        ctx.strokeStyle = c.accent;
+        ctx.shadowColor = c.accent; ctx.shadowBlur = 6;
+        ctx.beginPath(); ctx.moveTo(0, G + 0.5); ctx.lineTo(W, G + 0.5); ctx.stroke();
+        ctx.shadowBlur = 0;
+        for (const e of ents) {
+          if (e.k === 'spike') {
+            ctx.fillStyle = c.bg; ctx.strokeStyle = c.text; ctx.lineWidth = 1.2;
+            ctx.beginPath(); ctx.moveTo(e.x, G); ctx.lineTo(e.x + e.w / 2, G - e.h); ctx.lineTo(e.x + e.w, G); ctx.closePath(); ctx.fill(); ctx.stroke();
+          } else {
+            ctx.fillStyle = c.panel; ctx.strokeStyle = c.cyan; ctx.lineWidth = 1.2;
+            ctx.fillRect(e.x, G - e.h, e.w, e.h); ctx.strokeRect(e.x + 0.5, G - e.h + 0.5, e.w - 1, e.h - 1);
+          }
+        }
+        // progress, like the bar across the top of a level
+        ctx.fillStyle = c.line; ctx.fillRect(20, 3, W - 40, 3);
+        ctx.fillStyle = c.accent; ctx.fillRect(20, 3, (W - 40) * Math.min(1, dist / LEVEL), 3);
+        if (dead) {
+          ctx.fillStyle = c.accent;
+          for (const p of parts) { ctx.globalAlpha = Math.max(0, dead); ctx.beginPath(); ctx.arc(MX + Math.cos(p.a) * p.r, y - S / 2 + Math.sin(p.a) * p.r, 1.8, 0, TAU); ctx.fill(); }
+          ctx.globalAlpha = 1;
+          return;
+        }
+        trail.forEach((tp, i) => { ctx.globalAlpha = (i / trail.length) * 0.5; ctx.fillStyle = c.accent; ctx.beginPath(); ctx.arc(tp.x - 4, tp.y, 1.6 + i * 0.25, 0, TAU); ctx.fill(); });
+        ctx.globalAlpha = 1;
+        if (won) label(ctx, c, 'level complete', W / 2, 40, c.ok, 11, 'center');
+        drawMascot(ctx, c, MX, y - S / 2, S + 3, { angle: rot, lookX: 0.8, lookY: 0 });
+      },
+      caption: () => `dash · attempt ${attempt} · ${Math.floor((dist / LEVEL) * 100)}% · best ${best}%`,
+    };
+  }
+
+  const GAMES = { snake, tetris, runner, chess, chomp, invaders, dash };
   window.__mascotGames = {
     W,
     H,

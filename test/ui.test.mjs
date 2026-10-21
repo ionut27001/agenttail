@@ -899,16 +899,16 @@ try {
   // A long think: the mascot plays its games, each drawing frames; a click switches.
   await evalExpr(`window.__stage.cfg.gameAfterMs = 0; window.stageUpdate(); true`);
   check(await waitFor(`window.__stage.state().playing && window.__stage.games.includes(window.__stage.state().game) && window.__stage.state().frames > 5 && getComputedStyle(document.querySelector('#thinkCard .tail-game')).display !== 'none'`, 4000), 'a long think starts one of the mascot games', JSON.stringify(await evalExpr(`window.__stage.state()`)));
-  check(await evalExpr(`JSON.stringify(window.__stage.games.slice().sort()) === JSON.stringify(['chess', 'chomp', 'runner', 'snake', 'tetris'])`), 'the games are snake, tetris, runner, chess and chomp');
+  check(await evalExpr(`JSON.stringify(window.__stage.games.slice().sort()) === JSON.stringify(['chess', 'chomp', 'dash', 'invaders', 'runner', 'snake', 'tetris'])`), 'the games are snake, tetris, runner, chess, chomp, invaders and dash');
   const playedGames = new Set();
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 7; i++) {
     const f0 = await evalExpr(`window.__stage.state().frames`);
     const name = await evalExpr(`window.__stage.state().game`);
     await waitFor(`window.__stage.state().frames > ${f0 + 10} && /\\S/.test(document.querySelector('#thinkCard .tc-game').textContent)`, 3000);
     if (await evalExpr(`window.__stage.state().frames > ${f0 + 10}`)) playedGames.add(name);
     await evalExpr(`document.getElementById('thinkCard').click(); true`);
   }
-  check(playedGames.size === 5, 'a click switches games, and every game runs', JSON.stringify([...playedGames]));
+  check(playedGames.size === 7, 'a click switches games, and every game runs', JSON.stringify([...playedGames]));
   await evalExpr(`window.__stage.cfg.stallMs = 1; true`);
   check(await waitFor(`window.__stage.state().stalled && /STALLED\\?/.test(document.querySelector('#thinkCard .tc-title').textContent) && /no output for/.test(document.querySelector('#thinkCard .tc-time').textContent)`, 3000), 'a long silence turns the window into a stalled warning');
   check(await evalExpr(`!window.__stage.state().playing && window.__stage.state().glyph === 'z z z'`), 'a stalled agent puts the mascot to sleep instead of playing');

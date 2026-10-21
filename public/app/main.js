@@ -912,8 +912,11 @@ function addUsage(usage, time) {
   state.stats.cacheRead += usage.cacheRead || 0;
   state.stats.cacheWrite += usage.cacheWrite || 0;
   state.stats.lastTime = Math.max(state.stats.lastTime, time || 0);
-  const delta = (usage.input || 0) + (usage.output || 0) + (usage.cacheRead || 0) + (usage.cacheWrite || 0);
-  if (delta) tokenTimeline.push({ t: Date.now(), tokens: delta });
+  // Speed is what the model writes: output tokens, on the log's own clock.
+  if (usage.output) {
+    tokenTimeline.push({ t: time || Date.now(), tokens: usage.output });
+    if (tokenTimeline.length > 400) tokenTimeline.splice(0, tokenTimeline.length - 400);
+  }
   lastActivity = Date.now();
   const p = state.prices;
   if (!p) { renderStats(); return; }
@@ -954,7 +957,7 @@ function renderStats() {
       .filter(Boolean).join(' · ') || 'no permission facts recorded';
   }
   const spark = $('spark');
-  if (spark) spark.title = 'tokens per second (recent activity)';
+  if (spark) spark.title = 'output tokens per second, second by second';
   const approx = state.prices ? approxCostLine(s.cost) : '';
   if (!state.prices) {
     $('mCost').innerHTML = '—<span class="period" id="mPeriod">TOKENS ONLY</span>';
@@ -2637,11 +2640,26 @@ function drawSpark() {
   ctx.stroke();
 }
 
-function sampleRate() {
+/** Output tokens per second over the last windowMs of the log. */
+function outputRate(windowMs) {
   const now = Date.now();
-  while (tokenTimeline.length && now - tokenTimeline[0].t > 3000) tokenTimeline.shift();
-  const tokens = tokenTimeline.reduce((a, x) => a + x.tokens, 0);
-  rateSamples.push(Math.round(tokens / 3));
+  let tokens = 0;
+  for (const x of tokenTimeline) if (now - x.t <= windowMs) tokens += x.tokens;
+  return tokens / (windowMs / 1000);
+}
+
+/** The TOK/S number: a 30 s average, so a burst at the end of a step does not flicker it. */
+function renderRate() {
+  const el = $('mRate');
+  if (!el) return;
+  const r = outputRate(30000);
+  el.textContent = r === 0 ? '0' : r >= 1000 ? `${(r / 1000).toFixed(1)}k` : r >= 10 ? String(Math.round(r)) : r.toFixed(1);
+  el.title = `${r.toFixed(1)} output tokens per second over the last 30 s`;
+}
+setInterval(renderRate, 1000);
+
+function sampleRate() {
+  rateSamples.push(Math.round(outputRate(3000)));
   if (rateSamples.length > 40) rateSamples.shift();
   drawSpark();
 }

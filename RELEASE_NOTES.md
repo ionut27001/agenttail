@@ -7,11 +7,13 @@
 - A thinking window with the agenttail mascot: the logo's chevron with an eye,
   its trailing dots floating up into a thought bubble of code glyphs, and a
   line of nonsense (catching kittens, what is 42). On a long think it plays
-  snake, tetris, a runner, chess or chomp by itself; after five quiet minutes
+  snake, tetris, a runner, chess, space invaders, a geometry-dash level or
+  chomp by itself; after five quiet minutes
   it falls asleep under a STALLED? warning.
 - Claude Code sessions stay live while the model composes a long reply: a
   turn is open until the transcript says end_turn, not just while it grows.
 - A very long running command no longer pushes the page wider than the window.
+- TOK/S shows a number: output tokens per second over the last 30 seconds.
 - Themes: red redrawn as crimson and bone, a new neon (synthwave) theme, a
   separate success colour so success never looks like the accent or an error,
   and editor bracket pairs in each theme's own colours.
