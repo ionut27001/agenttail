@@ -114,7 +114,9 @@
     s.staged = running || (on && s.staged && activity.kind !== 'editing' && now - s.runEndedAt < cfg.lingerMs);
     s.min = on && !s.staged && state.runningJobs.size === 0
       && now - s.consoleAt > cfg.idleMs && now >= s.holdUntil;
-    s.thinking = on && !s.staged && activity.kind === 'thinking' && now - activity.startedAt > cfg.thinkDelayMs;
+    // With Tail turned off there is no bubble to think in, and no game to run.
+    const mascot = document.body.classList.contains('fx-mascot');
+    s.thinking = on && mascot && !s.staged && activity.kind === 'thinking' && now - activity.startedAt > cfg.thinkDelayMs;
 
     place(s.staged);
     const out = s.staged || s.min;
@@ -132,6 +134,8 @@
 
     // The log's own clock, so a stuck session reads as stuck right after a reload too.
     const quiet = now - (state.stats.lastTime || activity.lastEventAt || now);
+    // A game you were playing goes away with Tail; it must not keep the keyboard.
+    if (!on || !mascot) bubble.setHuman(false);
     const { stalled } = bubble.update({
       thinking: s.thinking,
       startedAt: activity.startedAt,

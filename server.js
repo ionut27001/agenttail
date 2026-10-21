@@ -28,6 +28,7 @@ const antigravity = require('./lib/antigravity');
 const { deletionsFromCommand } = require('./lib/deletes');
 const { jobLogFromCommand } = require('./lib/jobs');
 const { PRICES, CLAUDE_PRICES } = require('./lib/pricing');
+const { version: VERSION } = require('./package.json');
 const { analyzeLog } = require('./lib/session-analysis');
 const { stateFrom, describe, LiveTracker } = require('./lib/live');
 const { Nicknames } = require('./lib/nicknames');
@@ -1796,7 +1797,7 @@ function openBrowser(url) {
 server.listen(PORT, HOST, () => {
   const baseUrl = `http://${HOST}:${PORT}`;
   let openUrl = baseUrl;
-  console.log(`agenttail 0.2.0  ${baseUrl}`);
+  console.log(`agenttail ${VERSION}  ${baseUrl}`);
   console.log(`sessions         ${SESSIONS_ROOT}`);
   if (ALLOW_CONTROL) {
     if (STREAM_MODE) {

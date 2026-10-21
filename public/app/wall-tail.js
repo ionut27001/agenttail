@@ -37,7 +37,10 @@
         // A step that has gone quiet is the model thinking too, even without a thinking line.
         const wait = typeof pane.modelWait === 'function' ? pane.modelWait() : 0;
         const since = t.thinkingSince || (wait ? now - wait : 0);
-        const on = !pane.history && pane.state === 'live' && tail.state().shown && !!since && now - since > THINK_DELAY_MS;
+        const shown = tail.state().shown;
+        const on = !pane.history && pane.state === 'live' && shown && !!since && now - since > THINK_DELAY_MS;
+        // A game you were playing goes away with Tail; it must not keep the keyboard.
+        if (!shown) bubble.setHuman(false);
         const { stalled } = bubble.update({
           thinking: on,
           startedAt: since,

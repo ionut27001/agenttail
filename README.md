@@ -10,7 +10,7 @@
 <p align="center"><b>tail -f for AI coding agents</b> — one live dashboard for DeepSeek Harness, Claude Code and Antigravity sessions, with opt-in control for dsh. Watched over by Tail, the chevron with an eye.</p>
 
 <p align="center">
-  <a href="https://github.com/ionut27001/agenttail/releases"><img alt="release" src="https://img.shields.io/badge/release-v0.2.0-37f28a.svg"></a>
+  <a href="https://github.com/ionut27001/agenttail/releases"><img alt="release" src="https://img.shields.io/badge/release-v0.3.0-37f28a.svg"></a>
   <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-37f28a.svg"></a>
   <a href="https://nodejs.org/"><img alt="node" src="https://img.shields.io/badge/node-%3E%3D24-339933.svg"></a>
   <a href="#quick-start"><img alt="platform" src="https://img.shields.io/badge/platform-Windows%20tested-0078D6.svg"></a>

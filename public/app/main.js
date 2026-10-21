@@ -1804,6 +1804,7 @@ function closeStream() {
 
 function resetView() {
   inbox.length = 0;
+  tokenTimeline.length = 0; // TOK/S starts over with the next session or replay
   state.lastCommand = '';
   state.lastCommandOk = null;
   resetModelBuffers();

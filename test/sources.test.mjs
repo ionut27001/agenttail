@@ -306,6 +306,8 @@ try {
   check(sig({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'x', content: 'ok' }] } }) === true, 'a tool result keeps the turn open');
   check(sig({ type: 'assistant', message: { stop_reason: 'tool_use', content: [] } }) === true, 'an assistant step that calls a tool keeps the turn open');
   check(sig({ type: 'assistant', message: { stop_reason: 'end_turn', content: [] } }) === false, 'end_turn closes the turn');
+  check(sig({ type: 'assistant', message: { stop_reason: 'end_turn', content: [{ type: 'thinking', thinking: 'hmm' }] } }) === null, 'a thinking-only line of a reply says nothing about the turn, even with end_turn on it');
+  check(sig({ type: 'assistant', message: { stop_reason: 'refusal', content: [{ type: 'text', text: 'no' }] } }) === false, 'a refusal closes the turn');
   check(sig({ type: 'user', message: { content: [{ type: 'text', text: '[Request interrupted by user]' }] } }) === false, 'an interrupted request closes the turn');
   check(sig({ type: 'user', message: { content: '<local-command-stdout>ok</local-command-stdout>' } }) === null && sig({ type: 'attachment' }) === null && sig({ type: 'user', isSidechain: true, message: { content: 'x' } }) === null, 'injected text, attachments and subagent lines say nothing about the turn');
 
@@ -330,6 +332,7 @@ try {
   const ts0 = new Date().toISOString();
   for (const e of [
     { type: 'user', message: { content: 'first task' } },
+    { type: 'assistant', message: { id: 'm1', model: 'claude-opus-5-5', stop_reason: 'end_turn', content: [{ type: 'thinking', thinking: 'mulling' }], usage: { output_tokens: 3 } } },
     { type: 'assistant', message: { id: 'm1', model: 'claude-opus-5-5', stop_reason: 'end_turn', content: [{ type: 'text', text: 'done' }], usage: { output_tokens: 3 } } },
     { type: 'assistant', message: { id: 'm1', model: 'claude-opus-5-5', stop_reason: 'end_turn', content: [{ type: 'text', text: 'done again' }], usage: { output_tokens: 3 } } },
     { type: 'user', message: { content: 'second task' } },
@@ -337,6 +340,9 @@ try {
   ]) turnStream.processEntry({ timestamp: ts0, ...e }, null);
   const turnEvs = turnStream.events.filter((e) => /^turn/.test(e.t)).map((e) => `${e.t}:${e.turn}`).join(' ');
   check(turnEvs === 'turn:1 turnEnd:1 turn:2 turnEnd:2', 'turns open on prompts and close on end_turn or an interrupt', turnEvs);
+  const firstEnd = turnStream.events.findIndex((e) => e.t === 'turnEnd');
+  const answer = turnStream.events.findIndex((e) => e.t === 'say' && e.text === 'done');
+  check(answer >= 0 && answer < firstEnd && turnStream.events[answer].turn === 1, 'the turn closes after the answer, not after its thinking line', JSON.stringify({ answer, firstEnd }));
   check(turnStream.events.filter((e) => e.t === 'step').length === 1 && turnStream.events.filter((e) => e.usage).length === 1, 'a reply split over lines is one step with one usage');
 
   const turnDir = path.join(tmp, 'turn-meta');

@@ -191,7 +191,8 @@
 
     /** While you play, the game gets the arrow keys and space; Esc gives it back, N skips. */
     function key(e) {
-      if (!s.human || !game.current) return false;
+      // A bubble that is not on screen never takes keys, whatever state it is in.
+      if (!s.human || !game.current || !card.isConnected || card.offsetParent === null) return false;
       const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
       // Esc only ends the game, not the wall or a dialog around it.
       if (e.type === 'keydown' && k === 'Escape') { setHuman(false); e.preventDefault(); e.stopPropagation(); return true; }

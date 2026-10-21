@@ -1,6 +1,6 @@
 {
   "name": "agenttail",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A local live viewer for AI coding agent sessions, with opt-in control for DeepSeek Harness (Claude Code and Antigravity CLI stay read-only).",
   "keywords": [
     "ai-agents",
@@ -38,6 +38,8 @@
     "docs/wordmark.svg",
     "docs/loading.png",
     "docs/wall.png",
+    "docs/tail.gif",
+    "docs/themes.png",
     "docs/dev/input-design.md"
   ],
   "scripts": {

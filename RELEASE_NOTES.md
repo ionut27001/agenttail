@@ -1,46 +1,73 @@
-# Unreleased
+# agenttail v0.3.0
 
-- Console on stage (the new default): a running command brings the console up
-  over the editor, an edit sends it back to its dock, and a quiet console
-  shrinks to a rail so the agent pane gets the room. The console header
-  switches back to the plain docked console.
-- A thinking window with the agenttail mascot: the logo's chevron with an eye,
-  its trailing dots floating up into a thought bubble of code glyphs, and a
-  line of nonsense (catching kittens, what is 42). On a long think it plays
-  snake, tetris, a runner, chess, space invaders, a geometry-dash level or
-  chomp by itself; after five quiet minutes
-  it falls asleep under a STALLED? warning.
-- Tail, the mascot, lives in the editor corner: its eye follows the pointer,
-  it reacts to passing and failing commands and finished turns, sleeps when
-  nothing happens and can be petted. The thought bubble hangs on it, and
-  ▶ play hands you the controls of its games (arrows, space; Esc, N), with
-  records kept per game. Settings can turn it off.
-- Ten games now, and livelier: speed ramps, levels, bonuses and bursts in
-  every one; new breakout, flappy and a shell-command typing game; dash
-  gets ship sections and jump orbs, chess replays two famous games with
-  sliding pieces, invaders gets shields and a saucer, chomp gets lanes,
-  bombs and combos.
-- The logo is Tail now: the chevron has its eye, in the README, the
-  favicon, the wordmark and the boot banner. The README gets a Meet Tail
-  section with a capture of it thinking and playing, and a themes mosaic.
-- The watch wall catches up: every pane has its own Tail, in its agent's
-  colour, reacting to its agent, a thought bubble with the clock and Tail's games on a long think
-  (▶ play works there too), and TOK/S in the scoreboard. Same code as the
-  main view: Tail and the bubble are now factories both use.
-- Claude Code sessions show a cost: what the same tokens would cost at
-  Anthropic's API list prices, per model (labelled ≈ API, since a
-  subscription is not billed per token), in the header and per turn.
-- Claude Code token and step counts were about 2.5× too high: the transcript
-  repeats a reply's usage on each content-block line, and each reply now
-  counts once. Claude sessions also get turns, so the Log shows per-turn
-  summaries and Tail cheers when a turn ends.
-- Claude Code sessions stay live while the model composes a long reply: a
-  turn is open until the transcript says end_turn, not just while it grows.
-- A very long running command no longer pushes the page wider than the window.
+**Meet Tail, the console on stage, and honest numbers for Claude Code.** The
+logo's chevron grew an eye and moved into the editor: it reacts to what the
+agent does, thinks out loud while the model thinks and plays games on a long
+think. Still a local, read-only viewer by default.
+
+![Tail thinking, then playing](docs/tail.gif)
+
+## Highlights
+
+**Tail, the mascot**
+
+- Tail lives in the editor corner while a session is in motion. Its eye
+  follows the pointer; it hops when a command passes, sweats when one fails,
+  cheers when a turn ends, dozes off when nothing happens and likes being
+  petted (not too fast). Settings can turn it off.
+- While the agent thinks, three dots rise into a thought bubble with a clock,
+  the latest line of reasoning and some nonsense (catching kittens, what is
+  42). Five quiet minutes and it falls asleep under a STALLED? warning.
+- On a long think it plays one of ten games by itself: snake, tetris, a
+  runner, chess (two famous games replayed), chomp, space invaders, a
+  geometry-dash level with ship sections, breakout, flappy and a shell-command
+  typing game. ▶ play hands you the controls (arrows and space; Esc gives
+  them back, N for the next game), and the best score per game is kept.
+- The logo is Tail now, in the README, the favicon, the wordmark and the boot
+  banner.
+
+**Console on stage**
+
+- The new default: a running command brings the console up over the editor,
+  an edit sends it back to its dock, and a quiet console shrinks to a rail so
+  the agent pane gets the room. The console header switches back to the plain
+  docked console.
+
+**Claude Code**
+
+- A cost for Claude sessions: what the same tokens would cost at Anthropic's
+  API list prices, each reply priced by its own model, with cache reads,
+  5-minute and 1-hour cache writes, Haiku 5.5's long-prompt rate card, Opus
+  5.5 fast mode and web searches. It is labelled ≈ API: a subscription is not
+  billed per token, so it is a yardstick, not your bill.
+- Token and step counts were about 2.5× too high: the transcript repeats a
+  reply's usage on every content-block line, and each reply now counts once.
+- Claude sessions get turns, from a real prompt to end_turn or an interrupt,
+  so the Log shows per-turn summaries and costs. The header names the model.
+- A session stays live while the model composes a long reply: a turn is open
+  until the transcript says end_turn, not just while the file grows.
+
+**Watch wall**
+
+- Every pane gets its own Tail in its agent's colour, reacting to that agent,
+  with the thought bubble and the games (▶ play works there too; Esc ends the
+  game before it closes the wall).
+- The pane scoreboard shows TOK/S.
+
+**Everywhere**
+
 - TOK/S shows a number: output tokens per second over the last 30 seconds.
 - Themes: red redrawn as crimson and bone, a new neon (synthwave) theme, a
   separate success colour so success never looks like the accent or an error,
-  and editor bracket pairs in each theme's own colours.
+  and editor bracket pairs in each theme's own colours. Seven in all.
+- A very long running command no longer pushes the page wider than the window.
+- The README has a Meet Tail section, a themes mosaic and fresh captures.
+
+## Compatibility
+
+- Same Node 24+ requirement and log locations. Nothing to migrate.
+- Claude token and step totals drop for existing sessions: that is the
+  double counting going away, not lost data.
 
 ---
 
