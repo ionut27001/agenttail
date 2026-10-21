@@ -27,7 +27,7 @@ const esc = (s) => String(s ?? '').replace(/\u001b/g, '');
 
 /* ---------- themes ---------- */
 const THEME_KEY = 'agenttail-theme';
-const THEME_LIST = ['matrix', 'amber', 'red', 'ice', 'dracula', 'paper'];
+const THEME_LIST = ['matrix', 'amber', 'red', 'ice', 'dracula', 'neon', 'paper'];
 const THEME_JS = {
   matrix: {
     monaco: {
@@ -53,6 +53,9 @@ const THEME_JS = {
         'editorIndentGuide.background1': '#0d2118',
         'editorWidget.background': '#07100c',
         'editorWidget.border': '#12301f',
+        'editorBracketHighlight.foreground1': '#37f28a',
+        'editorBracketHighlight.foreground2': '#5ce1e6',
+        'editorBracketHighlight.foreground3': '#ffd166',
       },
     },
     terminal: {
@@ -88,6 +91,9 @@ const THEME_JS = {
         'editorIndentGuide.background1': '#33240b',
         'editorWidget.background': '#120d05',
         'editorWidget.border': '#4a3410',
+        'editorBracketHighlight.foreground1': '#ffb000',
+        'editorBracketHighlight.foreground2': '#ffd27a',
+        'editorBracketHighlight.foreground3': '#ff9f43',
       },
     },
     terminal: {
@@ -103,35 +109,38 @@ const THEME_JS = {
     monaco: {
       base: 'vs-dark',
       rules: [
-        { token: 'comment', foreground: '7a3a44', fontStyle: 'italic' },
-        { token: 'keyword', foreground: 'ff3b4f' },
-        { token: 'string', foreground: 'ffb3a1' },
-        { token: 'number', foreground: 'ffb347' },
-        { token: 'type', foreground: 'ff7aa8' },
-        { token: 'delimiter', foreground: 'c98a91' },
-        { token: 'tag', foreground: 'ff3b4f' },
+        { token: 'comment', foreground: '7a5458', fontStyle: 'italic' },
+        { token: 'keyword', foreground: 'ff3347' },
+        { token: 'string', foreground: 'f6c7a0' },
+        { token: 'number', foreground: 'ffb547' },
+        { token: 'type', foreground: 'ff8fa3' },
+        { token: 'delimiter', foreground: 'b58a8f' },
+        { token: 'tag', foreground: 'ff3347' },
       ],
       colors: {
-        'editor.background': '#0d0405',
-        'editor.foreground': '#ffd9dc',
-        'editorLineNumber.foreground': '#5e252c',
-        'editorLineNumber.activeForeground': '#ff3b4f',
-        'editorCursor.foreground': '#ff3b4f',
-        'editor.selectionBackground': '#3a0c0e',
-        'editor.lineHighlightBackground': '#170608',
-        'editorGutter.background': '#0d0405',
-        'editorIndentGuide.background1': '#330b0e',
-        'editorWidget.background': '#120506',
-        'editorWidget.border': '#4a1015',
+        'editor.background': '#0e0708',
+        'editor.foreground': '#f3e6e1',
+        'editorLineNumber.foreground': '#5a3a3e',
+        'editorLineNumber.activeForeground': '#ff3347',
+        'editorCursor.foreground': '#ff3347',
+        'editor.selectionBackground': '#3d1218',
+        'editor.lineHighlightBackground': '#170b0d',
+        'editorGutter.background': '#0e0708',
+        'editorIndentGuide.background1': '#2a1216',
+        'editorWidget.background': '#140a0b',
+        'editorWidget.border': '#4d1a20',
+        'editorBracketHighlight.foreground1': '#ff3347',
+        'editorBracketHighlight.foreground2': '#ffb59a',
+        'editorBracketHighlight.foreground3': '#efe0c6',
       },
     },
     terminal: {
-      background: 'rgba(0,0,0,0.62)',
-      foreground: '#ff6b78',
-      cursor: '#ff3b4f',
-      selectionBackground: '#4a1015',
-      black: '#000000',
-      brightBlack: '#6b2830',
+      background: 'rgba(7,3,4,0.62)',
+      foreground: '#f3e6e1',
+      cursor: '#ff3347',
+      selectionBackground: '#4d1a20',
+      black: '#070304',
+      brightBlack: '#7a5458',
     },
   },
   ice: {
@@ -158,6 +167,9 @@ const THEME_JS = {
         'editorIndentGuide.background1': '#0c2838',
         'editorWidget.background': '#0a1826',
         'editorWidget.border': '#123a4d',
+        'editorBracketHighlight.foreground1': '#5ce1e6',
+        'editorBracketHighlight.foreground2': '#6fb7ff',
+        'editorBracketHighlight.foreground3': '#a8e6d0',
       },
     },
     terminal: {
@@ -193,6 +205,9 @@ const THEME_JS = {
         'editorIndentGuide.background1': '#302a3e',
         'editorWidget.background': '#262132',
         'editorWidget.border': '#403850',
+        'editorBracketHighlight.foreground1': '#ff79c6',
+        'editorBracketHighlight.foreground2': '#bd93f9',
+        'editorBracketHighlight.foreground3': '#8be9fd',
       },
     },
     terminal: {
@@ -202,6 +217,44 @@ const THEME_JS = {
       selectionBackground: '#4d3a6b',
       black: '#14111b',
       brightBlack: '#7b6f92',
+    },
+  },
+  neon: {
+    monaco: {
+      base: 'vs-dark',
+      rules: [
+        { token: 'comment', foreground: '6e6691', fontStyle: 'italic' },
+        { token: 'keyword', foreground: 'fede5d' },
+        { token: 'string', foreground: 'ff8b39' },
+        { token: 'number', foreground: 'f97e72' },
+        { token: 'type', foreground: '36f9f6' },
+        { token: 'delimiter', foreground: 'b6b1d1' },
+        { token: 'tag', foreground: '72f1b8' },
+      ],
+      colors: {
+        'editor.background': '#1b1828',
+        'editor.foreground': '#f4eeff',
+        'editorLineNumber.foreground': '#4f4870',
+        'editorLineNumber.activeForeground': '#ff7edb',
+        'editorCursor.foreground': '#ff7edb',
+        'editor.selectionBackground': '#463465',
+        'editor.lineHighlightBackground': '#2d2843',
+        'editorGutter.background': '#1b1828',
+        'editorIndentGuide.background1': '#34294f',
+        'editorWidget.background': '#241f36',
+        'editorWidget.border': '#3b3254',
+        'editorBracketHighlight.foreground1': '#ff7edb',
+        'editorBracketHighlight.foreground2': '#36f9f6',
+        'editorBracketHighlight.foreground3': '#fede5d',
+      },
+    },
+    terminal: {
+      background: 'rgba(18,15,26,0.62)',
+      foreground: '#f4eeff',
+      cursor: '#ff7edb',
+      selectionBackground: '#463465',
+      black: '#120f1a',
+      brightBlack: '#6e6691',
     },
   },
   paper: {
@@ -228,6 +281,9 @@ const THEME_JS = {
         'editorIndentGuide.background1': '#ddd7c8',
         'editorWidget.background': '#f6f3eb',
         'editorWidget.border': '#c8c1b0',
+        'editorBracketHighlight.foreground1': '#1f6f43',
+        'editorBracketHighlight.foreground2': '#0b6e8a',
+        'editorBracketHighlight.foreground3': '#8a5a00',
       },
     },
     terminal: {
@@ -342,12 +398,13 @@ window.__agenttailTerm = term;
 // xterm 256-colour indices per theme, so terminal output stays readable when
 // the foreground/background pair changes (matrix keeps its original colours).
 const ANSI_PALETTES = {
-  matrix: { green: 46, greenDim: 35, white: 255, cyan: 51, amber: 221, red: 203, magenta: 207, grey: 244 },
-  amber: { green: 214, greenDim: 136, white: 230, cyan: 222, amber: 214, red: 203, magenta: 215, grey: 137 },
-  red: { green: 203, greenDim: 160, white: 224, cyan: 210, amber: 215, red: 213, magenta: 212, grey: 138 },
-  ice: { green: 51, greenDim: 37, white: 255, cyan: 45, amber: 221, red: 203, magenta: 207, grey: 244 },
-  dracula: { green: 141, greenDim: 98, white: 255, cyan: 117, amber: 215, red: 203, magenta: 212, grey: 244 },
-  paper: { green: 28, greenDim: 22, white: 236, cyan: 30, amber: 130, red: 124, magenta: 90, grey: 240 },
+  matrix: { green: 46, greenDim: 35, white: 255, cyan: 51, amber: 221, red: 203, magenta: 207, grey: 244, ok: 46 },
+  amber: { green: 214, greenDim: 136, white: 230, cyan: 222, amber: 214, red: 203, magenta: 215, grey: 137, ok: 214 },
+  red: { green: 203, greenDim: 167, white: 255, cyan: 217, amber: 215, red: 213, magenta: 212, grey: 138, ok: 230 },
+  ice: { green: 51, greenDim: 37, white: 255, cyan: 45, amber: 221, red: 203, magenta: 207, grey: 244, ok: 51 },
+  dracula: { green: 141, greenDim: 98, white: 255, cyan: 117, amber: 215, red: 203, magenta: 212, grey: 244, ok: 121 },
+  neon: { green: 213, greenDim: 176, white: 255, cyan: 51, amber: 227, red: 203, magenta: 213, grey: 103, ok: 121 },
+  paper: { green: 28, greenDim: 22, white: 236, cyan: 30, amber: 130, red: 124, magenta: 90, grey: 240, ok: 28 },
 };
 function ansiCode(key) {
   const palette = ANSI_PALETTES[currentTheme] || ANSI_PALETTES.matrix;
@@ -356,6 +413,7 @@ function ansiCode(key) {
 const C = {
   reset: '\x1b[0m',
   get green() { return ansiCode('green'); },
+  get ok() { return ansiCode('ok'); },
   get greenDim() { return ansiCode('greenDim'); },
   get white() { return ansiCode('white'); },
   get cyan() { return ansiCode('cyan'); },
@@ -763,6 +821,8 @@ const state = {
   live: false,
   state: 'finished',
   stateDetail: '',
+  lastCommand: '',        // short label of the latest command, for the console rail
+  lastCommandOk: null,    // its outcome: true, false, or null while unknown
   showEmpty: false,
   showHidden: localStorage.getItem('agenttail-show-hidden') === '1',
   sessions: [],
@@ -993,7 +1053,7 @@ function termOutput(text, isError) {
 }
 
 function termStatus(ok, detail) {
-  if (ok) term.write(`${C.green}✓ ${esc(detail || 'exit 0')}${C.reset}\r\n`);
+  if (ok) term.write(`${C.ok}✓ ${esc(detail || 'exit 0')}${C.reset}\r\n`);
   else term.write(`${C.red}✗ ${esc(detail || 'failed')}${C.reset}\r\n`);
   term.write('\r\n');
 }
@@ -1509,6 +1569,8 @@ async function applyEvent(ev) {
       const p = ev.args && ev.args.file_path ? relPath(ev.args.file_path) : '';
       if (ev.name === 'pwsh') {
         state.commandProgress = null;
+        state.lastCommand = shortLabel(ev.args.command || '');
+        state.lastCommandOk = null;
         setActivity('running', shortLabel(ev.args.command || ''), 'console');
       } else if (EDIT_TOOLS.has(ev.name) && p) {
         setActivity('editing', p, 'editor');
@@ -1587,6 +1649,7 @@ async function applyEvent(ev) {
         setTransient('error', 'COMMAND FAILED', 3000);
       }
       if (name === 'pwsh') {
+        state.lastCommandOk = !(ev.isError || (exitMatch && Number(exitMatch[1]) !== 0));
         if (ev.agent) termNote(`↳ ${ev.agent}`, C.grey);
         termOutput(ev.text || '', ev.isError);
         if (!ev.isError) {
@@ -1655,7 +1718,7 @@ async function applyEvent(ev) {
         updateJobBar();
         termNote(
           `${ok ? '✓' : '✗'} job ${ok ? 'finished' : 'failed'} in ${fmtClock(Date.now() - (job.startedAt || Date.now()))}${ev.detail ? ' · ' + ev.detail : ''}`,
-          ok ? C.green : C.red,
+          ok ? C.ok : C.red,
         );
         if (ok) {
           activity.kind = 'thinking';
@@ -1674,6 +1737,7 @@ async function applyEvent(ev) {
         state.pendingCommands.delete(ev.callId);
         const m = /exit code:\s*(-?\d+)/i.exec(ev.detail || '');
         const ok = m ? m[1] === '0' : ev.status === 'completed';
+        state.lastCommandOk = ok;
         if (!ok) { triggerGlitch(); flashConsoleError(); setTransient('error', 'COMMAND FAILED', 3000); }
         termStatus(ok, ev.detail || ev.status || '');
       }
@@ -1719,6 +1783,8 @@ function closeStream() {
 
 function resetView() {
   inbox.length = 0;
+  state.lastCommand = '';
+  state.lastCommandOk = null;
   resetModelBuffers();
   fileMeta.clear();
   updateTreeBadge();
@@ -3092,6 +3158,7 @@ function updateActivityBar() {
   applyActivityDot();
   updateJobsChip();
   updateRunStatus();
+  if (typeof window.stageUpdate === 'function') window.stageUpdate();
 }
 
 function updateRunStatus() {
@@ -3156,7 +3223,7 @@ function updateJobsChip() {
       icon.className = 'spinner';
     } else {
       icon.textContent = job.state === 'finished' ? '✓' : '✗';
-      icon.style.color = job.state === 'finished' ? 'var(--green)' : 'var(--red)';
+      icon.style.color = job.state === 'finished' ? 'var(--ok)' : 'var(--red)';
     }
     const label = document.createElement('span');
     label.className = 'lbl';

@@ -55,6 +55,7 @@
     --border-link: #1f4d4d;
     /* accents */
     --green: #37f28a;
+    --ok: var(--green);         /* success marks: exit 0, finished jobs, SAFE */
     --green-dim: #1d7a4d;
     --green-soft: #9fe8bd;
     --cyan: #5ce1e6;
@@ -184,91 +185,92 @@
   }
 
   :root[data-theme="red"] {
-    --bg: #0b0304;
-    --bg-2: #120506;
-    --bg-3: #1a0709;
-    --bg-deep: #0d0405;
-    --bg-bar: #100305;
-    --bg-chat: #0e0305;
-    --bg-menu: rgba(14, 3, 5, .99);
-    --bg-composer: #0c0203;
-    --bg-scroll: #0b0203;
-    --bg-boot: #050203;
-    --bg-tag: #120406;
-    --bg-approval: #0e0405;
-    --bg-code: #080203;
-    --bg-inline: #170608;
-    --bg-warn: #1d0708;
-    --bg-danger: #1d0611;
-    --bg-user: #2a080c;
-    --bg-hover: #1b080a;
-    --bg-badge: #2a080b;
-    --bg-meter: #230608;
-    --bg-topbar: #140608;
-    --bg-term: #000000;
-    --bg-modal: #120507;
-    --bg-modal-99: rgba(18, 5, 7, .99);
-    --bg-badge-88: rgba(18, 5, 7, .88);
+    --bg: #0c0607;
+    --bg-2: #140a0b;
+    --bg-3: #1c0e10;
+    --bg-deep: #0e0708;
+    --bg-bar: #110809;
+    --bg-chat: #100708;
+    --bg-menu: rgba(18, 9, 10, .99);
+    --bg-composer: #0d0607;
+    --bg-scroll: #0c0607;
+    --bg-boot: #060303;
+    --bg-tag: #160a0c;
+    --bg-approval: #130909;
+    --bg-code: #090405;
+    --bg-inline: #1d0e10;
+    --bg-warn: #1f1209;
+    --bg-danger: #200a18;
+    --bg-user: #2a0f14;
+    --bg-hover: #1e0e11;
+    --bg-badge: #2b0f15;
+    --bg-meter: #25100f;
+    --bg-topbar: #150a0c;
+    --bg-term: #070304;
+    --bg-modal: #140a0c;
+    --bg-modal-99: rgba(20, 10, 12, .99);
+    --bg-badge-88: rgba(20, 10, 12, .9);
     --bg-label: rgba(0, 0, 0, .25);
-    --bg-count: #3a0c0e;
-    --bg-count-err: #330f25;
-    --bg-dot: #4a262b;
-    --bg-thumb: #4a1015;
-    --bg-selection: #3a0c0e;
-    --bg-line-highlight: #170608;
-    --bg-widget: #120506;
-    --panel: #100507;
-    --panel-2: #150609;
-    --line: #4a1015;
-    --line-soft: #330b0e;
-    --border: #4a1015;
-    --border-soft: #330b0e;
-    --border-strong: #5c1519;
-    --border-contrast: #24080a;
-    --border-cyan: #5c1519;
-    --border-warn: #6a2022;
-    --border-warn-soft: #4f1617;
-    --border-danger: #6b1f47;
-    --border-danger-soft: #7a2a52;
-    --border-approve: #6f2624;
-    --border-btn: #541d1d;
-    --border-user: #5c1519;
-    --border-chat: #400f10;
-    --border-link: #6b2021;
-    --green: #ff3b4f;
-    --green-dim: #c8293d;
-    --green-soft: #ff9aa4;
-    --cyan: #ff9e8a;
-    --amber: #ffb347;
-    --red: #ff5fd2;
-    --purple: #ff7aa8;
+    --bg-count: #3d1219;
+    --bg-count-err: #3a1030;
+    --bg-dot: #4a2c30;
+    --bg-thumb: #4d1a20;
+    --bg-selection: #3d1218;
+    --bg-line-highlight: #170b0d;
+    --bg-widget: #140a0b;
+    --panel: #120809;
+    --panel-2: #170b0d;
+    --line: #4d1a20;
+    --line-soft: #33121a;
+    --border: #4d1a20;
+    --border-soft: #33121a;
+    --border-strong: #62202a;
+    --border-contrast: #200b0e;
+    --border-cyan: #5a2a2a;
+    --border-warn: #6a4a20;
+    --border-warn-soft: #4f3718;
+    --border-danger: #6b1f55;
+    --border-danger-soft: #7a2a62;
+    --border-approve: #6a5a40;
+    --border-btn: #55202a;
+    --border-user: #62202a;
+    --border-chat: #40141a;
+    --border-link: #7a3a44;
+    --green: #ff3347;
+    --green-dim: #b3243a;
+    --green-soft: #f5b8bf;
+    --cyan: #ffb59a;
+    --amber: #ffb547;
+    --red: #ff4fc8;
+    --purple: #d48cff;
     --orange: #ff8a4c;
-    --glitch: #ff5fd2;
-    --text: #ffd9dc;
-    --muted: #c4747f;
-    --text-strong: #ffc4c8;
-    --text-bright: #ffb8bc;
-    --text-white: #ffd7d6;
-    --text-code: #ffa8aa;
-    --text-approval: #ffc9cb;
-    --text-amber-soft: #ffa3a3;
-    --text-quote: #d9707c;
-    --text-tree: #e07e89;
-    --text-think: #cf7a85;
-    --text-think-summary: #c06f7a;
-    --text-think-dot: #a85863;
-    --text-sys: #b96872;
-    --text-empty: #a35761;
-    --text-icon: #a35761;
-    --text-dim: #b0606b;
-    --text-faint: #874650;
-    --text-hint: #94505a;
-    --text-placeholder: #a35761;
-    --text-on-amber: #1a0205;
-    --text-approve: #ff7a7f;
+    --glitch: #ff4fc8;
+    --text: #f3e6e1;
+    --muted: #b58a8f;
+    --text-strong: #fbefe9;
+    --text-bright: #fff4ef;
+    --text-white: #fff7f2;
+    --text-code: #f6d3cc;
+    --text-approval: #fbe9e4;
+    --text-amber-soft: #ffd9a8;
+    --text-quote: #c9939a;
+    --text-tree: #e9c9c6;
+    --text-think: #c79aa0;
+    --text-think-summary: #b98d93;
+    --text-think-dot: #8f6a6e;
+    --text-sys: #a98086;
+    --text-empty: #8f6a6e;
+    --text-icon: #8f6a6e;
+    --text-dim: #a07479;
+    --text-faint: #7a5458;
+    --text-hint: #8a6267;
+    --text-placeholder: #9a7176;
+    --text-on-amber: #1a0606;
+    --text-approve: #efe0c6;
     --text-reject: #ff9ae4;
-    --matrix-fade: rgba(11, 3, 4, 0.18);
-    --matrix-glyph: rgba(255, 59, 79, 0.65);
+    --matrix-fade: rgba(12, 6, 7, 0.18);
+    --matrix-glyph: rgba(255, 51, 71, 0.6);
+    --ok: #efe0c6;
   }
 
   :root[data-theme="ice"] {
@@ -445,6 +447,95 @@
     --text-reject: #ff9aa3;
     --matrix-fade: rgba(26, 23, 35, 0.18);
     --matrix-glyph: rgba(189, 147, 249, 0.65);
+  }
+
+  :root[data-theme="neon"] {
+    --bg: #171520;
+    --bg-2: #1e1a2c;
+    --bg-3: #262335;
+    --bg-deep: #1b1828;
+    --bg-bar: #1a1626;
+    --bg-chat: #1c1829;
+    --bg-menu: rgba(30, 26, 44, .99);
+    --bg-composer: #181523;
+    --bg-scroll: #16131f;
+    --bg-boot: #0e0c15;
+    --bg-tag: #241f36;
+    --bg-approval: #1f1a2e;
+    --bg-code: #13101b;
+    --bg-inline: #2a2440;
+    --bg-warn: #2b2530;
+    --bg-danger: #2e1424;
+    --bg-user: #33284d;
+    --bg-hover: #2a2440;
+    --bg-badge: #3a2d55;
+    --bg-meter: #2d2745;
+    --bg-topbar: #211c33;
+    --bg-term: #120f1a;
+    --bg-modal: #1e1a2c;
+    --bg-modal-99: rgba(30, 26, 44, .99);
+    --bg-badge-88: rgba(30, 26, 44, .9);
+    --bg-label: rgba(0, 0, 0, .25);
+    --bg-count: #46305e;
+    --bg-count-err: #45182a;
+    --bg-dot: #55497a;
+    --bg-thumb: #463465;
+    --bg-selection: #463465;
+    --bg-line-highlight: #2d2843;
+    --bg-widget: #241f36;
+    --panel: #1e1a2c;
+    --panel-2: #241b2f;
+    --line: #3b3254;
+    --line-soft: #2c2640;
+    --border: #3b3254;
+    --border-soft: #2c2640;
+    --border-strong: #4b4068;
+    --border-contrast: #120f1a;
+    --border-cyan: #2a5a6a;
+    --border-warn: #6a5a2a;
+    --border-warn-soft: #4f4420;
+    --border-danger: #6b2c40;
+    --border-danger-soft: #7a3550;
+    --border-approve: #2f6a55;
+    --border-btn: #4b4068;
+    --border-user: #5a3a7a;
+    --border-chat: #382f52;
+    --border-link: #4a6a8a;
+    --green: #ff7edb;
+    --green-dim: #b34fa0;
+    --green-soft: #ffc2ee;
+    --cyan: #36f9f6;
+    --amber: #fede5d;
+    --red: #fe4450;
+    --purple: #b893ce;
+    --orange: #f97e72;
+    --glitch: #fe4450;
+    --text: #f4eeff;
+    --muted: #8b84a8;
+    --text-strong: #ffffff;
+    --text-bright: #f9f5ff;
+    --text-white: #ffffff;
+    --text-code: #ffd8f3;
+    --text-approval: #f6efff;
+    --text-amber-soft: #fff0b0;
+    --text-quote: #b6aed4;
+    --text-tree: #d7d0f0;
+    --text-think: #a59dc6;
+    --text-think-summary: #968db8;
+    --text-think-dot: #6e6691;
+    --text-sys: #8b84a8;
+    --text-empty: #6e6691;
+    --text-icon: #6e6691;
+    --text-dim: #7d769c;
+    --text-faint: #575075;
+    --text-hint: #625a82;
+    --text-placeholder: #7a7298;
+    --text-on-amber: #1a1020;
+    --text-approve: #72f1b8;
+    --text-reject: #ff9aa3;
+    --matrix-fade: rgba(23, 21, 32, 0.18);
+    --matrix-glyph: rgba(255, 126, 219, 0.55);
+    --ok: #72f1b8;
   }
 
   /* Agent colours keep their hue on the light theme, just darker to stay readable. */
@@ -748,7 +839,7 @@
   .period.peak { color: var(--amber); }
 
   .live-badge { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 11px; letter-spacing: .1em; white-space: nowrap; }
-  .stream { display: flex; align-items: center; gap: 5px; color: var(--green); font-size: 11px; letter-spacing: .08em; border: 1px solid color-mix(in srgb, var(--green) 35%, transparent); border-radius: 3px; padding: 2px 6px; white-space: nowrap; }
+  .stream { display: flex; align-items: center; gap: 5px; color: var(--ok); font-size: 11px; letter-spacing: .08em; border: 1px solid color-mix(in srgb, var(--ok) 35%, transparent); border-radius: 3px; padding: 2px 6px; white-space: nowrap; }
   .stream.off { color: var(--red); border-color: color-mix(in srgb, var(--red) 45%, transparent); animation: pulse 1.6s infinite; }
   .sdot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; box-shadow: 0 0 7px currentColor; }
   .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--bg-dot); display: inline-block; }
@@ -1081,7 +1172,7 @@
   @keyframes boot-in { from { opacity: 0; transform: translateY(6px) scale(.96); } to { opacity: 1; transform: none; } }
   @media (prefers-reduced-motion: reduce) { #bootBanner .boot-logo { animation: none; } }
   #bootLog { font-size: 11px; line-height: 1.7; color: var(--green-soft); min-height: 90px; width: 520px; max-width: 80vw; }
-  #bootLog .ok { color: var(--green); }
+  #bootLog .ok { color: var(--ok); }
   #bootLog .warn { color: var(--amber); }
   .boot-hint { color: var(--text-hint); font-size: 9px; letter-spacing: .2em; }
   body.boot-done #boot { display: none; }
@@ -1270,7 +1361,7 @@
   .wp-dock .dk-console { margin: 0 auto; flex: 0 1 auto; max-width: none; }
   /* Editor and conversation keep their short labels; the command label gives way. */
   .wp-dock .dk-editor, .wp-dock .dk-think { flex: none; max-width: none; }
-  .wp-dock .dk-console.ok b { color: var(--green); } .wp-dock .dk-console.bad b { color: var(--red); }
+  .wp-dock .dk-console.ok b { color: var(--ok); } .wp-dock .dk-console.bad b { color: var(--red); }
   .wp-dock .dk-job { color: var(--amber); font-size: 10px; }
   .wp-dock .dk-job.hidden { display: none; }
   .wp-dock button.bump { animation: dk-bump .5s ease-out; }
@@ -1343,7 +1434,7 @@
   .wf-say { color: var(--text); }
   .wf-think { color: var(--muted); font-size: 11px; font-style: italic; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .wf-call { color: var(--cyan); font-family: var(--mono); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .wf-call .ok { color: var(--green); margin-left: 6px; }
+  .wf-call .ok { color: var(--ok); margin-left: 6px; }
   .wf-call .bad { color: var(--red); margin-left: 6px; }
   .wf-job { color: var(--amber); font-size: 11px; }
   .wp-files { flex: none; display: flex; flex-wrap: wrap; gap: 4px; padding: 6px 10px; border-top: 1px solid var(--line-soft); min-height: 26px; }
@@ -1582,7 +1673,7 @@
   #wallStrip .ws-timeline .ws-tl-tip .ws-tl-tip-time { color: var(--muted); }
   #wallStrip .ws-timeline .ws-tl-tip .ws-tl-tip-desc { color: var(--text); }
   #wallStrip .ws-timeline .ws-tl-tip .ws-tl-tip-bad { color: var(--red); }
-  #wallStrip .ws-timeline .ws-tl-tip .ws-tl-tip-ok { color: var(--green); }
+  #wallStrip .ws-timeline .ws-tl-tip .ws-tl-tip-ok { color: var(--ok); }
   @media (prefers-reduced-motion: reduce) {
     #wallStrip .ws-timeline .ws-tl-tip { transition: none; }
   }
@@ -1704,4 +1795,85 @@
   @media (prefers-reduced-motion: reduce) {
     #wallSide .wt-file { transition: none; }
     #wallSide .wt-file.clash, #wallSide .wt-cursor.wt-cursor-moved { animation: none; }
+  }
+
+  /* ---------- console stage (stage.js) ---------- */
+  #consoleRail { display: none; }
+  #consoleMode { margin-left: 10px; padding: 0 7px; border: 1px solid var(--line); border-radius: 3px; background: transparent; color: var(--muted); font-size: 9.5px; letter-spacing: .12em; }
+  #consoleMode[aria-pressed="true"] { color: var(--green); border-color: var(--green-dim); }
+  #terminalPane .panel-title #runStatus + #consoleMode { margin-left: 10px; }
+  /* The console is out of the dock: on stage or shrunk to the rail. */
+  body.stage-out #bottomArea { grid-template-columns: 30px minmax(0, 1fr); }
+  body.stage-out #consoleChatSplitter { display: none; }
+  body.stage-min #terminalPane { display: none; }
+  body.stage-out #consoleRail {
+    display: flex; flex-direction: column; align-items: center; gap: 9px; min-width: 0; min-height: 0; overflow: hidden;
+    width: 30px; padding: 9px 0; border: none; border-right: 1px solid var(--line); border-radius: 0;
+    background: var(--panel); color: var(--muted); font-size: 10px; letter-spacing: .08em; cursor: pointer;
+  }
+  body.stage-out #consoleRail:hover { color: var(--text); background: var(--bg-hover); }
+  #consoleRail b { flex: none; color: var(--green); font-size: 13px; }
+  #consoleRail .cr-state { flex: none; font-style: normal; }
+  #consoleRail .cr-state.ok { color: var(--ok); }
+  #consoleRail .cr-state.bad { color: var(--red); }
+  #consoleRail .cr-state.run { color: var(--amber); animation: tdot 1.2s ease-in-out infinite; }
+  #consoleRail .cr-text { min-height: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; writing-mode: vertical-rl; transform: rotate(180deg); }
+  /* With the agent beside the editor (or folded away) the console shrinks to a bar instead. */
+  body.stage-out.chat-side:not(.bottom-collapsed) #app,
+  body.stage-out.chat-collapsed:not(.bottom-collapsed) #app { grid-template-rows: 52px 28px minmax(0, 1fr) 0 30px 0; }
+  body.stage-out.chat-side #bottomArea { grid-template-columns: minmax(0, 1fr); }
+  body.stage-out.chat-collapsed:not(.chat-side) #bottomArea { grid-template-columns: minmax(0, 1fr) 28px; }
+  body.stage-out.chat-side #consoleRail,
+  body.stage-out.chat-collapsed #consoleRail { flex-direction: row; width: auto; height: 30px; padding: 0 12px; border-right: none; border-top: 1px solid var(--line); }
+  body.stage-out.chat-side #consoleRail .cr-text,
+  body.stage-out.chat-collapsed #consoleRail .cr-text { writing-mode: horizontal-tb; transform: none; }
+  /* On stage: the console comes up over the editor while a command runs. */
+  #terminalPane.staged {
+    position: absolute; z-index: 8; left: 4%; right: 4%; top: 6%; bottom: 7%; min-height: 0;
+    border: 1px solid color-mix(in srgb, var(--amber) 55%, var(--line)); border-radius: 8px; overflow: hidden;
+    box-shadow: 0 18px 50px rgba(0, 0, 0, .4), 0 0 28px color-mix(in srgb, var(--amber) 16%, transparent);
+    animation: stage-up .28s cubic-bezier(.2, .8, .2, 1);
+  }
+  #terminalPane.staged .panel-title { color: var(--amber); }
+  @keyframes stage-up { from { opacity: 0; transform: translateY(26px) scale(.98); } to { opacity: 1; transform: none; } }
+  #editorWrap #editor { transition: filter .25s; }
+  #editorWrap.has-stage #editor { filter: brightness(.45) saturate(.6); }
+
+  /* The thinking window and the mascot: the logo's prompt chevron with an eye,
+     whose trailing dots float up into a thought bubble. */
+  #thinkCard {
+    position: absolute; right: 22px; bottom: 20px; z-index: 7; display: flex; align-items: center; gap: 12px;
+    width: 380px; max-width: calc(100% - 44px); padding: 8px 18px 8px 8px;
+    background: var(--bg-badge-88); border: 1px solid color-mix(in srgb, var(--cyan) 38%, var(--line)); border-radius: 10px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, .3), 0 0 24px color-mix(in srgb, var(--cyan) 12%, transparent);
+    pointer-events: none; visibility: hidden; opacity: 0; transform: translateY(10px) scale(.97);
+    transition: opacity .3s, transform .3s, visibility 0s .3s;
+  }
+  #thinkCard.show { visibility: visible; opacity: 1; transform: none; transition: opacity .3s, transform .3s; }
+  .tail-mascot { flex: none; width: 128px; height: 96px; overflow: visible; }
+  .tail-mascot * { transform-box: fill-box; transform-origin: center; }
+  .tm-body { animation: tm-bob 1.8s ease-in-out infinite; }
+  .tm-chevron { fill: none; stroke: var(--green); stroke-width: 8.5; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 5px color-mix(in srgb, var(--green) 55%, transparent)); }
+  .tm-eye { fill: var(--green); animation: tm-blink 4.2s infinite; }
+  .tm-glint { fill: var(--bg-2); animation: tm-blink 4.2s infinite; }
+  .tm-shadow { fill: var(--green); opacity: .16; animation: tm-shadow 1.8s ease-in-out infinite; }
+  .tm-dot { fill: var(--cyan); opacity: .25; animation: tm-rise 1.5s ease-in-out infinite; }
+  .tm-dot.d2 { animation-delay: .25s; }
+  .tm-dot.d3 { animation-delay: .5s; }
+  .tm-cloud { fill: color-mix(in srgb, var(--cyan) 10%, var(--bg-2)); stroke: var(--cyan); stroke-width: 1.6; animation: tm-breathe 3s ease-in-out infinite; }
+  .tm-glyph { fill: var(--text-strong); font-family: var(--mono); font-size: 12px; font-weight: 700; }
+  @keyframes tm-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+  @keyframes tm-shadow { 50% { opacity: .08; transform: scaleX(.78); } }
+  @keyframes tm-blink { 0%, 91%, 100% { transform: scaleY(1); } 94% { transform: scaleY(.12); } }
+  @keyframes tm-rise { 0%, 100% { opacity: .2; transform: scale(.8); } 40% { opacity: 1; transform: scale(1.15); } }
+  @keyframes tm-breathe { 50% { transform: scale(1.04); } }
+  .tc-text { flex: 1; min-width: 0; }
+  .tc-head { display: flex; align-items: baseline; gap: 8px; }
+  .tc-head b { color: var(--cyan); font-size: 10.5px; letter-spacing: .16em; }
+  .tc-time { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .tc-line { margin-top: 4px; color: var(--text-think); font-size: 11.5px; font-style: italic; line-height: 1.45; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+  .tc-line:empty { display: none; }
+  @media (prefers-reduced-motion: reduce) {
+    .tm-body, .tm-eye, .tm-shadow, .tm-dot, .tm-cloud, #consoleRail .cr-state.run, #terminalPane.staged { animation: none; }
+    #thinkCard, #editorWrap #editor { transition: none; }
   }

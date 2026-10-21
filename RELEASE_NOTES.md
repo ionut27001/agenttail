@@ -1,3 +1,17 @@
+# Unreleased
+
+- Console on stage (the new default): a running command brings the console up
+  over the editor, an edit sends it back to its dock, and a quiet console
+  shrinks to a rail so the agent pane gets the room. The console header
+  switches back to the plain docked console.
+- A thinking window with the agenttail mascot: the logo's chevron with an eye,
+  its trailing dots floating up into a thought bubble of code glyphs.
+- Themes: red redrawn as crimson and bone, a new neon (synthwave) theme, a
+  separate success colour so success never looks like the accent or an error,
+  and editor bracket pairs in each theme's own colours.
+
+---
+
 # agenttail v0.2.0
 
 **Watch several agents at once, opt-in control for DeepSeek Harness, and a

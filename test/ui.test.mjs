@@ -347,7 +347,7 @@ try {
   check(await evalExpr(`/AGENT NOW/.test(document.getElementById('activityLabel').textContent)`), 'the activity bar is labelled as the agent status');
 
   console.log('\nthemes');
-  check(await evalExpr(`JSON.stringify(window.__theme.list()) === JSON.stringify(['matrix', 'amber', 'red', 'ice', 'dracula', 'paper']) && document.getElementById('themeSelect').options.length === 6`), 'six themes are offered in Settings');
+  check(await evalExpr(`JSON.stringify(window.__theme.list()) === JSON.stringify(['matrix', 'amber', 'red', 'ice', 'dracula', 'neon', 'paper']) && document.getElementById('themeSelect').options.length === 7`), 'seven themes are offered in Settings');
   const matrixBg = await evalExpr(`getComputedStyle(document.body).backgroundColor`);
   check(await evalExpr(`!document.documentElement.dataset.theme || document.documentElement.dataset.theme === 'matrix'`), 'matrix is the default theme');
   await evalExpr(`(() => { const sel = document.getElementById('themeSelect'); sel.value = 'paper'; sel.dispatchEvent(new Event('change')); return true; })()`);
@@ -359,7 +359,7 @@ try {
   check(await evalExpr(`document.documentElement.dataset.theme === 'paper'`), 'the saved theme is applied on load');
   await evalExpr(`window.__theme.set('red'); true`);
   await sleep(200);
-  check(await evalExpr(`document.documentElement.dataset.theme === 'red' && getComputedStyle(document.documentElement).getPropertyValue('--green').trim() === '#ff3b4f' && getComputedStyle(document.documentElement).getPropertyValue('--red').trim() !== '#ff3b4f'`), 'the red theme is crimson, and errors keep a colour of their own');
+  check(await evalExpr(`document.documentElement.dataset.theme === 'red' && getComputedStyle(document.documentElement).getPropertyValue('--green').trim() === '#ff3347' && getComputedStyle(document.documentElement).getPropertyValue('--red').trim() !== '#ff3347' && getComputedStyle(document.documentElement).getPropertyValue('--ok').trim() === '#efe0c6'`), 'the red theme is crimson, errors and success keep colours of their own');
   await evalExpr(`window.__theme.set('matrix'); true`);
   await sleep(200);
   check(await evalExpr(`getComputedStyle(document.body).backgroundColor`) === matrixBg, 'switching back restores the matrix colours');
@@ -827,6 +827,9 @@ try {
   check(await evalExpr(`document.getElementById('activityBar').classList.contains('running') && document.getElementById('activityBar').classList.contains('working')`), 'RUNNING uses the amber animated indicator');
   check(await evalExpr(`!document.getElementById('runStatus').classList.contains('hidden') && !!document.querySelector('#runStatus .spinner')`), 'console shows a spinner next to the running command');
   check(await evalExpr(`document.getElementById('terminalPane').classList.contains('active')`), 'console pane is marked active');
+  // Stage (the default): a running command brings the console up over the editor.
+  check(await waitFor(`window.__stage.mode === 'stage' && document.getElementById('terminalPane').parentElement.id === 'editorWrap' && document.getElementById('terminalPane').classList.contains('staged')`, 4000), 'stage: a running command brings the console over the editor', JSON.stringify(await evalExpr(`window.__stage.state()`)));
+  check(await evalExpr(`document.body.classList.contains('stage-out') && /running/.test(document.getElementById('consoleRail').textContent) && getComputedStyle(document.getElementById('consoleRail')).display !== 'none'`), 'stage: the dock keeps a rail that says the console is running');
   fs.appendFileSync(fixture.liveLog, frame([
     ev('tool/call', 62, {
       turn: 1, step: 3, callId: 'call_edit_live2', name: 'edit',
@@ -841,6 +844,7 @@ try {
   check(editing, 'activity bar shows EDITING for an edit', await evalExpr(`document.getElementById('activityText').textContent`));
   check(await evalExpr(`document.getElementById('activityBar').classList.contains('editing') && document.getElementById('activityBar').classList.contains('working')`), 'EDITING uses the green animated indicator');
   check(await evalExpr(`document.getElementById('editorWrap').classList.contains('active')`), 'editor pane is marked active');
+  check(await waitFor(`document.getElementById('terminalPane').parentElement.id === 'bottomArea' && !document.body.classList.contains('stage-out')`, 3000), 'stage: an edit sends the console back to its dock at once', JSON.stringify(await evalExpr(`window.__stage.state()`)));
   const barReady = await waitFor(`!document.getElementById('jobBar').classList.contains('hidden') && /running/.test(document.getElementById('jobBarText').textContent)`, 12000);
   check(barReady, 'running job line appears in the console');
   await waitFor(`(() => { const s = document.querySelector('.xterm-screen').getBoundingClientRect(); const v = document.querySelector('.xterm-viewport').getBoundingClientRect(); return s.height <= v.height + 1 && s.bottom <= v.bottom + 1; })()`, 5000);
@@ -887,6 +891,10 @@ try {
   const thinkIndicator = await waitFor(`document.getElementById('activityBar').classList.contains('thinking') && document.querySelectorAll('#activityText .tdots i').length === 3 && /\\d+ s/.test(document.getElementById('activityText').textContent)`, 4000);
   check(thinkIndicator, 'THINKING shows three dots and elapsed seconds', await evalExpr(`JSON.stringify({ cls: document.getElementById('activityBar').className, dots: document.querySelectorAll('#activityText .tdots i').length, text: document.getElementById('activityText').textContent })`));
   check(await evalExpr(`document.getElementById('chatPane').classList.contains('active')`), 'chat pane is marked active');
+  check(await waitFor(`document.getElementById('thinkCard').classList.contains('show') && /Live reasoning stream/.test(document.querySelector('#thinkCard .tc-line').textContent)`, 4000), 'stage: thinking opens the mascot window with the latest thought', JSON.stringify(await evalExpr(`window.__stage.state()`)));
+  const glyph1 = await evalExpr(`window.__stage.state().glyph`);
+  check(await waitFor(`window.__stage.state().glyph !== ${JSON.stringify(glyph1)}`, 3000), 'stage: the mascot thinks in changing code glyphs');
+  check(await evalExpr(`!!document.querySelector('#thinkCard .tm-chevron') && !!document.querySelector('#thinkCard .tm-eye') && document.querySelectorAll('#thinkCard .tm-dot').length === 3`), 'the mascot is the logo: a chevron with an eye and the three tail dots');
   check(await evalExpr(`(() => { const rows = [...document.querySelectorAll('.chat-think summary')]; return rows.every((s) => !s.textContent.includes('▸')); })()`), 'thinking rows never show a double caret');
   await evalExpr(`document.getElementById('chatViewLog').click(); true`);
   const liveLog = await waitFor(`document.getElementById('chatLog').textContent.includes('Live chat message while the rail') && document.querySelectorAll('#chatLog .log-tool').length > 0`, 10000);
@@ -925,6 +933,15 @@ try {
   ]));
   const finishedLive = await waitFor(`document.getElementById('liveText').textContent !== 'LIVE'`, 12000);
   check(finishedLive, 'a closed turn leaves the LIVE state', await evalExpr(`JSON.stringify({ text: document.getElementById('liveText').textContent, dot: document.getElementById('liveDot').title })`));
+  check(await waitFor(`!document.getElementById('thinkCard').classList.contains('show')`, 3000), 'stage: the mascot window closes when the agent stops thinking');
+  // A quiet console shrinks to its rail; the rail opens it again.
+  await evalExpr(`window.__stage.cfg.idleMs = 600; true`);
+  check(await waitFor(`document.body.classList.contains('stage-min') && getComputedStyle(document.getElementById('terminalPane')).display === 'none' && getComputedStyle(document.getElementById('consoleRail')).display !== 'none'`, 6000), 'stage: a quiet console shrinks to a rail and the agent gets the room', JSON.stringify(await evalExpr(`({ s: window.__stage.state(), state: window.__dbg ? null : null, body: document.body.className })`)));
+  await evalExpr(`document.getElementById('consoleRail').click(); true`);
+  check(await waitFor(`!document.body.classList.contains('stage-min') && getComputedStyle(document.getElementById('terminalPane')).display !== 'none'`, 3000), 'stage: clicking the rail brings the console back');
+  await evalExpr(`document.getElementById('consoleMode').click(); true`);
+  check(await waitFor(`window.__stage.mode === 'docked' && !document.body.classList.contains('console-stage') && localStorage.getItem('agenttail-console-mode') === 'docked' && /DOCKED/.test(document.getElementById('consoleMode').textContent)`, 3000), 'the console header switches to the docked mode and remembers it');
+  await evalExpr(`window.__stage.setMode('stage'); window.__stage.cfg.idleMs = 15000; true`);
 
   console.log('\nbackground state');
   await evalExpr(`location.hash = '${bgSessionId}'; true`);

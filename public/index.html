@@ -12,7 +12,7 @@
 (() => {
   try {
     const savedTheme = String(localStorage.getItem('agenttail-theme') || '').toLowerCase();
-    if (savedTheme && ['amber', 'red', 'ice', 'dracula', 'paper'].includes(savedTheme)) {
+    if (savedTheme && ['amber', 'red', 'ice', 'dracula', 'neon', 'paper'].includes(savedTheme)) {
       document.documentElement.setAttribute('data-theme', savedTheme);
     }
   } catch { /* localStorage may be unavailable */ }
@@ -103,7 +103,7 @@
         <div class="fx-section">PLAYBACK &amp; DISPLAY</div>
         <label class="fx-speed">TYPE <input id="speed" type="range" min="20" max="1600" step="10" value="220" /><span id="speedVal">220</span></label>
         <label class="fx-scale">UI <select id="uiScale"><option value="0.9">90%</option><option value="1">100%</option><option value="1.15">115%</option><option value="1.3">130%</option></select></label>
-        <label class="fx-scale">THEME <select id="themeSelect" title="Colour theme"><option value="matrix">matrix</option><option value="amber">amber</option><option value="red">red</option><option value="ice">ice</option><option value="dracula">dracula</option><option value="paper">paper</option></select></label>
+        <label class="fx-scale">THEME <select id="themeSelect" title="Colour theme"><option value="matrix">matrix</option><option value="amber">amber</option><option value="red">red</option><option value="ice">ice</option><option value="dracula">dracula</option><option value="neon">neon</option><option value="paper">paper</option></select></label>
         <label class="fx-scale">COST CURRENCY <select id="currencySelect" title="Cost display currency (approx. rates; estimates stay in USD)"><option value="USD">USD</option><option value="EUR">EUR</option><option value="GBP">GBP</option><option value="RON">RON</option></select></label>
         <div class="fx-section">VIEW</div>
         <div class="fx-grid">
@@ -308,6 +308,7 @@
 <script src="/vendor/xterm/xterm-addon-fit.js"></script>
 <script src="/vendor/monaco/vs/loader.js"></script>
 <script src="/app/main.js"></script>
+<script src="/app/stage.js"></script>
 <script src="/app/control.js"></script>
 <script src="/app/wall-editor.js"></script>
 <script src="/app/wall-score.js"></script>
