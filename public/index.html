@@ -90,6 +90,7 @@
             <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>.</kbd></td><td>Dock the agent pane to the right / back</td></tr>
             <tr><td><kbd>Alt</kbd>+<kbd>A</kbd></td><td>Open the agents overview</td></tr>
             <tr><td><kbd>Alt</kbd>+<kbd>W</kbd></td><td>Watch the live agents side by side</td></tr>
+            <tr><td><kbd>Alt</kbd>+<kbd>I</kbd></td><td>Open the inbox: everything that needs you</td></tr>
             <tr><td><kbd>Enter</kbd></td><td>Send the message (owned sessions)</td></tr>
             <tr><td><kbd>Shift</kbd>+<kbd>Enter</kbd></td><td>Insert a newline in the message box</td></tr>
             <tr><td><kbd>Enter</kbd> (approval reason)</td><td>Reject the approval with the typed reason</td></tr>
@@ -116,7 +117,7 @@
         <label title="CPU, RAM and GPU usage in the header"><input type="checkbox" data-fx="meters" /> system meters</label>
         <label><input type="checkbox" data-fx="heat" checked /> tree heat</label>
         <label title="Wrap long lines in the editor instead of scrolling sideways"><input type="checkbox" data-fx="wrap" checked /> word wrap</label>
-        <label title="Notify when an agent waits for an approval or stops working while this tab is in the background"><input type="checkbox" id="notifyBox" /> desktop notifications</label>
+        <label title="Notify when an agent needs you or stops working while this tab is in the background"><input type="checkbox" id="notifyBox" /> desktop notifications</label>
         </div>
         <div class="fx-section">EFFECTS</div>
         <div class="fx-grid">
@@ -321,6 +322,7 @@
 <script src="/app/wall-editor.js"></script>
 <script src="/app/wall-score.js"></script>
 <script src="/app/agents.js"></script>
+<script src="/app/inbox.js"></script>
 <script src="/app/wall-console.js"></script>
 <script src="/app/wall-tail.js"></script>
 <script src="/app/wall-timeline.js"></script>

@@ -20,6 +20,15 @@ never writes to session stores, transcripts or workspace files. Its only writes
 are the local nickname file and optional configuration files in the agenttail
 config directory.
 
+To tell when an agent waits for you, agenttail also reads the status files Claude Code
+keeps for its own processes, `~/.claude/sessions/<pid>.json` (folder overridable
+with `AGENTTAIL_CLAUDE_SESSIONS_DIR`). Only the numbered `.json` files are
+opened, and only the pid, session id, status, what the process waits for and
+when are kept; nothing else in the file is copied or sent. The `*.key` files next
+to them are never opened. A status is used only while its process is alive,
+checked with signal 0 (nothing is sent to the process), and while it is fresh.
+This adds no write and no network request.
+
 The agents overview (`GET /api/agents`) is read-only as well. To group agents by
 repository it reads `.git` (and, for linked worktrees, the `gitdir`,
 `commondir` and `HEAD` files) next to each session's working directory; it never
@@ -68,6 +77,11 @@ the Desktop app or another process are never attached to and stay view-only.
 - **Stream-mode privacy.** Because control is disabled in stream mode, approval
   payloads (which can contain commands and diffs) are never sent to a stream
   session.
+- **Inbox endpoint.** `GET /api/control/approvals` lists the pending approvals of
+  owned sessions for the inbox. It sits behind the same gates as the other
+  control endpoints: `404` without `--allow-control`, `403` in stream mode,
+  `401` without the token. The inbox approves and rejects through the existing
+  `POST /api/control/approval`, with the same token.
 
 The control URL is a secret. Anyone who can read it can drive the sessions
 agenttail owns. Prefer a scratch workspace and a narrow `control.json`.
@@ -81,6 +95,15 @@ fails, the event is dropped rather than sent raw. You can add private literals
 and patterns in `redact.json`. **Review the stream before sharing or recording
 it.** Redaction reduces risk; it is not a guarantee that every sensitive string
 is caught.
+
+## Needs you
+
+The needs-you state (an agent is blocked on a person) is derived from local files
+and, for sessions agenttail owns, from its own ACP approvals. In stream mode it
+shows the kind of wait and the name of the tool only (`NEEDS YOU · permission ·
+Bash`), never a command, a path or any text the agent wrote; the same holds for
+desktop notifications, the tab title and the favicon. Notifications use the
+browser's own Notification API on the local page; nothing is sent anywhere.
 
 ## Privacy
 

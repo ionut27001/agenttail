@@ -1841,6 +1841,7 @@ function resetView() {
   state.lastEditedPath = null;
   state.state = 'finished';
   state.stateDetail = '';
+  state.attention = null;
   state.showEmpty = false;
   state.historyTotal = 0;
   state.historySeen = 0;
@@ -1872,6 +1873,14 @@ function statusLabel() {
   const background = st === 'idle' && /background job/.test(state.stateDetail || '');
   text.textContent = st === 'live' ? 'LIVE' : st === 'idle' ? (background ? 'IDLE · BG' : 'IDLE') : 'FINISHED';
   text.title = state.stateDetail || '';
+  // An agent blocked on you says so where the state is shown.
+  const waiting = attnNeeds(state.attention);
+  dot.classList.toggle('needs-you', waiting);
+  if (waiting) {
+    text.textContent = 'NEEDS YOU';
+    text.title = attnTitle(state.attention);
+    dot.title = text.title;
+  }
   if (st !== 'live') closeStreamingThinking();
   $('replayBtn').disabled = st === 'live' || !state.historyDone;
   updateChatPill();
@@ -1904,6 +1913,7 @@ async function openSession(id) {
     state.prices = data.prices;
     state.state = data.session.state || (data.session.live ? 'live' : null);
     state.stateDetail = data.session.stateDetail || '';
+    state.attention = data.session.attention || null;
     state.historyTotal = Number(data.historyCount) || 0;
     state.historySeen = 0;
     document.body.classList.add('loading-session');
@@ -1975,6 +1985,7 @@ async function openSession(id) {
     state.live = !!data.live;
     if (data.state) state.state = data.state;
     if (data.stateDetail) state.stateDetail = data.stateDetail;
+    if (data.attention !== undefined) state.attention = data.attention;
     if (data.state === 'finished') {
       activity.kind = 'done';
       activity.pane = null;
@@ -2095,6 +2106,48 @@ function dotChar(st) {
   return st === 'live' ? '●' : st === 'idle' ? '◐' : '○';
 }
 
+/* ---------- attention ("needs you"): shared by the picker, overview, wall and inbox ---------- */
+const ATTENTION_VIA = {
+  acp: 'agenttail (ACP)',
+  'status-file': "Claude Code's status file",
+  hook: 'a Claude Code hook',
+  log: 'the session log',
+  transcript: 'the transcript',
+};
+
+function attnNeeds(att) {
+  return !!att && att.level === 'needs-you';
+}
+
+/** NEEDS YOU · permission · Bash (names only: the server never sends command text). */
+function attnLabel(att) {
+  if (!att) return '';
+  if (att.level === 'ready') return 'READY';
+  if (att.level !== 'needs-you') return '';
+  const bits = ['NEEDS YOU'];
+  if (att.reason && att.reason !== 'unknown') bits.push(att.reason);
+  if (att.tool) bits.push(att.tool);
+  return bits.join(' · ');
+}
+
+/** Tooltip: what, how it was seen and how sure we are. */
+function attnTitle(att) {
+  if (!att || att.level === 'none') return '';
+  const bits = [attnLabel(att)];
+  if (att.detail) bits.push(att.detail);
+  if (att.via) bits.push(`seen via ${ATTENTION_VIA[att.via] || att.via}`);
+  if (att.certainty) bits.push(att.certainty);
+  if (att.since) bits.push(`began ${fmtRelative(att.since)}`);
+  return bits.join(' — ');
+}
+
+/** Needs-you sessions first, otherwise the order the server gave. */
+function attnFirst(list) {
+  return list.map((s, i) => [s, i])
+    .sort(([a, i], [b, j]) => (attnNeeds(b.attention) ? 1 : 0) - (attnNeeds(a.attention) ? 1 : 0) || i - j)
+    .map(([s]) => s);
+}
+
 async function loadSources() {
   const sel = $('sourceSelect');
   const fallback = [
@@ -2139,6 +2192,7 @@ function sessionOption(s) {
   const title = String(s.title || '').replace(/\s+/g, ' ').trim().slice(0, 60) || s.id.slice(0, 8);
   const ws = s.cwd ? s.cwd.replace(/[\\/]+$/, '').split(/[\\/]/).filter(Boolean).pop() : '';
   const bits = [`${dotChar(s.state)} ${title}${s.owned ? ' ◈' : ''}`];
+  if (attnNeeds(s.attention)) bits.push(attnLabel(s.attention));
   if (ws) bits.push(ws);
   bits.push(shortId(s.id));
   bits.push(fmtRelative(s.lastEventAt || s.mtimeMs));
@@ -2157,6 +2211,8 @@ function sessionOption(s) {
     `id ${s.id}`,
     s.owned ? 'owned by agenttail (◈)' : (s.source === 'dsh' ? 'started outside agenttail, view only' : ''),
     `state: ${s.state}${s.stateDetail ? ' — ' + s.stateDetail : ''}`,
+    attnTitle(s.attention),
+    s.source === 'antigravity' ? 'approval prompts are not visible for Antigravity' : '',
     s.model ? `model: ${s.provider ? s.provider + '/' : ''}${s.model}` : '',
     s.preset ? `permission: ${s.preset}` : '',
     s.policy ? `approval policy: ${s.policy}` : '',
@@ -2176,6 +2232,8 @@ function sessionFullTitle(s) {
     `id ${s.id}`,
     s.owned ? 'owned by agenttail (◈)' : (s.source === 'dsh' ? 'started outside agenttail, view only' : ''),
     `state: ${s.state}${s.stateDetail ? ' — ' + s.stateDetail : ''}`,
+    attnTitle(s.attention),
+    s.source === 'antigravity' ? 'approval prompts are not visible for Antigravity' : '',
     s.model ? `model: ${s.provider ? s.provider + '/' : ''}${s.model}` : '',
     s.preset ? `permission: ${s.preset}` : '',
     s.policy ? `approval policy: ${s.policy}` : '',
@@ -2195,7 +2253,8 @@ function updateSessionButton() {
   const sid = $('sessionIdText');
   if (s) {
     dot.textContent = dotChar(s.state);
-    dot.style.color = s.state === 'live' ? 'var(--green)' : s.state === 'idle' ? 'var(--amber)' : 'var(--muted)';
+    dot.style.color = attnNeeds(s.attention) ? 'var(--amber)' : s.state === 'live' ? 'var(--green)' : s.state === 'idle' ? 'var(--amber)' : 'var(--muted)';
+    dot.classList.toggle('needs-you', attnNeeds(s.attention));
     title.textContent = `${s.owned ? '◈ ' : ''}${String(s.title || s.id).replace(/\s+/g, ' ').trim() || s.id}`;
     sid.textContent = shortId(s.id);
     $('sessionButton').title = sessionFullTitle(s);
@@ -2222,6 +2281,7 @@ function sessionMenuSearchText(s) {
     s.id,
     s.state,
     s.stateDetail,
+    attnNeeds(s.attention) ? 'needs you' : '',
   ].filter(Boolean).join(' ').toLowerCase();
 }
 
@@ -2317,6 +2377,7 @@ function buildSessionMenu(list, emptyCount) {
   for (const s of list) {
     const ws = s.cwd ? s.cwd.replace(/[\\/]+$/, '').split(/[\\/]/).filter(Boolean).pop() : '';
     const meta = [
+      attnNeeds(s.attention) ? attnLabel(s.attention) : '',
       ws,
       shortId(s.id),
       s.owned ? '◈ owned' : 'view only',
@@ -2335,6 +2396,7 @@ function buildSessionMenu(list, emptyCount) {
       updateSessionButton();
     }, s.id === $('sessionSelect').value);
     row.dataset.sessionId = s.id;
+    row.classList.toggle('needs-you', attnNeeds(s.attention));
     row._searchText = sessionMenuSearchText(s);
   }
   const empty = $('sessionEmpty');
@@ -2373,12 +2435,12 @@ async function loadSessions(initial) {
     if (target && target.empty) state.showEmpty = true;
   }
   const emptyCount = all.filter((s) => s.empty).length;
-  const list = state.showEmpty
+  const list = attnFirst(state.showEmpty
     ? [...all.filter((s) => !s.empty), ...all.filter((s) => s.empty)]
-    : all.filter((s) => !s.empty);
+    : all.filter((s) => !s.empty));
   state.sessions = list;
   const key = state.source + '::' + (state.showEmpty ? '1' : '0') + '::' + list
-    .map((s) => [s.id, s.state, s.title, s.steps, s.tokens, s.cost, s.lastEventAt, s.subagents].join('~'))
+    .map((s) => [s.id, s.state, s.title, s.steps, s.tokens, s.cost, s.lastEventAt, s.subagents, attnLabel(s.attention)].join('~'))
     .join('|');
   if (!initial && key === sessionKey) return;
   sessionKey = key;
@@ -3152,7 +3214,7 @@ function updateActivityBar() {
   const loadFill = $('loadFill');
   let icon = '·';
   let text = 'CONNECTING';
-  bar.classList.remove('idle', 'done', 'working', 'thinking', 'running', 'editing', 'replying', 'error', 'loading');
+  bar.classList.remove('idle', 'done', 'working', 'thinking', 'running', 'editing', 'replying', 'error', 'loading', 'needs-you');
   if (loading) {
     const total = state.historyTotal || 0;
     const seen = state.historySeen || 0;
@@ -3169,6 +3231,9 @@ function updateActivityBar() {
       icon = transient.kind === 'error' ? '✗' : transient.kind === 'jobDone' ? '✓' : '·';
       text = transient.text;
       bar.classList.add(transient.kind === 'error' ? 'error' : 'working');
+    } else if (attnNeeds(state.attention)) {
+      // Blocked on a person: say so, whatever the last action was.
+      icon = '⚠'; text = `${attnLabel(state.attention)}${state.attention.since ? ` · ${fmtAgo(Date.now() - state.attention.since)}` : ''}`; bar.classList.add('needs-you');
     } else if (activity.kind === 'running') {
       icon = '⚙'; text = `RUNNING  ${activity.label} · ${fmtActivityTime(Date.now() - activity.startedAt)}`; bar.classList.add('running', 'working');
     } else if (activity.kind === 'editing') {
@@ -3180,12 +3245,12 @@ function updateActivityBar() {
     } else if (activity.kind === 'done') {
       icon = '✓'; text = 'DONE'; bar.classList.add('done');
     } else {
-      icon = '⏸'; text = `IDLE · waiting for you · ${fmtAgo(Date.now() - activity.lastEventAt)}`; bar.classList.add('idle');
+      icon = '⏸'; text = `IDLE · ready · ${fmtAgo(Date.now() - activity.lastEventAt)}`; bar.classList.add('idle');
     }
   }
   if (iconEl) iconEl.textContent = icon;
   if (textEl) {
-    if (activity.kind === 'thinking' && !transient && !loading) {
+    if (activity.kind === 'thinking' && !transient && !loading && !attnNeeds(state.attention)) {
       textEl.textContent = '';
       textEl.append(document.createTextNode('THINKING'));
       const dots = document.createElement('span');
