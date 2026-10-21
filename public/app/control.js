@@ -223,12 +223,25 @@
     if (!option || !select.value || select.value === option.current) return;
     control.modelBusy = true;
     select.disabled = true;
+    const post = (confirmDanger) => controlFetch('/api/control/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: state.sessionId, configId: option.id, value: select.value, ...(confirmDanger ? { confirmDanger: true } : {}) }),
+    });
     try {
-      const data = await controlFetch('/api/control/config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: state.sessionId, configId: option.id, value: select.value }),
-      });
+      let data;
+      try {
+        data = await post(false);
+      } catch (err) {
+        // A mode that removes the agent's permission checks needs the same yes as starting in it.
+        if (err.status === 400 && /requires explicit confirmation/.test(err.message)
+          && window.confirm(`${select.selectedOptions[0]?.textContent || select.value} removes the agent's permission checks (${err.message}). Switch anyway?`)) {
+          data = await post(true);
+        } else {
+          select.value = option.current || select.value;
+          throw err;
+        }
+      }
       if (data && data.session) control.current = { ...control.current, ...data.session };
       setStatus(`${option.name || 'mode'} → ${select.selectedOptions[0]?.textContent || select.value}`);
     } catch (err) {
@@ -407,8 +420,16 @@
   function upsertApproval(approval) {
     if (!approval || !approval.approvalId) return;
     const index = control.approvals.findIndex((a) => a.approvalId === approval.approvalId);
-    if (index >= 0) control.approvals[index] = approval;
-    else control.approvals.push(approval);
+    if (index >= 0) {
+      // The card changed under the reviewer: hold Approve for a moment so a click aimed at the old one cannot land on the new one.
+      if ((control.approvals[index].revision || 1) !== (approval.revision || 1)) {
+        control.holdApproveUntil = Date.now() + 1200;
+        setTimeout(renderApproval, 1250);
+      }
+      control.approvals[index] = approval;
+    } else {
+      control.approvals.push(approval);
+    }
     renderApproval();
   }
 
@@ -426,8 +447,16 @@
    */
   function approvalText(approval) {
     const parts = [];
-    if (approval.canApprove === false) {
+    if (approval.approveBlock === 'no-details') {
+      parts.push('The agent sent no command or file details, so there is nothing to review. It cannot be approved here. Reject it, or Stop the turn.');
+    } else if (approval.canApprove === false) {
       parts.push('This agent offered no allow-once option, so it cannot be approved here. Reject it, or Stop the turn.');
+    }
+    if ((approval.revision || 1) > 1) {
+      const what = Array.isArray(approval.changed) && approval.changed.length
+        ? `the agent changed its ${approval.changed.join(' and ')} after this first appeared. What is shown is the latest version.`
+        : 'the agent added details after this first appeared. What is shown is the latest version.';
+      parts.push(`UPDATED: ${what}`);
     }
     if (approval.command) parts.push(`$ ${approval.command}`);
     const diffs = approval.diffs && approval.diffs.length ? approval.diffs : (approval.diff ? [approval.diff] : []);
@@ -438,7 +467,7 @@
     if (!parts.length || (!approval.command && !diffs.length && !places.length)) {
       if (approval.content) parts.push(approval.content);
       else if (approval.rawInput) parts.push(JSON.stringify(approval.rawInput, null, 2));
-      else parts.push('(the agent sent no command or file details)');
+      else if (approval.approveBlock !== 'no-details') parts.push('(the agent sent no command or file details)');
     }
     if (approval.truncated) parts.push('(the input is larger than what is shown here)');
     if (approval.title) parts.push(`the agent calls this: ${approval.title}`);
@@ -466,8 +495,11 @@
     }
     $c('approvalTool').textContent = approvalHead(approval);
     $c('approvalDetail').textContent = approvalText(approval);
-    $c('approvalApprove').disabled = control.busy || approval.canApprove === false;
-    $c('approvalApprove').title = approval.canApprove === false ? 'No allow-once option was offered' : '';
+    const held = Date.now() < (control.holdApproveUntil || 0);
+    $c('approvalApprove').disabled = control.busy || approval.canApprove === false || held;
+    $c('approvalApprove').title = approval.approveBlock === 'no-details'
+      ? 'The agent sent no details to review'
+      : (approval.canApprove === false ? 'No allow-once option was offered' : (held ? 'This request just changed: read it again' : ''));
     panel.classList.remove('hidden');
     badge.classList.remove('hidden');
     badge.textContent = control.approvals.length > 1
@@ -488,14 +520,16 @@
     $c('approvalApprove').disabled = true;
     $c('approvalReject').disabled = true;
     try {
-      await controlFetch('/api/control/approval', {
+      const result = await controlFetch('/api/control/approval', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: state.sessionId, approvalId: approval.approvalId, decision, reason }),
+        // The revision says which version of the card was on screen; a card that changed since is refused.
+        body: JSON.stringify({ id: state.sessionId, approvalId: approval.approvalId, decision, reason, revision: approval.revision || 1 }),
       });
       control.approvals = control.approvals.filter((a) => a.approvalId !== approval.approvalId);
       $c('approvalReason').value = '';
-      setStatus(decision === 'approve' ? 'approved' : 'rejected');
+      if (result && result.decision === 'cancelled') setStatus('rejected: the agent offered no reject option, so the request was cancelled');
+      else setStatus(decision === 'approve' ? 'approved' : 'rejected');
     } catch (err) {
       control.lastError = err.message;
       setStatus(err.message, 'err');
@@ -663,7 +697,11 @@
       if (harnesses.length) picker.value = data.defaultHarness || harnesses[0].id;
       harnessRow().classList.toggle('hidden', harnesses.length < 2);
       if (harnesses.length) applyDialogHarness();
-      else $c('dlgProfile').textContent = `profile: ${data.dshProfile || 'acp'}`;
+      else {
+        $c('dlgProfile').textContent = `profile: ${data.dshProfile || 'acp'}`;
+        // An empty list is a config mistake (a "harnesses" block with nothing usable), not "dsh".
+        $c('dlgErr').textContent = data.harnessesError || 'no harness is configured: check the "harnesses" block of control.json';
+      }
     } catch (err) {
       $c('dlgErr').textContent = err.message;
     }

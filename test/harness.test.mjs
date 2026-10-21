@@ -19,7 +19,7 @@ process.env.DSH_SESSIONS_ROOT = path.join(tmp, 'sessions');
 
 const { ControlManager, ControlSession } = require('../lib/control');
 const {
-  chooseOption, toolCallFacts, normalizeApproval, publicApproval, normalizeConfigOptions, probeCaps, modelChoices,
+  chooseOption, toolCallFacts, mergeFacts, normalizeApproval, publicApproval, normalizeConfigOptions, probeCaps, modelChoices,
 } = require('../lib/acp-normalize');
 const { parseHarnesses, buildEnv, commandLine, describeHarness, DSH_PRESETS } = require('../lib/harness');
 
@@ -115,6 +115,17 @@ try {
     const r4 = await mgr.approval(fourth.id, fourth.approval.approvalId, 'reject');
     check(r4.optionId === 'reject-always', 'Reject uses reject_always when it is the only reject option', r4.optionId);
     await mgr.close(fourth.id);
+
+    // No reject option at all: the request is cancelled, which is a success and is audited.
+    const fifth = await beginAndAsk(mgr, 'no-reject-option');
+    check(fifth.approval && fifth.approval.canReject === false, 'the agent really offered no reject option');
+    const cancelled = await mgr.approval(fifth.id, fifth.approval.approvalId, 'reject', 'not this');
+    check(cancelled.decision === 'cancelled' && cancelled.optionId === null && cancelled.hadReason === true, 'rejecting without a reject option answers cancelled and succeeds', JSON.stringify(cancelled));
+    check(fifth.session.pendingApprovals().length === 0, 'the cancelled request is closed');
+    await mgr.audit.chain;
+    const auditLines = fs.readFileSync(path.join(tmp, 'options-audit.log'), 'utf8').trim().split(/\r?\n/).map((line) => JSON.parse(line));
+    check(auditLines.some((entry) => entry.action === 'reject' && entry.outcome === 'cancelled' && entry.approvalId === fifth.approval.approvalId), 'the cancellation is audited', JSON.stringify(auditLines.slice(-2)));
+    await mgr.close(fifth.id);
   }
 
   console.log('\napproval normaliser');
@@ -142,11 +153,20 @@ try {
     check(argv.command === 'git status', 'an argv array command is shown as one line');
     const big = toolCallFacts({ toolCallId: 't5', content: [{ type: 'diff', path: 'big', oldText: '', newText: 'x'.repeat(30000) }] });
     check(big.truncated === true && big.diff.newText.length < 30000, 'an oversized diff is cut and flagged');
-    const approval = normalizeApproval({ harness: 'h', requestId: 7, toolCall: { toolCallId: 't1', title: 'T' }, options: allowFirst });
+    const approval = normalizeApproval({ harness: 'h', requestId: 7, toolCall: { toolCallId: 't1', title: 'T', rawInput: { command: 'ls' } }, options: allowFirst });
     check(approval.origin === 'harness' && approval.harness === 'h' && approval.approvalId === '7', 'normalised approvals carry origin and harness');
     const shown = publicApproval(approval);
     check(shown.canApprove === true && shown.canReject === true && shown.kind === shown.toolKind, 'the public approval says what can be decided');
-    check(publicApproval(normalizeApproval({ requestId: 1, toolCall: {}, options: [{ optionId: 'a', kind: 'allow_always' }] })).canApprove === false, 'no allow_once means it cannot be approved');
+    check(publicApproval(normalizeApproval({ requestId: 1, toolCall: { rawInput: { command: 'ls' } }, options: [{ optionId: 'a', kind: 'allow_always' }] })).canApprove === false, 'no allow_once means it cannot be approved');
+    const bare = publicApproval(normalizeApproval({ requestId: 2, toolCall: { toolCallId: 't9', title: 'Do something' }, options: allowFirst }));
+    check(bare.canApprove === false && bare.approveBlock === 'no-details' && bare.canReject === true, 'a request with no facts at all cannot be approved but can be rejected', JSON.stringify(bare));
+    check(shown.approveBlock === null && shown.revision === 1 && Array.isArray(shown.changed) && shown.changed.length === 0, 'a normal request starts at revision 1 with nothing changed');
+    const folded = normalizeApproval({ requestId: 3, toolCall: { toolCallId: 't1', title: 'edit', kind: 'edit', locations: [{ path: 'a.txt' }] }, options: allowFirst });
+    check(mergeFacts(folded, toolCallFacts({ toolCallId: 't1', title: 'Edit a.txt', kind: 'edit', locations: [{ path: 'a.txt' }, { path: 'b.txt' }], content: [{ type: 'diff', path: 'a.txt', oldText: 'x', newText: 'y' }], rawInput: { file_path: 'a.txt' } })) === true, 'mergeFacts reports that something new arrived');
+    check(folded.diff?.newText === 'y' && folded.locations.length === 2 && folded.title === 'Edit a.txt' && folded.changed.length === 0, 'new facts fill what was missing and nothing already shown is replaced', JSON.stringify(folded));
+    check(mergeFacts(folded, toolCallFacts({ toolCallId: 't1', kind: 'edit', locations: [{ path: 'a.txt' }], content: [{ type: 'diff', path: 'a.txt', oldText: 'x', newText: 'y' }] })) === false, 'the same facts again change nothing');
+    check(mergeFacts(folded, toolCallFacts({ toolCallId: 't1', content: [{ type: 'diff', path: 'a.txt', oldText: 'x', newText: 'EVIL' }] })) === true && folded.diff.newText === 'EVIL' && folded.changed.join() === 'diff', 'a diff that changes is replaced and flagged as changed');
+    check(mergeFacts(folded, toolCallFacts({ toolCallId: 't1', title: 'x' })) === false && folded.diff.newText === 'EVIL', 'an update with no facts hides none');
   }
 
   console.log('\napproval cards from the wire');
@@ -167,6 +187,57 @@ try {
     check(lying.approval?.command === 'rm -rf build' && lying.approval.title === 'Read a file', 'the raw command is on the card next to a harmless title', JSON.stringify(lying.approval));
     await mgr.approval(lying.id, lying.approval.approvalId, 'reject');
     await mgr.close(lying.id);
+  }
+
+  console.log('\napproval facts that arrive after the request');
+  {
+    const mgr = manager(legacy, 'late-facts');
+    const ask = async (profile) => {
+      process.env.FAKE_ACP_PROFILE = profile;
+      const begun = await mgr.begin({ cwd: workspace, preset: 'workspace-write' });
+      const session = mgr.get(begun.session.id);
+      const updates = [];
+      session.on('approval-update', (event) => updates.push(event));
+      await mgr.startFirst(begun.session.id, { message: 'go' });
+      await openApproval(session);
+      return { id: begun.session.id, session, updates };
+    };
+    const settled = async (session, ready) => {
+      const until = Date.now() + 5000;
+      while (Date.now() < until && !ready(session.pendingApprovals()[0] || {})) await sleep(25);
+      return session.pendingApprovals()[0] || null;
+    };
+
+    const late = await ask('facts-late');
+    const card = await settled(late.session, (a) => a.diff);
+    check(card?.diff?.newText === 'const a = 2;' && card.diff.oldText === 'const a = 1;', 'a diff that arrives after a path-only tool call reaches the card', JSON.stringify(card));
+    check(card?.locations?.[0]?.path === 'src/a.js' && card.title === 'Edit src/a.js', 'the path that was already shown is still there', JSON.stringify(card?.locations));
+    check(card?.revision === 2 && late.updates.length === 1 && late.updates[0].revision === 2, 'the card moved to a new revision and the page was told', `rev ${card?.revision}, ${late.updates.length} updates`);
+    const stale = await expectStatus(mgr.approval(late.id, card.approvalId, 'approve', '', 1), 409);
+    check(stale.ok && /changed/.test(stale.message), 'approving the revision the reviewer saw before the diff arrived is refused', stale.message);
+    const blind = await expectStatus(mgr.approval(late.id, card.approvalId, 'approve'), 409);
+    check(blind.ok, 'approving without saying which revision was seen is refused once the card has changed', blind.message);
+    check(late.session.pendingApprovals().length === 1, 'a refused approval stays open');
+    const okay = await mgr.approval(late.id, card.approvalId, 'approve', '', 2);
+    check(okay.decision === 'approve' && okay.optionId === 'allow-once', 'approving the current revision works', JSON.stringify(okay));
+    await mgr.close(late.id);
+
+    const swap = await ask('command-changes');
+    const swapped = await settled(swap.session, (a) => a.command === 'rm -rf build');
+    check(swapped?.command === 'rm -rf build' && swapped.changed.includes('command') && swapped.revision === 2, 'a command that changes after it was shown shows the new one and says it changed', JSON.stringify(swapped));
+    const oldOk = await expectStatus(mgr.approval(swap.id, swapped.approvalId, 'approve', '', 1), 409);
+    check(oldOk.ok, 'the old revision cannot approve the new command', oldOk.message);
+    const rejectedSwap = await mgr.approval(swap.id, swapped.approvalId, 'reject');
+    check(rejectedSwap.decision === 'reject', 'a changed card can always be rejected, with no revision');
+    await mgr.close(swap.id);
+
+    const bare = await ask('no-facts');
+    check(bare.session.pendingApprovals()[0]?.canApprove === false && bare.session.pendingApprovals()[0].approveBlock === 'no-details', 'a request with no details at all is marked as not approvable');
+    const nothing = await expectStatus(mgr.approval(bare.id, bare.session.pendingApprovals()[0].approvalId, 'approve', '', 1), 409);
+    check(nothing.ok && /no command or file details/.test(nothing.message), 'and the server refuses to approve it', nothing.message);
+    const noReject = await mgr.approval(bare.id, bare.session.pendingApprovals()[0].approvalId, 'reject');
+    check(noReject.decision === 'reject' && bare.session.pendingApprovals().length === 0, 'it can still be rejected');
+    await mgr.close(bare.id);
   }
 
   console.log('\nharness registry');
@@ -234,6 +305,21 @@ try {
     const described = describeHarness(claude, {});
     check(described.commandLine.endsWith('adapter.js "with space"') && described.viewable === false && described.presets[1].danger === true, 'the description has a quoted command line and the danger flag', described.commandLine);
     check(describeHarness(registry.get('dsh'), {}).viewable === true, 'only log-linked harnesses are viewable');
+
+    // Legacy keys apply only when "harnesses" is absent; a block that yields nothing is an error, not dsh.
+    const emptyBlock = parseHarnesses({ dshCommand: 'legacy-bin', harnesses: {} }, base);
+    check(emptyBlock.list.length === 0 && emptyBlock.get('dsh') === null && emptyBlock.get() === null && emptyBlock.defaultId === null, 'an empty "harnesses" block does not fall back to the legacy dsh harness');
+    check(/"harnesses"/.test(emptyBlock.error || '') && emptyBlock.describe({}).length === 0, 'an empty registry says why, in words, and lists nothing');
+    const badBlock = parseHarnesses({ harnesses: { 'bad id': { command: 'x' }, nocommand: { label: 'n' }, wrong: 5 } }, base);
+    check(badBlock.list.length === 0 && /bad id/.test(badBlock.error || '') && /nocommand/.test(badBlock.error), 'an all-invalid block names the entries that were skipped', badBlock.error);
+    check(parseHarnesses({ harnesses: [] }, base).list.length === 0 && parseHarnesses({ harnesses: 'dsh' }, base).list.length === 0 && /object/.test(parseHarnesses({ harnesses: null }, base).error || ''), 'a "harnesses" value that is not an object is an empty registry with an error');
+    check(parseHarnesses({ harnesses: { a: { command: 'a-cmd' } } }, base).error === null && legacyRegistry.error === null, 'a usable registry has no error');
+    {
+      const brokenMgr = manager({ dshCommand: process.execPath, dshArgs: [fakeAcp], harnesses: {} }, 'emptyblock');
+      const none = await expectStatus(brokenMgr.begin({ cwd: workspace }), 400);
+      check(none.ok && /"harnesses"/.test(none.message) && !/unknown harness/.test(none.message), 'starting a session with no usable harness returns the config error', none.message);
+      check(brokenMgr.sessions.size === 0, 'and starts nothing');
+    }
 
     const file = path.join(tmp, 'cfg-file.json');
     fs.writeFileSync(file, JSON.stringify({ workspaces: [workspace], harnesses: { a: { command: 'a-cmd' }, b: { command: 'b-cmd' } } }));
@@ -344,11 +430,23 @@ try {
           ],
         }),
         legacy: fake('legacy-modes', { presets: [{ id: 'code', mode: 'code' }] }),
+        guarded: fake('modes,free-option', {
+          presets: [
+            { id: 'ask', label: 'Ask', mode: 'default' },
+            { id: 'yolo', label: 'Bypass', mode: 'bypass', danger: true },
+            { id: 'hi', label: 'High effort', config: { configId: 'reasoning_effort', value: 'high' }, danger: true },
+          ],
+        }),
         nomode: fake('', { presets: [{ id: 'plan', mode: 'plan' }] }),
         nomodel: fake('no-model,no-images,no-close'),
         crash: fake('crash-on-start'),
         dies: fake('crash-on-prompt'),
         mcp: fake('mcp-http,auth-methods,embedded-context'),
+        cardfinish: fake('finish-with-card'),
+        carderror: fake('error-with-card'),
+        late: fake('late-permission'),
+        huge: fake('oversize-line'),
+        refuses: fake('prompt-error'),
       },
     }, 'sessions');
 
@@ -375,8 +473,8 @@ try {
     const asking = await mgr.begin({ cwd: workspace, harness: 'moded', preset: 'plan' });
     const modeOpt = asking.session.caps.config.find((o) => o.category === 'mode');
     check(modeOpt && modeOpt.current === 'plan' && marks().includes('config:mode=plan'), 'a mode preset is applied right after session/new', JSON.stringify(modeOpt));
-    const switched = await mgr.setConfig(asking.session.id, 'mode', 'bypass');
-    check(switched.session.caps.config.find((o) => o.id === 'mode').current === 'bypass', 'the mode can be changed in the session');
+    const switched = await mgr.setConfig(asking.session.id, 'mode', 'plan');
+    check(switched.session.caps.config.find((o) => o.id === 'mode').current === 'plan', 'the mode can be changed in the session');
     const badValue = await expectStatus(mgr.setConfig(asking.session.id, 'mode', 'nonsense'), 400);
     const badId = await expectStatus(mgr.setConfig(asking.session.id, 'nope', 'x'), 400);
     check(badValue.ok && badId.ok, 'only settings and values the agent listed are accepted');
@@ -384,6 +482,26 @@ try {
     const cfg = await mgr.begin({ cwd: workspace, harness: 'moded', preset: 'cfg' });
     check(marks().includes('config:reasoning_effort=high') && cfg.session.preset === 'cfg', 'a config preset is applied through set_config_option');
     await mgr.close(cfg.session.id);
+
+    // The mode picker lists every value the agent offers: a value that is a danger preset needs the same confirmation as starting in it.
+    const guarded = await mgr.begin({ cwd: workspace, harness: 'guarded', preset: 'ask' });
+    const modeOf = () => mgr.get(guarded.session.id).statePayload().caps.config.find((o) => o.id === 'mode').current;
+    fs.rmSync(mark, { force: true });
+    const sneaky = await expectStatus(mgr.setConfig(guarded.session.id, 'mode', 'bypass'), 400);
+    check(sneaky.ok && /yolo requires explicit confirmation/.test(sneaky.message), 'switching a live session to a danger mode needs the confirmation', sneaky.message);
+    check(modeOf() === 'default' && !marks().includes('config:mode=bypass'), 'the refused switch never reached the agent');
+    const sneakyFalse = await expectStatus(mgr.setConfig(guarded.session.id, 'mode', 'bypass', 'true'), 400);
+    check(sneakyFalse.ok, 'only an explicit true confirms');
+    const sneakyConfig = await expectStatus(mgr.setConfig(guarded.session.id, 'reasoning_effort', 'high'), 400);
+    check(sneakyConfig.ok && /hi requires explicit confirmation/.test(sneakyConfig.message), 'a danger preset set through a config value is guarded too', sneakyConfig.message);
+    const safeSwitch = await mgr.setConfig(guarded.session.id, 'mode', 'plan');
+    check(safeSwitch.session.caps.config.find((o) => o.id === 'mode').current === 'plan', 'a mode that is no danger preset switches without a confirmation');
+    const confirmed = await mgr.setConfig(guarded.session.id, 'mode', 'bypass', true);
+    check(confirmed.session.caps.config.find((o) => o.id === 'mode').current === 'bypass', 'a confirmed switch to the danger mode is applied');
+    const free = await expectStatus(mgr.setConfig(guarded.session.id, 'note', 'anything at all'), 400);
+    check(free.ok && /no choices/.test(free.message), 'an option with no declared choices accepts no value', free.message);
+    check(!marks().some((line) => line.startsWith('config:note=')), 'nothing was sent to the agent for it');
+    await mgr.close(guarded.session.id);
 
     const noConfirm = await expectStatus(mgr.begin({ cwd: workspace, harness: 'moded', preset: 'yolo' }), 400);
     check(noConfirm.ok && /yolo requires explicit confirmation/.test(noConfirm.message), 'a danger preset still needs the confirmation', noConfirm.message);
@@ -419,6 +537,76 @@ try {
     check(after.status === 'exited' && /Fake agent exited \(3\)/.test(after.error || ''), 'an exit is reported with the harness label', after.error);
     check(/model backend went away/.test(after.details), 'an exited session shows the child stderr in details', after.details);
 
+    // An approval never outlives its turn, and none is taken once Stop was pressed.
+    const turnOf = async (session, ms = 8000) => {
+      const until = Date.now() + ms;
+      while (Date.now() < until && session.running) await sleep(25);
+    };
+    for (const [name, label] of [['cardfinish', 'finishes'], ['carderror', 'fails']]) {
+      fs.rmSync(mark, { force: true });
+      const begun = await mgr.begin({ cwd: workspace, harness: name });
+      const session = mgr.get(begun.session.id);
+      const done = [];
+      session.on('approval-done', (event) => done.push(event));
+      await mgr.message(begun.session.id, 'go');
+      await sleep(150);
+      await turnOf(session);
+      check(session.running === false && session.pendingApprovals().length === 0, `a turn that ${label} with a card open leaves no card behind`, JSON.stringify(session.pendingApprovals()));
+      check(done.length === 1 && done[0].decision === 'cancelled' && session.statePayload().approvalCount === 0, 'the page is told the approval is gone', JSON.stringify(done));
+      check(marks().some((line) => /^reply:\d+:cancelled$/.test(line)), 'and the agent is answered "cancelled"', marks().join());
+      await mgr.close(begun.session.id);
+    }
+    {
+      fs.rmSync(mark, { force: true });
+      const begun = await mgr.begin({ cwd: workspace, harness: 'late' });
+      const session = mgr.get(begun.session.id);
+      const asked = [];
+      const done = [];
+      session.on('approval', (event) => asked.push(event));
+      session.on('approval-done', (event) => done.push(event));
+      await mgr.message(begun.session.id, 'go');
+      const first = await openApproval(session);
+      const stopped = await mgr.stop(begun.session.id);
+      check(stopped.cancelled === true && !!first, 'Stop cancels the open card');
+      await turnOf(session);
+      await sleep(100);
+      check(asked.length === 1 && session.pendingApprovals().length === 0, 'a permission request that arrives after Stop is not taken', `asked ${asked.length}, pending ${session.pendingApprovals().length}`);
+      check(marks().filter((line) => /^reply:\d+:cancelled$/.test(line)).length === 2, 'both the open one and the late one are answered "cancelled"', marks().join());
+      check(done.length === 1, 'only the card the page showed is reported done', JSON.stringify(done));
+      await mgr.close(begun.session.id);
+    }
+
+    // One oversized line from the agent must end that session, not the server.
+    const huge = await mgr.begin({ cwd: workspace, harness: 'huge' });
+    const hugeSession = mgr.get(huge.session.id);
+    await mgr.message(huge.session.id, 'hello');
+    const hugeUntil = Date.now() + 10000;
+    while (Date.now() < hugeUntil && hugeSession.status !== 'exited') await sleep(25);
+    const hugeState = hugeSession.statePayload();
+    check(hugeState.status === 'exited' && hugeState.controllable === false && hugeState.running === false, 'an oversized agent line ends the session instead of the server', JSON.stringify({ status: hugeState.status, running: hugeState.running }));
+    check(/exceeded the limit/.test(hugeState.error || ''), 'and the state says why', hugeState.error);
+    const again = await expectStatus(mgr.message(huge.session.id, 'again'), 409);
+    check(again.ok || again.status === 404, 'the dead session takes no more input', again.message);
+    const hugeExit = Date.now() + 10000;
+    while (Date.now() < hugeExit && mgr.sessions.has(huge.session.id)) await sleep(25);
+    check(!mgr.sessions.has(huge.session.id) && !!hugeSession.exit, 'its child is gone and the session is forgotten');
+
+    // A failing prompt with nobody listening for errors must not throw out of the session.
+    const direct0 = (await mgr.config.load()).harnesses.get('refuses');
+    const lonely = new ControlSession({ cwd: workspace, harness: direct0, preset: direct0.presets[0] });
+    await lonely.start();
+    check(lonely.listenerCount('error') === 0, 'the session under test really has no error listener');
+    lonely.send('hello');
+    const lonelyUntil = Date.now() + 8000;
+    while (Date.now() < lonelyUntil && lonely.running) await sleep(25);
+    check(lonely.running === false && /refused the request/.test(lonely.statePayload().error || ''), 'a failed prompt is recorded on a session nobody listens to', lonely.statePayload().error);
+    await lonely.close();
+    const refuses = await mgr.begin({ cwd: workspace, harness: 'refuses' });
+    await mgr.message(refuses.session.id, 'hello');
+    await sleep(300);
+    check(mgr.get(refuses.session.id).statePayload().status === 'idle' && /refused the request/.test(mgr.get(refuses.session.id).statePayload().error || ''), 'a manager session stays usable after a failed turn and shows the error');
+    await mgr.close(refuses.session.id);
+
     const rich = await mgr.begin({ cwd: workspace, harness: 'mcp' });
     check(rich.session.caps.mcp.http === true && rich.session.caps.prompt.embeddedContext === true && rich.session.caps.authMethods[0] === 'login', 'mcp, embedded context and auth methods reach the caps');
     await mgr.close(rich.session.id);
@@ -453,8 +641,17 @@ try {
           envPass: ['AGENTTAIL_TEST_PASS'],
           presets: [{ id: 'ask', label: 'Ask', mode: 'default' }, { id: 'plan', label: 'Plan', mode: 'plan' }],
         },
+        guarded: {
+          label: 'Guarded agent',
+          command: process.execPath,
+          args: [fakeAcp],
+          env: fakeEnv('modes'),
+          presets: [{ id: 'ask', label: 'Ask', mode: 'default' }, { id: 'yolo', label: 'Bypass', mode: 'bypass', danger: true }],
+        },
         broken: { label: 'Broken agent', command: process.execPath, args: [fakeAcp], env: fakeEnv('crash-on-start') },
         dies: { label: 'Dying agent', command: process.execPath, args: [fakeAcp], env: fakeEnv('crash-on-prompt') },
+        huge: { label: 'Chatty agent', command: process.execPath, args: [fakeAcp], env: fakeEnv('oversize-line') },
+        refuses: { label: 'Refusing agent', command: process.execPath, args: [fakeAcp], env: fakeEnv('prompt-error') },
       },
     }));
     const { spawn } = await import('node:child_process');
@@ -495,7 +692,7 @@ try {
         return { status: res.status, data };
       };
       const options = await call('GET', '/api/control/options');
-      check(options.status === 200 && options.data.harnesses.length === 4 && options.data.defaultHarness === 'dsh', 'options list every configured harness', JSON.stringify(options.data));
+      check(options.status === 200 && options.data.harnesses.length === 7 && options.data.defaultHarness === 'dsh', 'options list every configured harness', JSON.stringify(options.data));
       const moded = options.data.harnesses.find((h) => h.id === 'moded');
       check(moded.label === 'Moded agent' && moded.commandLine.includes('fake-acp.mjs') && moded.presets.length === 2 && moded.viewable === false, 'a harness is described by label, command line and presets');
       check(!JSON.stringify(options.data).includes('FAKE_ACP_PROFILE') && !JSON.stringify(options.data).includes('AGENTTAIL_TEST_PASS'), 'options never include a harness environment');
@@ -509,6 +706,10 @@ try {
       check(bad.status === 400, 'the config endpoint refuses a value the agent did not list', String(bad.status));
       const closed = await call('POST', '/api/control/close', { id: begun.data.session.id });
       check(closed.status === 200, 'the session closes');
+      const guardedBegin = await call('POST', '/api/control/session/begin', { cwd: workspace, harness: 'guarded', preset: 'ask' });
+      const unconfirmed = await call('POST', '/api/control/config', { id: guardedBegin.data.session.id, configId: 'mode', value: 'bypass' });
+      check(unconfirmed.status === 400 && /requires explicit confirmation/.test(unconfirmed.data.error), 'the config endpoint will not switch to a danger mode unconfirmed', JSON.stringify(unconfirmed.data));
+      await call('POST', '/api/control/close', { id: guardedBegin.data.session.id });
 
       const unknown = await call('POST', '/api/control/session/begin', { cwd: workspace, harness: 'nope' });
       check(unknown.status === 400, 'an unknown harness is a 400', String(unknown.status));
@@ -520,6 +721,17 @@ try {
       await sleep(600);
       const alive = await fetch(`${base}/api/sessions`);
       check(alive.ok, 'the server survives an agent dying mid-turn with nobody watching');
+      await call('POST', '/api/control/close', { id: dying.data.session.id });
+
+      const chatty = await call('POST', '/api/control/session/begin', { cwd: workspace, harness: 'huge' });
+      await call('POST', '/api/control/message', { id: chatty.data.session.id, text: 'hello' });
+      await sleep(2500);
+      check((await fetch(`${base}/api/sessions`)).ok, 'the server survives an agent that writes one oversized line, with nobody watching');
+      const refusing = await call('POST', '/api/control/session/begin', { cwd: workspace, harness: 'refuses' });
+      const refused = await call('POST', '/api/control/message', { id: refusing.data.session.id, text: 'hello' });
+      await sleep(600);
+      check(refused.status === 200 && (await fetch(`${base}/api/sessions`)).ok, 'the server survives a failed turn with nobody watching');
+      await call('POST', '/api/control/close', { id: refusing.data.session.id });
     } finally {
       try { proc.kill(); } catch { /* ignore */ }
     }

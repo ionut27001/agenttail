@@ -7,20 +7,31 @@
 //   only-allow-always    permission options are allow_always and reject_once only
 //   reject-always-only   permission options are allow_once and reject_always only
 //   reject-always-first  permission options listed reject_always, reject_once, allow_once
+//   no-reject-option     permission options are allow_once only
 //   diff-only            the tool call has a diff content block and no rawInput
 //   diff-inline          no tool_call update; the request carries two diffs (one a new file)
 //   deceptive-title      a harmless title over a destructive command (argv array)
+//   facts-late           a tool call with only a path, the request, then the diff in a tool_call_update
+//   command-changes      a tool call with one command, the request, then an update with a different command
+//   no-facts             a tool call with a title and nothing else
 //   modes                a `mode` config option (default, plan, bypass)
 //   legacy-modes         Session Modes (ask, code) in session/new and session/set_mode
+//   free-option         a select option (`note`) that declares no choices
 //   one-model, no-model  a one-value model option, or none
 //   no-images            promptCapabilities.image false (FAKE_ACP_NO_IMAGES does the same)
 //   embedded-context, mcp-http, auth-methods   other declared capabilities
 //   no-close             sessionCapabilities without close
 //   crash-on-start       exit 7 with a line on stderr when initialize arrives
 //   crash-on-prompt      exit 3 with a line on stderr when a prompt arrives
+//   oversize-line        a prompt is answered with 9 MiB on stdout and no newline
+//   prompt-error         a prompt is answered with a JSON-RPC error
+//   finish-with-card     a permission request goes out and the prompt ends at once, unanswered
+//   error-with-card      the same, but the prompt ends with a JSON-RPC error
+//   late-permission      a session/cancel is answered by one more permission request, then the prompt ends
 //   no-log               do not write the dsh-shaped session log (for non-dsh harnesses)
 // FAKE_ACP_MARK=<file> appends one line per session/new, config, mode and close
-// request; FAKE_ACP_ENV_FILE=<file> receives the names of the environment variables.
+// request, and one `reply:<id>:<outcome>` per answer to a permission request;
+// FAKE_ACP_ENV_FILE=<file> receives the names of the environment variables.
 import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
@@ -91,6 +102,9 @@ function modelOptions() {
     currentValue: 'high',
     options: [{ value: 'high', name: 'High' }],
   });
+  if (PROFILE.has('free-option')) {
+    out.push({ id: 'note', name: 'Note', category: 'other', type: 'select', currentValue: 'a', options: [] });
+  }
   if (PROFILE.has('modes')) {
     out.push({
       id: 'mode',
@@ -142,6 +156,7 @@ function permissionOptions() {
   if (PROFILE.has('only-allow-always')) return [allowAlways, rejectOnce];
   if (PROFILE.has('reject-always-only')) return [allowOnce, rejectAlways];
   if (PROFILE.has('reject-always-first')) return [rejectAlways, rejectOnce, allowOnce];
+  if (PROFILE.has('no-reject-option')) return [allowOnce];
   return [allowOnce, rejectOnce];
 }
 
@@ -167,11 +182,28 @@ function startTurn(sessionId, text) {
       options: permissionOptions(),
     },
   });
+  // More detail about the same tool call, after the request was raised.
+  if (spec.after) notify('session/update', { sessionId, update: { sessionUpdate: 'tool_call_update', toolCallId: callId, ...spec.after } });
 }
 
 // What the permission request is about.  `update` is sent first as a
 // tool_call (dsh style), `inline` rides on the request itself.
 function toolCallSpec() {
+  if (PROFILE.has('facts-late')) {
+    return {
+      update: { title: 'Edit src/a.js', kind: 'edit', status: 'pending', locations: [{ path: 'src/a.js' }] },
+      after: { status: 'pending', content: [{ type: 'diff', path: 'src/a.js', oldText: 'const a = 1;', newText: 'const a = 2;' }] },
+    };
+  }
+  if (PROFILE.has('command-changes')) {
+    return {
+      update: { title: 'Run a check', kind: 'execute', status: 'pending', rawInput: { command: 'echo safe' } },
+      after: { rawInput: { command: 'rm -rf build' } },
+    };
+  }
+  if (PROFILE.has('no-facts')) {
+    return { update: { title: 'Do something', status: 'pending' } };
+  }
   if (PROFILE.has('diff-only')) {
     return {
       update: {
@@ -292,6 +324,27 @@ rl.on('line', (line) => {
     return;
   }
   if (message.method === 'session/prompt') {
+    if (PROFILE.has('oversize-line')) {
+      process.stdout.write('x'.repeat(9 * 1024 * 1024));
+      return;
+    }
+    if (PROFILE.has('finish-with-card') || PROFILE.has('error-with-card')) {
+      const callId = 'call_card';
+      notify('session/update', {
+        sessionId: message.params.sessionId,
+        update: { sessionUpdate: 'tool_call', toolCallId: callId, title: 'pwsh', kind: 'other', rawInput: { command: 'echo card' } },
+      });
+      write({
+        jsonrpc: '2.0',
+        id: permissionId++,
+        method: 'session/request_permission',
+        params: { sessionId: message.params.sessionId, toolCall: { toolCallId: callId }, options: permissionOptions() },
+      });
+      if (PROFILE.has('error-with-card')) fail(message.id, -32000, 'the turn failed with a request still open (synthetic failure)');
+      else respond(message.id, { stopReason: 'end_turn' });
+      return;
+    }
+    if (PROFILE.has('prompt-error')) { fail(message.id, -32000, 'the model backend refused the request (synthetic failure)'); return; }
     if (PROFILE.has('crash-on-prompt')) {
       process.stderr.write('fake-acp: the model backend went away (synthetic failure)\n');
       process.exit(3);
@@ -313,6 +366,14 @@ rl.on('line', (line) => {
     return;
   }
   if (message.method === 'session/cancel') {
+    if (pendingPrompt && PROFILE.has('late-permission')) {
+      write({
+        jsonrpc: '2.0',
+        id: permissionId++,
+        method: 'session/request_permission',
+        params: { sessionId: pendingPrompt.sessionId, toolCall: { toolCallId: pendingPrompt.callId }, options: permissionOptions() },
+      });
+    }
     if (pendingPrompt) {
       const cancelled = pendingPrompt;
       append([
@@ -337,6 +398,9 @@ rl.on('line', (line) => {
   }
   if (message.id !== undefined && message.method === undefined) {
     // Permission response.
+    mark(`reply:${message.id}:${message.result?.outcome?.outcome || 'none'}`);
+    // late-permission keeps the turn open until the session/cancel itself arrives.
+    if (PROFILE.has('late-permission') && message.result?.outcome?.outcome === 'cancelled') return;
     if (pendingPrompt && message.id === pendingPrompt.id) {
       const outcome = message.result?.outcome;
       if (outcome?.outcome === 'selected' && outcome.optionId === 'allow-once') {

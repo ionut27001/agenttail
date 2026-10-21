@@ -35,7 +35,7 @@ function check(cond, msg, extra) {
 }
 
 const servers = [];
-async function launch({ port, allow = false, stream = false, token = true }) {
+async function launch({ port, allow = false, stream = false, token = true, profile = '' }) {
   const args = ['server.js'];
   if (allow) args.push('--allow-control');
   if (!stream) args.push('--no-stream-mode');
@@ -50,6 +50,7 @@ async function launch({ port, allow = false, stream = false, token = true }) {
     AGENTTAIL_DSH_BIN: process.execPath,
     AGENTTAIL_DSH_ARGS: JSON.stringify([fakeAcp]),
     OLLAMA_API_KEY: 'fake-key',
+    ...(profile ? { FAKE_ACP_PROFILE: profile } : {}),
   };
   const proc = spawn(process.execPath, args, {
     cwd: path.join(__dirname, '..'),
@@ -353,6 +354,41 @@ try {
   check(!auditText.includes('secret-reason-text'), 'audit never stores reject reasons');
   check(audit.some((entry) => entry.action === 'model' && entry.model === 'deepseek-v4-flash'), 'audit records model switches');
   check(audit.some((entry) => entry.action === 'message' && entry.images === 1) && !auditText.includes(PNG.slice(0, 24)), 'audit counts images and never stores their data');
+
+  console.log('\nrequests the page must not approve, and ones with no way to say no');
+  {
+    // The first two servers are no longer needed; their ports are reused with a fake that misbehaves in one way.
+    off.proc.kill();
+    stream.proc.kill();
+    await sleep(300);
+    const asking = async (server, message) => {
+      const begun = await post(server.base, server.token, '/api/control/session/begin', { cwd: workspace, preset: 'workspace-write' });
+      const sid = begun.data?.session?.id;
+      await post(server.base, server.token, '/api/control/session/start', { id: sid, message });
+      const events = await readSse(`${server.base}/api/stream?source=dsh&id=${encodeURIComponent(sid)}`, (event) => event.event === 'approval');
+      return { sid, approval: events.find((event) => event.event === 'approval')?.data };
+    };
+
+    const noReject = await launch({ port: 8890, allow: true, token: true, profile: 'no-reject-option' });
+    const first = await asking(noReject, 'ask me something');
+    check(first.approval?.canReject === false && first.approval?.canApprove === true, 'the agent offered no reject option', JSON.stringify(first.approval));
+    const cancelled = await post(noReject.base, noReject.token, '/api/control/approval', { id: first.sid, approvalId: first.approval?.approvalId, decision: 'reject' });
+    check(cancelled.status === 200 && cancelled.data?.decision === 'cancelled', 'rejecting then cancels the request and reports success', JSON.stringify(cancelled.data));
+    const auditAfter = fs.readFileSync(auditFile, 'utf8').trim().split('\n').map((line) => JSON.parse(line));
+    check(auditAfter.some((entry) => entry.action === 'reject' && entry.outcome === 'cancelled' && entry.sessionId === first.sid), 'and the cancellation is in the audit log');
+    await post(noReject.base, noReject.token, '/api/control/close', { id: first.sid });
+    noReject.proc.kill();
+    await sleep(300);
+
+    const bare = await launch({ port: 8890, allow: true, token: true, profile: 'no-facts' });
+    const blind = await asking(bare, 'ask me something');
+    check(blind.approval?.canApprove === false && blind.approval?.approveBlock === 'no-details', 'a request with no details reaches the page as not approvable', JSON.stringify(blind.approval));
+    const refusedBlind = await post(bare.base, bare.token, '/api/control/approval', { id: blind.sid, approvalId: blind.approval?.approvalId, decision: 'approve' });
+    check(refusedBlind.status === 409 && /no command or file details/.test(refusedBlind.data?.error || ''), 'and approving it over HTTP is refused', JSON.stringify(refusedBlind));
+    const rejectBlind = await post(bare.base, bare.token, '/api/control/approval', { id: blind.sid, approvalId: blind.approval?.approvalId, decision: 'reject' });
+    check(rejectBlind.status === 200 && rejectBlind.data?.decision === 'reject', 'while rejecting it still works');
+    await post(bare.base, bare.token, '/api/control/close', { id: blind.sid });
+  }
 } finally {
   for (const proc of servers) {
     try { proc.kill(); } catch { /* ignore */ }
