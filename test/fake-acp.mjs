@@ -1,6 +1,26 @@
 // Minimal fake `dsh --profile acp` server for control tests.
 // Speaks newline-delimited JSON-RPC over stdio and writes a real dsh-shaped
 // session log so the viewer's read side is exercised too.
+//
+// FAKE_ACP_PROFILE is a comma list of behaviours the unit tests switch on:
+//   allow-always-first   permission options listed allow_always, allow_once, reject_once
+//   only-allow-always    permission options are allow_always and reject_once only
+//   reject-always-only   permission options are allow_once and reject_always only
+//   reject-always-first  permission options listed reject_always, reject_once, allow_once
+//   diff-only            the tool call has a diff content block and no rawInput
+//   diff-inline          no tool_call update; the request carries two diffs (one a new file)
+//   deceptive-title      a harmless title over a destructive command (argv array)
+//   modes                a `mode` config option (default, plan, bypass)
+//   legacy-modes         Session Modes (ask, code) in session/new and session/set_mode
+//   one-model, no-model  a one-value model option, or none
+//   no-images            promptCapabilities.image false (FAKE_ACP_NO_IMAGES does the same)
+//   embedded-context, mcp-http, auth-methods   other declared capabilities
+//   no-close             sessionCapabilities without close
+//   crash-on-start       exit 7 with a line on stderr when initialize arrives
+//   crash-on-prompt      exit 3 with a line on stderr when a prompt arrives
+//   no-log               do not write the dsh-shaped session log (for non-dsh harnesses)
+// FAKE_ACP_MARK=<file> appends one line per session/new, config, mode and close
+// request; FAKE_ACP_ENV_FILE=<file> receives the names of the environment variables.
 import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
@@ -9,7 +29,9 @@ import zlib from 'node:zlib';
 const SESSION_ID = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
 const MODEL_VALUE = JSON.stringify(['ollama', 'fake-model']);
 const OTHER_MODEL = JSON.stringify(['deepseek-official', 'deepseek-v4-flash']);
+const PROFILE = new Set(String(process.env.FAKE_ACP_PROFILE || '').split(',').map((x) => x.trim()).filter(Boolean));
 let currentModel = MODEL_VALUE;
+let currentMode = PROFILE.has('legacy-modes') ? 'ask' : 'default';
 const SESSIONS_ROOT = process.env.DSH_SESSIONS_ROOT || path.join(process.cwd(), 'sessions');
 let session = null;
 let pendingPrompt = null;
@@ -34,33 +56,70 @@ function append(events) {
   fs.appendFileSync(logPath, frame(events));
 }
 
+function mark(line) {
+  if (process.env.FAKE_ACP_MARK) fs.appendFileSync(process.env.FAKE_ACP_MARK, `${line}\n`);
+}
+
 function modelOptions() {
-  return [{
-    id: 'model',
-    name: 'Model',
-    category: 'model',
-    type: 'select',
-    currentValue: currentModel,
-    options: [{
-      group: 'ollama',
-      name: 'Ollama',
-      options: [{ value: MODEL_VALUE, name: 'fake-model' }],
-    }, {
-      group: 'deepseek-official',
-      name: 'DeepSeek',
-      options: [{ value: OTHER_MODEL, name: 'deepseek-v4-flash' }],
-    }],
-  }, {
+  const out = [];
+  if (!PROFILE.has('no-model')) {
+    const choices = PROFILE.has('one-model')
+      ? [{ group: 'ollama', name: 'Ollama', options: [{ value: MODEL_VALUE, name: 'fake-model' }] }]
+      : [{
+        group: 'ollama',
+        name: 'Ollama',
+        options: [{ value: MODEL_VALUE, name: 'fake-model' }],
+      }, {
+        group: 'deepseek-official',
+        name: 'DeepSeek',
+        options: [{ value: OTHER_MODEL, name: 'deepseek-v4-flash' }],
+      }];
+    out.push({
+      id: 'model',
+      name: 'Model',
+      category: 'model',
+      type: 'select',
+      currentValue: currentModel,
+      options: choices,
+    });
+  }
+  out.push({
     id: 'reasoning_effort',
     name: 'Reasoning effort',
     category: 'thought_level',
     type: 'select',
     currentValue: 'high',
     options: [{ value: 'high', name: 'High' }],
-  }];
+  });
+  if (PROFILE.has('modes')) {
+    out.push({
+      id: 'mode',
+      name: 'Mode',
+      category: 'mode',
+      type: 'select',
+      currentValue: currentMode,
+      options: [
+        { value: 'default', name: 'Ask before edits' },
+        { value: 'plan', name: 'Plan only' },
+        { value: 'bypass', name: 'Bypass permissions' },
+      ],
+    });
+  }
+  return out;
+}
+
+// Older agents offer Session Modes instead of a mode config option.
+function legacyModes() {
+  return {
+    currentModeId: currentMode,
+    availableModes: [{ id: 'ask', name: 'Ask' }, { id: 'code', name: 'Code' }],
+  };
 }
 
 function createSession(cwd) {
+  const created = { sessionId: SESSION_ID, configOptions: modelOptions() };
+  if (PROFILE.has('legacy-modes')) created.modes = legacyModes();
+  if (PROFILE.has('no-log')) return created;
   const workspaceDir = `--fake-${cwd.replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '')}--`;
   const dir = path.join(SESSIONS_ROOT, workspaceDir, SESSION_ID);
   fs.mkdirSync(dir, { recursive: true });
@@ -71,7 +130,19 @@ function createSession(cwd) {
     ev('sandbox/mode', { mode: 'workspace-write' }),
     ev('approval/policy', { policy: 'ask' }),
   ]));
-  return { sessionId: SESSION_ID, configOptions: modelOptions() };
+  return created;
+}
+
+function permissionOptions() {
+  const allowOnce = { optionId: 'allow-once', name: 'Allow once', kind: 'allow_once' };
+  const allowAlways = { optionId: 'allow-always', name: 'Always allow', kind: 'allow_always' };
+  const rejectOnce = { optionId: 'reject-once', name: 'Reject', kind: 'reject_once' };
+  const rejectAlways = { optionId: 'reject-always', name: 'Always reject', kind: 'reject_always' };
+  if (PROFILE.has('allow-always-first')) return [allowAlways, allowOnce, rejectOnce];
+  if (PROFILE.has('only-allow-always')) return [allowAlways, rejectOnce];
+  if (PROFILE.has('reject-always-only')) return [allowOnce, rejectAlways];
+  if (PROFILE.has('reject-always-first')) return [rejectAlways, rejectOnce, allowOnce];
+  return [allowOnce, rejectOnce];
 }
 
 function startTurn(sessionId, text) {
@@ -83,17 +154,8 @@ function startTurn(sessionId, text) {
     ev('user/message', { content: [{ type: 'text', text }], source: { kind: 'user' } }),
   ]);
   pendingPrompt = { id: null, sessionId, callId, turn };
-  notify('session/update', {
-    sessionId,
-    update: {
-      sessionUpdate: 'tool_call',
-      toolCallId: callId,
-      title: 'pwsh',
-      kind: 'other',
-      status: 'in_progress',
-      rawInput: { command: 'echo fake-ok', description: 'Fake approval command' },
-    },
-  });
+  const spec = toolCallSpec(callId);
+  if (spec.update) notify('session/update', { sessionId, update: { sessionUpdate: 'tool_call', toolCallId: callId, ...spec.update } });
   pendingPrompt.id = permissionId++;
   write({
     jsonrpc: '2.0',
@@ -101,13 +163,57 @@ function startTurn(sessionId, text) {
     method: 'session/request_permission',
     params: {
       sessionId,
-      toolCall: { toolCallId: callId },
-      options: [
-        { optionId: 'allow-once', name: 'Allow once', kind: 'allow_once' },
-        { optionId: 'reject-once', name: 'Reject', kind: 'reject_once' },
-      ],
+      toolCall: { toolCallId: callId, ...(spec.inline || {}) },
+      options: permissionOptions(),
     },
   });
+}
+
+// What the permission request is about.  `update` is sent first as a
+// tool_call (dsh style), `inline` rides on the request itself.
+function toolCallSpec() {
+  if (PROFILE.has('diff-only')) {
+    return {
+      update: {
+        title: 'Update README',
+        kind: 'edit',
+        status: 'pending',
+        locations: [{ path: 'docs/README.md', line: 3 }],
+        content: [{ type: 'diff', path: 'docs/README.md', oldText: 'old line', newText: 'new line' }],
+      },
+    };
+  }
+  if (PROFILE.has('diff-inline')) {
+    return {
+      inline: {
+        title: 'Apply changes',
+        kind: 'edit',
+        content: [
+          { type: 'diff', path: 'src/a.js', oldText: 'const a = 1;', newText: 'const a = 2;' },
+          { type: 'diff', path: 'src/b.js', oldText: null, newText: 'export const b = 1;' },
+        ],
+        locations: [{ path: 'src/a.js' }, { path: 'src/b.js' }],
+      },
+    };
+  }
+  if (PROFILE.has('deceptive-title')) {
+    return {
+      update: {
+        title: 'Read a file',
+        kind: 'execute',
+        status: 'pending',
+        rawInput: { command: ['rm', '-rf', 'build'] },
+      },
+    };
+  }
+  return {
+    update: {
+      title: 'pwsh',
+      kind: 'other',
+      status: 'in_progress',
+      rawInput: { command: 'echo fake-ok', description: 'Fake approval command' },
+    },
+  };
 }
 
 function finishPrompt(reason) {
@@ -145,28 +251,51 @@ rl.on('line', (line) => {
   let message;
   try { message = JSON.parse(line); } catch { return; }
   if (message.method === 'initialize') {
+    if (process.env.FAKE_ACP_ENV_FILE) fs.writeFileSync(process.env.FAKE_ACP_ENV_FILE, JSON.stringify(Object.keys(process.env)));
+    if (PROFILE.has('crash-on-start')) {
+      process.stderr.write('fake-acp: cannot load its configuration (synthetic failure)\n');
+      process.exit(7);
+    }
     respond(message.id, {
       protocolVersion: 1,
       agentInfo: { name: 'fake-acp', version: '0.0.0' },
       agentCapabilities: {
-        promptCapabilities: { image: process.env.FAKE_ACP_NO_IMAGES ? false : true, audio: false, embeddedContext: false },
-        sessionCapabilities: { close: {}, list: {}, resume: {} },
+        promptCapabilities: {
+          image: !(process.env.FAKE_ACP_NO_IMAGES || PROFILE.has('no-images')),
+          audio: false,
+          embeddedContext: PROFILE.has('embedded-context'),
+        },
+        mcpCapabilities: PROFILE.has('mcp-http') ? { http: true } : {},
+        sessionCapabilities: PROFILE.has('no-close') ? { list: {} } : { close: {}, list: {}, resume: {} },
       },
-      authMethods: [],
+      authMethods: PROFILE.has('auth-methods') ? [{ id: 'login', name: 'Log in' }] : [],
     });
     return;
   }
   if (message.method === 'session/new') {
+    mark(`new:${JSON.stringify(message.params.mcpServers || [])}`);
     session = createSession(message.params.cwd);
     respond(message.id, session);
     return;
   }
   if (message.method === 'session/set_config_option') {
+    mark(`config:${message.params.configId}=${message.params.value}`);
     if (message.params.configId === 'model') currentModel = message.params.value;
+    if (message.params.configId === 'mode') currentMode = message.params.value;
     respond(message.id, { configOptions: modelOptions() });
     return;
   }
+  if (message.method === 'session/set_mode') {
+    mark(`mode:${message.params.modeId}`);
+    currentMode = message.params.modeId;
+    respond(message.id, {});
+    return;
+  }
   if (message.method === 'session/prompt') {
+    if (PROFILE.has('crash-on-prompt')) {
+      process.stderr.write('fake-acp: the model backend went away (synthetic failure)\n');
+      process.exit(3);
+    }
     if (pendingPrompt) { fail(message.id, -32602, 'a prompt is already in flight'); return; }
     const blocks = message.params.prompt || [];
     const pictures = blocks.filter((b) => b.type === 'image').length;
@@ -178,6 +307,7 @@ rl.on('line', (line) => {
     return;
   }
   if (message.method === 'session/close') {
+    mark('close');
     pendingPrompt = null;
     respond(message.id, {});
     return;

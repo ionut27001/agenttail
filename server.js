@@ -1093,18 +1093,32 @@ function controlDescriptor(record) {
   if (record.source !== 'dsh') return { ...base, owned: false, viewOnly: true, reason: 'source' };
   const session = control.sessions.get(record.id);
   if (!session) return { ...base, owned: false, viewOnly: true, reason: 'external' };
-  return { ...base, ...session.statePayload() };
+  return { ...base, ...safeControlState(session.statePayload()) };
+}
+
+/** Free text in a control state (an error line, the child's stderr) goes through the redactor. */
+function safeControlState(state) {
+  if (!state) return state;
+  return {
+    ...state,
+    error: state.error ? redactor.text(String(state.error)) : state.error,
+    details: state.details ? redactor.text(String(state.details)) : state.details,
+  };
 }
 
 function safeApproval(approval) {
   if (!approval) return approval;
-  const diff = approval.diff
-    ? {
-        path: approval.diff.path ? redactor.text(approval.diff.path) : null,
-        oldText: redactor.text(approval.diff.oldText || ''),
-        newText: redactor.text(approval.diff.newText || ''),
-      }
-    : null;
+  const safeDiff = (entry) => ({
+    path: entry.path ? redactor.text(entry.path) : null,
+    oldText: redactor.text(entry.oldText || ''),
+    newText: redactor.text(entry.newText || ''),
+    isNew: entry.isNew === true,
+  });
+  const diff = approval.diff ? safeDiff(approval.diff) : null;
+  const diffs = Array.isArray(approval.diffs) ? approval.diffs.map(safeDiff) : undefined;
+  const locations = Array.isArray(approval.locations)
+    ? approval.locations.map((place) => ({ ...place, path: redactor.text(place.path || '') }))
+    : undefined;
   const raw = approval.rawInput && typeof approval.rawInput === 'object'
     ? Object.fromEntries(Object.entries(approval.rawInput).map(([key, value]) => [
         key,
@@ -1117,6 +1131,8 @@ function safeApproval(approval) {
     command: redactor.text(approval.command),
     content: redactor.text(approval.content),
     diff,
+    ...(diffs ? { diffs } : {}),
+    ...(locations ? { locations } : {}),
     rawInput: raw,
   };
 }
@@ -1221,7 +1237,7 @@ async function serveStream(req, res, record, options = {}) {
   const onReset = () => {
     sseWrite(res, 'reset', { at: Date.now() });
   };
-  const onControl = (state) => sseWrite(res, 'control', state);
+  const onControl = (state) => sseWrite(res, 'control', safeControlState(state));
   const onApproval = (approval) => sseWrite(res, 'approval', safeApproval(approval));
   const onApprovalUpdate = (approval) => sseWrite(res, 'approval', safeApproval(approval));
   const onApprovalDone = (done) => sseWrite(res, 'approvalDone', done);
@@ -1383,7 +1399,11 @@ async function handleControlOptions(res) {
     })),
     presets: PRESETS,
     defaultPreset: DEFAULT_PRESET,
-    dshProfile: config.dshProfile,
+    // Every configured harness with the command line that would run and the
+    // presets it offers; never its environment.
+    harnesses: config.harnesses.describe(),
+    defaultHarness: config.harnesses.defaultId,
+    dshProfile: config.harnesses.get('dsh')?.profile || 'acp',
   });
 }
 
@@ -1411,6 +1431,7 @@ async function handleControlPost(req, res, p) {
         cwd: body.cwd,
         preset: body.preset,
         confirmDanger: body.confirmDanger === true,
+        harness: body.harness,
       });
       sendJson(res, 200, result);
       return;
@@ -1452,6 +1473,12 @@ async function handleControlPost(req, res, p) {
       sendJson(res, 200, result);
       return;
     }
+    if (p === '/api/control/config') {
+      // A select option the agent offers (mode, effort...); the model has its own endpoint.
+      const result = await control.setConfig(String(body.id || ''), String(body.configId || ''), body.value);
+      sendJson(res, 200, { session: safeControlState(result.session) });
+      return;
+    }
     if (p === '/api/control/stop') {
       const result = await control.stop(String(body.id || ''));
       sendJson(res, 200, result);
@@ -1464,7 +1491,10 @@ async function handleControlPost(req, res, p) {
     }
     sendJson(res, 404, { error: 'not found' });
   } catch (err) {
-    sendJson(res, err.status || 500, { error: String(err.message || err) });
+    const out = { error: String(err.message || err) };
+    // A harness that failed to start: what it wrote to stderr, redacted.
+    if (err.details) out.details = redactor.text(String(err.details));
+    sendJson(res, err.status || 500, out);
   }
 }
 

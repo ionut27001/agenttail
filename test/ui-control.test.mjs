@@ -39,6 +39,7 @@ async function launch(port, args) {
       DSH_NICKNAMES_FILE: path.join(tmp, 'nicknames.json'),
       AGENTTAIL_DSH_BIN: process.execPath,
       AGENTTAIL_DSH_ARGS: JSON.stringify([fakeAcp]),
+      FAKE_ACP_PROFILE: 'modes',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
@@ -156,6 +157,8 @@ try {
   await evalExpr(`document.getElementById('newSessionBtn').click(); true`);
   check(await waitFor(`[...document.getElementById('dlgWorkspace').options].some((o) => o.value && o.value.endsWith('workspace'))`, 8000), 'the dialog lists the allowlisted workspace');
   check(await evalExpr(`document.getElementById('dlgPreset').value === 'workspace-write'`), 'the preset defaults to workspace-write');
+  check(await evalExpr(`!document.getElementById('dlgHarnessRow') || ${hidden('dlgHarnessRow')}`), 'the harness picker is hidden when only dsh is configured');
+  check(await evalExpr(`/^runs: .*--profile acp/.test(${text('dlgProfile')})`), 'the dialog shows the resolved command line', await evalExpr(text('dlgProfile')));
   await evalExpr(`document.getElementById('dlgPreset').value = 'danger-full-access'; document.getElementById('dlgPreset').dispatchEvent(new Event('change')); true`);
   check(await evalExpr(`!${hidden('dangerRow')}`), 'danger-full-access shows a confirmation');
   await evalExpr(`document.getElementById('dlgContinue').click(); true`);
@@ -171,6 +174,9 @@ try {
   check(await waitFor(`!${hidden('composer')}`, 15000), 'the owned session shows the input box', await evalExpr(text('controlHint')));
   check(await waitFor(`!${hidden('approvalPanel')}`, 10000), 'the approval card appears');
   check(await evalExpr(`${text('approvalDetail')}.includes('$ echo fake-ok')`), 'the card shows the exact command', await evalExpr(text('approvalDetail')));
+  check(await evalExpr(`${text('approvalDetail')}.trim().endsWith('the agent calls this: pwsh')`), 'the agent-written title comes last on the card', await evalExpr(text('approvalDetail')));
+  check(await evalExpr(`${text('approvalTool')} === 'other · command'`), 'the card header names the tool kind from the raw input', await evalExpr(text('approvalTool')));
+  check(await evalExpr(`!document.getElementById('composerMode').classList.contains('hidden') && document.getElementById('composerMode').options.length === 3`), 'the agent declared a mode option, so the composer offers a mode picker');
   check(await evalExpr(`!${hidden('approvalBadge')}`), 'the activity bar shows an approval badge');
   await evalExpr(`window.__agents.refresh(); true`);
   check(await waitFor(`!!window.__agents.data && window.__agents.data.groups.flatMap((g) => g.agents).some((a) => a.owned && a.approvals === 1)`, 6000), 'the agents overview shows the owned session waiting on an approval');
@@ -198,6 +204,8 @@ try {
   check(await waitFor(`!document.getElementById('composerModel').classList.contains('hidden') && document.getElementById('composerModel').options.length === 2`, 5000), 'the composer offers the session models');
   await evalExpr(`(() => { const sel = document.getElementById('composerModel'); sel.value = JSON.stringify(['deepseek-official', 'deepseek-v4-flash']); sel.dispatchEvent(new Event('change')); return true; })()`);
   check(await waitFor(`/deepseek-official\\/deepseek-v4-flash/.test(${text('composerStatus')}) && document.getElementById('composerModel').value.includes('deepseek-v4-flash')`, 5000), 'switching the model applies it to the session', await evalExpr(text('composerStatus')));
+  await evalExpr(`(() => { const sel = document.getElementById('composerMode'); sel.value = 'plan'; sel.dispatchEvent(new Event('change')); return true; })()`);
+  check(await waitFor(`/· Plan only/.test(${text('composerStatus')}) && document.getElementById('composerMode').value === 'plan'`, 5000), 'switching the mode applies it to the session', await evalExpr(text('composerStatus')));
   await evalExpr(`(() => {
     const bytes = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='), (c) => c.charCodeAt(0));
     const dt = new DataTransfer();
@@ -216,6 +224,28 @@ try {
   await evalExpr(`window.confirm = () => true; document.getElementById('composerEnd').click(); true`);
   check(await waitFor(hidden('composer'), 8000), 'End removes the input box');
   check(await waitFor(`/view only/.test(${text('controlHint')})`, 5000), 'an ended session is view only', await evalExpr(text('controlHint')));
+
+  console.log('\nseveral harnesses');
+  // The control file is re-read when it changes; add a second harness.
+  await sleep(50);
+  fs.writeFileSync(controlFile, JSON.stringify({
+    workspaces: [fixture.workspace],
+    maxSessions: 4,
+    harnesses: {
+      dsh: { kind: 'dsh' },
+      other: { label: 'Other agent', command: process.execPath, args: [fakeAcp, 'one', 'two words'] },
+    },
+  }));
+  await evalExpr(`document.getElementById('newSessionBtn').click(); true`);
+  check(await waitFor(`!!document.getElementById('dlgHarnessRow') && !${hidden('dlgHarnessRow')}`, 8000), 'the harness picker appears once there is a choice');
+  check(await evalExpr(`[...document.getElementById('dlgHarness').options].map((o) => o.textContent).join() === 'dsh,Other agent'`), 'the picker lists the configured harnesses', await evalExpr(`[...document.getElementById('dlgHarness').options].map((o) => o.textContent).join()`));
+  await evalExpr(`(() => { const sel = document.getElementById('dlgHarness'); sel.value = 'other'; sel.dispatchEvent(new Event('change')); return true; })()`);
+  check(await evalExpr(`${text('dlgProfile')}.includes('fake-acp.mjs one "two words"') && !${text('dlgProfile')}.includes('--profile')`), 'the command line follows the chosen harness', await evalExpr(text('dlgProfile')));
+  check(await evalExpr(`document.getElementById('dlgPreset').options.length === 1 && document.getElementById('dlgPreset').value === 'default'`), 'the presets follow the chosen harness');
+  await evalExpr(`document.getElementById('dlgContinue').click(); true`);
+  check(await waitFor(`/cannot show sessions of Other agent/.test(${text('dlgErr')})`, 4000), 'a harness without a viewer is not started', await evalExpr(text('dlgErr')));
+  await evalExpr(`document.getElementById('dlgCancel').click(); true`);
+  check(await waitFor(`!document.getElementById('newSessionDialog').open`, 4000), 'the dialog closes');
 
   // Monaco throws a benign `Canceled` when a model is disposed mid-request.
   const errors = pageLogs.filter((l) => !l.includes('Canceled'));
