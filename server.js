@@ -30,6 +30,7 @@ const { jobLogFromCommand } = require('./lib/jobs');
 const { PRICES, CLAUDE_PRICES } = require('./lib/pricing');
 const { version: VERSION } = require('./package.json');
 const { analyzeLog } = require('./lib/session-analysis');
+const attention = require('./lib/attention');
 const { stateFrom, describe, LiveTracker } = require('./lib/live');
 const { Nicknames } = require('./lib/nicknames');
 const { SysMonitor } = require('./lib/sys');
@@ -107,8 +108,8 @@ async function agentsPayload() {
   // Owned sessions can be blocked on the user: say how many approvals wait.
   for (const group of data.groups) {
     for (const agent of group.agents) {
-      const owned = agent.source === 'dsh' && ALLOW_CONTROL && control ? control.sessions.get(agent.id) : null;
-      agent.approvals = owned ? owned.approvals.size : 0;
+      const owned = ownedSession(agent.source, agent.id);
+      agent.approvals = owned && typeof owned.pendingApprovals === 'function' ? owned.pendingApprovals().length : 0;
     }
   }
   return data;
@@ -363,10 +364,20 @@ async function listSessions() {
     const key = `dsh:${rec.id}`;
     const state = analysis ? listTracker.update(key, analysis.rawState) : 'finished';
     const nickname = nicknames.get(key);
+    // Computed here, not in the cached analysis, so a prompt left open by a crash ages out.
+    const waiting = analysis
+      ? attention.dshAttention({
+          open: new Map((analysis.openApprovals || []).map((a) => [a.id, a])),
+          rawState: state,
+          now: Date.now(),
+          hasOpenJob: (analysis.openJobs || []).length > 0,
+        })
+      : attention.none();
     return {
       ...rec,
       ...(head || {}),
       state,
+      attention: waiting,
       stateDetail: analysis ? analysis.stateDetail : '',
       lastEventAt: analysis ? analysis.lastEventAt : rec.mtimeMs,
       title: analysis ? analysis.title : null,
@@ -436,6 +447,7 @@ class SessionStream extends EventTarget {
     this.jobTails = new Map(); // jobId -> { path, offset, skip }
     this.openSteps = new Map();
     this.openTurns = new Set();
+    this.openApprovals = new Map(); // approval id -> { id, at, tool }: asked, not yet decided
     this.lastEndAt = 0;
     this.lastEventAt = 0;
     this.stateTracker = new LiveTracker();
@@ -495,6 +507,7 @@ class SessionStream extends EventTarget {
   }
 
   reset() {
+    this.openApprovals.clear();
     this.offset = 0;
     this.pending = Buffer.alloc(0);
     this.carry = '';
@@ -648,13 +661,24 @@ class SessionStream extends EventTarget {
     return { state, rawState, stateDetail };
   }
 
+  /** Open permission prompts of this log, for the "needs you" state. */
+  attentionNow(s = this.computeState()) {
+    return attention.dshAttention({
+      open: this.openApprovals,
+      rawState: s.state,
+      now: Date.now(),
+      hasOpenJob: this.openJobs.size > 0,
+    });
+  }
+
   emitStatus() {
     const s = this.computeState();
     this.live = s.state === 'live';
-    const key = `${s.state}|${s.stateDetail}`;
+    const waiting = this.attentionNow(s);
+    const key = `${s.state}|${s.stateDetail}|${attention.key(waiting)}`;
     if (key === this.statusKey) return;
     this.statusKey = key;
-    this.emit('status', { ...statusFor(this), state: s.state, stateDetail: redactor.text(s.stateDetail) });
+    this.emit('status', { ...statusFor(this), state: s.state, stateDetail: redactor.text(s.stateDetail), attention: waiting });
   }
 
   setLive(value) {
@@ -740,6 +764,8 @@ class SessionStream extends EventTarget {
       } else if (ui.t === 'turnEnd') {
         this.openTurns.delete(ui.turn);
         this.lastEndAt = Math.max(this.lastEndAt, ui.time || 0);
+      } else if (ui.t === 'approval' || ui.t === 'approvalDone') {
+        attention.trackApproval(this.openApprovals, ui);
       }
       // Environment output keeps variable names and loses the values.
       if (ui.t === 'call' && ui.name === 'pwsh' && ui.callId) {
@@ -976,10 +1002,10 @@ function projectEvent(ev) {
       };
 
     case 'approval/asked':
-      return { ...base, t: 'approval', callId: d.callId, toolName: d.toolName, reason: clip(d.reason, 300) };
+      return { ...base, t: 'approval', id: attention.approvalRef(ev), callId: d.callId, toolName: d.toolName, reason: clip(d.reason, 300) };
 
     case 'approval/decided':
-      return { ...base, t: 'approvalDone', outcome: d.outcome };
+      return { ...base, t: 'approvalDone', id: attention.approvalRef(ev), callId: d.callId, outcome: d.outcome };
 
     case 'approval/policy':
       return { ...base, t: 'policy', policy: d.policy || null };
@@ -1051,12 +1077,55 @@ async function getStream(record) {
   return stream;
 }
 
+// ---------------------------------------------------------------------------
+// Attention ("needs you"): each source produces a record, owned sessions add
+// theirs, and the merge keeps one record per session so nothing counts twice.
+// ---------------------------------------------------------------------------
+
+/** The owned session (control.sessions: id -> session) shown as `source:id`, or null. */
+function ownedSession(source, id) {
+  if (!ALLOW_CONTROL || !control) return null;
+  const session = control.sessions.get(String(id));
+  if (!session) return null;
+  return ownedSourceOf(session) === source ? session : null;
+}
+
+/**
+ * The source whose log renders an owned session. The harness is a registry
+ * entry (command, args, env...), so only its `log` name may leave this file.
+ */
+function ownedSourceOf(session) {
+  const harness = session.harness;
+  return session.source || (harness && typeof harness === 'object' ? harness.log : harness) || 'dsh';
+}
+
+/** The pending approvals of an owned session as an attention record, or null. */
+function ownedAttentionFor(source, id) {
+  const session = ownedSession(source, id);
+  if (!session || typeof session.pendingApprovals !== 'function') return null;
+  try {
+    const att = attention.ownedAttention(session.pendingApprovals());
+    return attention.isNeedsYou(att) ? att : null;
+  } catch {
+    return null;
+  }
+}
+
+/** What the page gets: tool and detail pass the redactor once more. */
+const pageAttention = (att) => attention.forPage(att, (value) => redactor.text(String(value)));
+
+function withOwnedAttention(rec) {
+  const owned = ownedAttentionFor(rec.source || 'dsh', rec.id);
+  return owned ? { ...rec, attention: attention.merge(rec.attention, owned) } : rec;
+}
+
 async function sessionsFor(source) {
   const key = source || 'dsh';
-  if (key === 'claude') return claude.listSessions(adapterCtx());
-  if (key === 'antigravity') return antigravity.listSessions(adapterCtx());
-  const sessions = await listSessions();
-  return sessions.map((s) => ({ ...s, source: 'dsh' }));
+  let sessions;
+  if (key === 'claude') sessions = await claude.listSessions(adapterCtx());
+  else if (key === 'antigravity') sessions = await antigravity.listSessions(adapterCtx());
+  else sessions = (await listSessions()).map((s) => ({ ...s, source: 'dsh' }));
+  return sessions.map(withOwnedAttention);
 }
 
 async function findSession(source, id) {
@@ -1093,18 +1162,32 @@ function controlDescriptor(record) {
   if (record.source !== 'dsh') return { ...base, owned: false, viewOnly: true, reason: 'source' };
   const session = control.sessions.get(record.id);
   if (!session) return { ...base, owned: false, viewOnly: true, reason: 'external' };
-  return { ...base, ...session.statePayload() };
+  return { ...base, ...safeControlState(session.statePayload()) };
+}
+
+/** Free text in a control state (an error line, the child's stderr) goes through the redactor. */
+function safeControlState(state) {
+  if (!state) return state;
+  return {
+    ...state,
+    error: state.error ? redactor.text(String(state.error)) : state.error,
+    details: state.details ? redactor.text(String(state.details)) : state.details,
+  };
 }
 
 function safeApproval(approval) {
   if (!approval) return approval;
-  const diff = approval.diff
-    ? {
-        path: approval.diff.path ? redactor.text(approval.diff.path) : null,
-        oldText: redactor.text(approval.diff.oldText || ''),
-        newText: redactor.text(approval.diff.newText || ''),
-      }
-    : null;
+  const safeDiff = (entry) => ({
+    path: entry.path ? redactor.text(entry.path) : null,
+    oldText: redactor.text(entry.oldText || ''),
+    newText: redactor.text(entry.newText || ''),
+    isNew: entry.isNew === true,
+  });
+  const diff = approval.diff ? safeDiff(approval.diff) : null;
+  const diffs = Array.isArray(approval.diffs) ? approval.diffs.map(safeDiff) : undefined;
+  const locations = Array.isArray(approval.locations)
+    ? approval.locations.map((place) => ({ ...place, path: redactor.text(place.path || '') }))
+    : undefined;
   const raw = approval.rawInput && typeof approval.rawInput === 'object'
     ? Object.fromEntries(Object.entries(approval.rawInput).map(([key, value]) => [
         key,
@@ -1117,6 +1200,8 @@ function safeApproval(approval) {
     command: redactor.text(approval.command),
     content: redactor.text(approval.content),
     diff,
+    ...(diffs ? { diffs } : {}),
+    ...(locations ? { locations } : {}),
     rawInput: raw,
   };
 }
@@ -1186,6 +1271,7 @@ async function serveStream(req, res, record, options = {}) {
       policy: record.policy || null,
       sandbox: record.sandbox || null,
       owned: record.owned === true,
+      attention: pageAttention(attention.merge(record.attention, ownedAttentionFor(record.source, record.id))),
     },
     streamSafe: redactor.enabled,
     prices: record.source === 'dsh' ? PRICES : record.source === 'claude' ? CLAUDE_PRICES : null,
@@ -1209,22 +1295,34 @@ async function serveStream(req, res, record, options = {}) {
   const history = options.tail ? stream.events.slice(-options.tail) : stream.events;
   for (const ev of history) sseWrite(res, 'ev', ev);
   sseWrite(res, 'historyEnd', { count: history.length, total: stream.events.length, at: Date.now() });
-  sseWrite(res, 'status', {
+  // The status event carries the attention record: the source's own signal
+  // merged with the pending approvals agenttail itself holds, if it owns the session.
+  const withOwned = (detail) => ({
+    ...detail,
+    attention: pageAttention(attention.merge(detail.attention, ownedAttentionFor(record.source, record.id))),
+  });
+  let lastStatus = {
     ...statusFor(stream),
     state: initialState.state,
     stateDetail: redactor.text(initialState.stateDetail),
-  });
+    attention: typeof stream.attentionNow === 'function' ? stream.attentionNow(initialState) : attention.none(),
+  };
+  sseWrite(res, 'status', withOwned(lastStatus));
+  const pushOwned = () => sseWrite(res, 'status', withOwned(lastStatus));
 
   const onEvent = (e) => sseWrite(res, 'ev', e.detail);
-  const onStatus = (e) => sseWrite(res, 'status', e.detail);
+  const onStatus = (e) => {
+    lastStatus = e.detail;
+    sseWrite(res, 'status', withOwned(e.detail));
+  };
   const onSys = (sample) => sseWrite(res, 'sys', sample);
   const onReset = () => {
     sseWrite(res, 'reset', { at: Date.now() });
   };
-  const onControl = (state) => sseWrite(res, 'control', state);
-  const onApproval = (approval) => sseWrite(res, 'approval', safeApproval(approval));
+  const onControl = (state) => sseWrite(res, 'control', safeControlState(state));
+  const onApproval = (approval) => { sseWrite(res, 'approval', safeApproval(approval)); pushOwned(); };
   const onApprovalUpdate = (approval) => sseWrite(res, 'approval', safeApproval(approval));
-  const onApprovalDone = (done) => sseWrite(res, 'approvalDone', done);
+  const onApprovalDone = (done) => { sseWrite(res, 'approvalDone', done); pushOwned(); };
   const onControlError = (err) => sseWrite(res, 'controlError', { message: redactor.text(String(err.message || err)) });
   stream.addEventListener('event', onEvent);
   stream.addEventListener('status', onStatus);
@@ -1383,8 +1481,33 @@ async function handleControlOptions(res) {
     })),
     presets: PRESETS,
     defaultPreset: DEFAULT_PRESET,
-    dshProfile: config.dshProfile,
+    // Every configured harness with the command line that would run and the
+    // presets it offers; never its environment.
+    harnesses: config.harnesses.describe(),
+    defaultHarness: config.harnesses.defaultId,
+    harnessesError: config.harnesses.error || null,
+    dshProfile: config.harnesses.get('dsh')?.profile || 'acp',
   });
+}
+
+/** Pending approvals across every owned session, for the inbox. */
+function handleControlApprovals(res) {
+  const items = [];
+  for (const [id, session] of control.sessions) {
+    let pending = [];
+    try { pending = session.pendingApprovals(); } catch { pending = []; }
+    for (const approval of pending) {
+      items.push({
+        sessionId: id,
+        source: ownedSourceOf(session),
+        workspace: session.cwd ? redactor.text(path.basename(String(session.cwd))) : null,
+        status: session.status || null,
+        approval: safeApproval(approval),
+      });
+    }
+  }
+  items.sort((a, b) => (a.approval.createdAt || 0) - (b.approval.createdAt || 0));
+  sendJson(res, 200, { now: Date.now(), approvals: items });
 }
 
 async function handleControlPost(req, res, p) {
@@ -1411,6 +1534,7 @@ async function handleControlPost(req, res, p) {
         cwd: body.cwd,
         preset: body.preset,
         confirmDanger: body.confirmDanger === true,
+        harness: body.harness,
       });
       sendJson(res, 200, result);
       return;
@@ -1438,11 +1562,14 @@ async function handleControlPost(req, res, p) {
     if (p === '/api/control/approval') {
       const decision = String(body.decision || '');
       const reason = body.reason === undefined || body.reason === null ? '' : String(body.reason).slice(0, 500);
+      // An approve is valid only for the card revision the reviewer saw.
+      const revision = Number.isInteger(body.revision) && body.revision > 0 ? body.revision : undefined;
       const result = await control.approval(
         String(body.id || ''),
         String(body.approvalId || ''),
         decision,
         reason,
+        revision,
       );
       sendJson(res, 200, result);
       return;
@@ -1450,6 +1577,12 @@ async function handleControlPost(req, res, p) {
     if (p === '/api/control/model') {
       const result = await control.setModel(String(body.id || ''), body.model);
       sendJson(res, 200, result);
+      return;
+    }
+    if (p === '/api/control/config') {
+      // A select option the agent offers (mode, effort...); the model has its own endpoint.
+      const result = await control.setConfig(String(body.id || ''), String(body.configId || ''), body.value, body.confirmDanger === true);
+      sendJson(res, 200, { session: safeControlState(result.session) });
       return;
     }
     if (p === '/api/control/stop') {
@@ -1464,7 +1597,10 @@ async function handleControlPost(req, res, p) {
     }
     sendJson(res, 404, { error: 'not found' });
   } catch (err) {
-    sendJson(res, err.status || 500, { error: String(err.message || err) });
+    const out = { error: String(err.message || err) };
+    // A harness that failed to start: what it wrote to stderr, redacted.
+    if (err.details) out.details = redactor.text(String(err.details));
+    sendJson(res, err.status || 500, out);
   }
 }
 
@@ -1617,6 +1753,20 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (p === '/api/control/approvals') {
+    if (STREAM_MODE) {
+      sendJson(res, 403, { error: 'control disabled in stream mode' });
+      return;
+    }
+    if (!authorizedControl(req)) {
+      res.setHeader('WWW-Authenticate', 'Bearer');
+      sendJson(res, 401, { error: 'missing or invalid control token' });
+      return;
+    }
+    handleControlApprovals(res);
+    return;
+  }
+
   try {
     if (p === '/' || p === '/index.html') {
       await serveIndex(res);
@@ -1679,6 +1829,7 @@ const server = http.createServer(async (req, res) => {
             empty: s.empty === true,
             state: s.state || (s.live ? 'live' : 'finished'),
             stateDetail: redactor.text(s.stateDetail),
+            attention: pageAttention(s.attention),
             lastEventAt: s.lastEventAt || s.mtimeMs,
             steps: s.steps ?? null,
             tokens: s.tokens ?? null,

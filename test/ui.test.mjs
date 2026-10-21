@@ -167,6 +167,7 @@ const server = spawn(process.execPath, [path.join(root, 'server.js')], {
       AGENTTAIL_NO_OPEN: '1',
     DSH_SESSIONS_ROOT: fixture.sessionsRoot,
     CLAUDE_PROJECTS_ROOT: claudeRoot,
+    AGENTTAIL_CLAUDE_SESSIONS_DIR: path.join(tmp, 'claude-sessions'),
     DSH_POLL_MS: '200',
     DSH_NICKNAMES_FILE: path.join(tmp, 'nicknames.json'),
   },
@@ -800,6 +801,113 @@ try {
   check(await waitFor(`!${livePane}.querySelector('.think-card').classList.contains('show')`, 5000), 'the bubble closes when the agent replies');
   await evalExpr(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); true`);
   check(await evalExpr(`!window.__wall.open_ && window.__wall.panes === 0`), 'Esc closes the wall and its streams');
+
+  console.log('\nneeds you');
+  const SECRET_UI = 'SECRET_UI_COMMAND';
+  const liveKey = 'dsh:' + fixture.liveId;
+  // A second agent, only for this section.
+  const needId = 'session-77777777-8888-9999-aaaa-bbbbbbbbbbbb';
+  const needKey = 'dsh:' + needId;
+  const needDir = path.join(fixture.sessionsRoot, '--tmp-fixture-workspace--', needId);
+  const needLog = path.join(needDir, 'session.v4.jsonl.zstd');
+  const refreshAgents = () => evalExpr('window.__agents.refresh().then(() => true)', true);
+  // No seq: a high one would make the live stream drop the lower-numbered events the later tests append.
+  const askEvent = (id, call) => ({ type: 'approval/asked', time: Date.now(), data: { id, toolName: 'pwsh', callId: call, reason: 'wants to run ' + SECRET_UI } });
+  const decidedEvent = (id) => ({ type: 'approval/decided', time: Date.now(), data: { id, outcome: 'allowed-once' } });
+  // Everything the page shows about attention: none of it may carry a command.
+  const attnSurface = '(() => [document.title, document.getElementById("liveText").textContent, document.getElementById("liveText").title, document.getElementById("coAgents").textContent, document.getElementById("coAgents").title, document.getElementById("favicon").href.slice(0, 40), ...[...document.querySelectorAll(".ag-wait, .wp-attn, .ag-need, #sessionMenu .session-item.needs-you, #inboxBtn, #inboxPanel")].map((n) => n.textContent + "|" + n.title), ...[...document.getElementById("sessionSelect").options].map((o) => o.textContent + "|" + o.title)].join("\\n"))()';
+
+  fs.appendFileSync(fixture.liveLog, frame([askEvent('ui-ask-1', 'call_ui_ask_1')]));
+  check(await waitFor('document.getElementById("liveText").textContent === "NEEDS YOU" && document.getElementById("liveDot").classList.contains("needs-you")', 8000), 'the header says NEEDS YOU while the viewed agent waits on you', await evalExpr('document.getElementById("liveText").textContent'));
+  await refreshAgents();
+  check(await waitFor('window.__attention.needs === 1', 6000), 'the attention count is the number of sessions that need you', String(await evalExpr('window.__attention.needs')));
+  check(await evalExpr('/^\\(1\\) ⚠ /.test(document.title)'), 'the tab title shows the count and a warning mark', await evalExpr('document.title'));
+  check(await evalExpr('document.getElementById("favicon").dataset.badge === "1" && document.getElementById("favicon").href.startsWith("data:image/png")'), 'the favicon carries the count');
+  check(await evalExpr('/1 NEEDS YOU/.test(document.getElementById("coAgents").textContent) && document.getElementById("coAgents").classList.contains("attn")'), 'the activity-bar chip says who needs you', await evalExpr('document.getElementById("coAgents").textContent'));
+  await evalExpr('document.getElementById("coAgents").click(); true');
+  check(await waitFor('!!document.querySelector("#agentsPanel .ag-card.needs-you .ag-wait")', 4000), 'the overview marks the card of an agent that needs you');
+  check(await evalExpr('/NEEDS YOU · permission · pwsh/.test(document.querySelector("#agentsPanel .ag-card.needs-you .ag-wait").textContent)'), 'with what it waits for and the tool name', await evalExpr('document.querySelector("#agentsPanel .ag-card.needs-you .ag-wait").textContent'));
+  check(await evalExpr('/the session log/.test(document.querySelector("#agentsPanel .ag-card.needs-you .ag-wait").title)'), 'and says in a tooltip how it knows', await evalExpr('document.querySelector("#agentsPanel .ag-card.needs-you .ag-wait").title'));
+  check(await evalExpr('/1 needs you/.test(document.querySelector("#agentsPanel .ag-group-head .ag-need")?.textContent || "")'), 'the group header counts the agents that need you');
+  await evalExpr('document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); true');
+
+  console.log('\nneeds you: the session picker');
+  await evalExpr('loadSessions(false).then(() => true)', true);
+  check(await waitFor('/NEEDS YOU · permission · pwsh/.test(document.getElementById("sessionSelect").selectedOptions[0]?.textContent || "")', 6000), 'the picker row says NEEDS YOU · permission · pwsh', await evalExpr('document.getElementById("sessionSelect").selectedOptions[0]?.textContent'));
+  check(await evalExpr('document.getElementById("sessionDot").classList.contains("needs-you") && document.getElementById("sessionDot").style.color === "var(--amber)"'), 'the selected session shows an amber dot');
+  check(await evalExpr('attnFirst([{ id: "a", attention: null }, { id: "b", attention: { level: "ready" } }, { id: "c", attention: { level: "needs-you" } }, { id: "d", attention: { level: "needs-you" } }]).map((s) => s.id).join("") === "cdab"'), 'sessions that need you sort first and keep their order otherwise');
+
+  console.log('\nneeds you: a second agent, notifications');
+  fs.mkdirSync(needDir, { recursive: true });
+  fs.writeFileSync(needLog, frame([
+    { type: 'session', version: 4, id: needId, createdAt: Date.now() - 60000, cwd: fixture.workspace },
+    { type: 'turn/start', seq: 1, time: Date.now() - 30000, data: { turn: 1 } },
+    { type: 'step/start', seq: 2, time: Date.now() - 29000, data: { turn: 1, step: 1 } },
+    { type: 'user/message', seq: 3, time: Date.now() - 28000, data: { role: 'user', content: [{ type: 'text', text: 'Second agent task for the inbox.' }], source: { kind: 'user' } } },
+  ]));
+  await refreshAgents();
+  await evalExpr('(() => { window.__notes = []; const N = class { constructor(title, opts) { window.__notes.push({ title, body: (opts && opts.body) || "" }); } }; N.permission = "granted"; window.Notification = N; const box = document.getElementById("notifyBox"); box.checked = true; box.dispatchEvent(new Event("change")); Object.defineProperty(document, "hidden", { configurable: true, get: () => true }); return true; })()');
+  fs.appendFileSync(needLog, frame([askEvent('ui-ask-2', 'call_ui_ask_2')]));
+  await refreshAgents();
+  check(await waitFor('window.__attention.needs === 2', 8000), 'a second agent that starts waiting is counted', String(await evalExpr('window.__attention.needs')));
+  check(await waitFor('window.__notes.some((n) => n.title === "Needs you")', 8000), 'it raises a desktop notification', JSON.stringify(await evalExpr('window.__notes')));
+  const notes = await evalExpr('window.__notes');
+  check(notes.every((n) => !(n.title + n.body).includes(SECRET_UI)) && notes.some((n) => /NEEDS YOU · permission · pwsh/.test(n.body)), 'the notification names the kind of wait and the tool, never the command', JSON.stringify(notes));
+  await evalExpr('delete document.hidden; true');
+  check(await evalExpr('/^\\(2\\) ⚠ /.test(document.title)'), 'the title count follows', await evalExpr('document.title'));
+  await evalExpr('loadSessions(false).then(() => true)', true);
+  const order = await evalExpr('[...document.querySelectorAll("#sessionMenu .session-item[data-session-id]")].map((r) => r.classList.contains("needs-you"))');
+  const firstOff = order.indexOf(false);
+  check(order.filter(Boolean).length === 2 && (firstOff === -1 || order.slice(firstOff).every((x) => !x)), 'in the menu the sessions that need you come first', JSON.stringify(order));
+
+  console.log('\nneeds you: the inbox');
+  check(await waitFor('!document.getElementById("inboxBtn").classList.contains("hidden") && /NEEDS YOU · 2/.test(document.getElementById("inboxBtn").textContent)', 5000), 'the activity bar has an inbox button with the count', await evalExpr('document.getElementById("inboxBtn")?.textContent'));
+  await evalExpr('document.getElementById("inboxBtn").click(); true');
+  check(await waitFor('!document.getElementById("inboxPanel").classList.contains("hidden") && document.querySelectorAll("#inboxPanel .ib-item").length === 2', 4000), 'it lists everything that needs you', String(await evalExpr('document.querySelectorAll("#inboxPanel .ib-item").length')));
+  check(await evalExpr('[...document.querySelectorAll("#inboxPanel .ib-item")].every((r) => !!r.querySelector(".ib-open") && /NEEDS YOU · permission · pwsh/.test(r.querySelector(".ib-label").textContent))'), 'each row names the wait and offers to open the session');
+  check(await evalExpr('document.querySelectorAll("#inboxPanel .ib-approve, #inboxPanel .ib-reject").length === 0 && /--allow-control/.test(document.querySelector("#inboxPanel .ib-notes").textContent)'), 'without control there are no Approve or Reject buttons, and it says why');
+  check(await evalExpr('/Antigravity approval prompts are not visible/.test(document.querySelector("#inboxPanel .ib-notes").textContent)'), 'it says Antigravity approval prompts are not visible');
+  check(await evalExpr('fetch("/api/control/approvals").then((r) => r.status)', true) === 404, 'the approvals endpoint does not exist without --allow-control');
+  await evalExpr('document.querySelector("#inboxPanel .ib-item[data-key=\\"' + needKey + '\\"] .ib-open").click(); true');
+  check(await waitFor('location.hash === "#' + needId + '" && document.getElementById("inboxPanel").classList.contains("hidden")', 4000), 'open session goes to that session and closes the inbox', await evalExpr('location.hash'));
+  check(await waitFor('document.getElementById("sessionSelect").value === "' + needId + '"', 8000), 'the page loads it');
+  await evalExpr('location.hash = "#' + fixture.liveId + '"; true');
+  check(await waitFor('document.getElementById("sessionSelect").value === "' + fixture.liveId + '" && document.getElementById("liveText").textContent === "NEEDS YOU"', 10000), 'and back to the first agent, still waiting', await evalExpr('document.getElementById("liveText").textContent'));
+
+  console.log('\nneeds you: the wall');
+  await evalExpr('window.__wall.open(window.__agents.data.groups.flatMap((g) => g.agents).filter((a) => a.attention.level === "needs-you")); true');
+  check(await waitFor('window.__wall.open_ && window.__wall.panes === 2 && window.__wall.needsYou.length === 2', 6000), 'the wall opens a pane for each agent that needs you', JSON.stringify(await evalExpr('window.__wall.needsYou')));
+  check(await evalExpr('[...document.querySelectorAll("#wallGrid .wall-pane")].every((p) => p.classList.contains("needs-you") && getComputedStyle(p).boxShadow !== "none" && /^NEEDS YOU · permission$/.test(p.querySelector(".wp-attn").textContent) && /pwsh/.test(p.querySelector(".wp-attn").title))'), 'those panes get an amber frame and a header chip');
+  // Silence must not shrink a pane that waits on you: shorten "quiet" to one second.
+  await evalExpr('window.__wall.cfg.dormantMs = 1000; true');
+  await sleep(3500);
+  check(await evalExpr('window.__wall.quiet.length === 0 && window.__wall.dormant.length === 0'), 'a pane that needs you never goes quiet, however long it is silent', JSON.stringify(await evalExpr('({ quiet: window.__wall.quiet, dormant: window.__wall.dormant })')));
+  fs.appendFileSync(needLog, frame([
+    decidedEvent('ui-ask-2'),
+    { type: 'step/end', seq: 6, time: Date.now(), data: { turn: 1, step: 1 } },
+    { type: 'turn/end', seq: 7, time: Date.now(), data: { turn: 1 } },
+  ]));
+  check(await waitFor('window.__wall.quiet.includes("' + needKey + '") && window.__wall.dormant.includes("' + needKey + '")', 10000), 'once its ask is decided the silent pane goes quiet and shrinks', JSON.stringify(await evalExpr('({ quiet: window.__wall.quiet, dormant: window.__wall.dormant, needs: window.__wall.needsYou })')));
+  check(await evalExpr('!window.__wall.quiet.includes("' + liveKey + '") && !window.__wall.dormant.includes("' + liveKey + '")'), 'while the one still waiting keeps its pane');
+  check(await evalExpr('(() => { const p = document.querySelector("#wallGrid .wall-pane[data-key=\\"' + needKey + '\\"]"); return !p.classList.contains("needs-you") && p.querySelector(".wp-attn").classList.contains("hidden"); })()'), 'and the settled pane loses its frame and chip');
+  check(await waitFor('(() => { const p = document.querySelector("#wallGrid .wall-pane[data-key=\\"' + needKey + '\\"]"); return p.querySelector(".wp-dormant span:last-child").textContent === "ready" && !/waiting for you/.test(document.getElementById("wallGrid").textContent); })()', 8000), 'the label of an idle pane reads "ready", not "waiting for you"', await evalExpr('document.querySelector("#wallGrid .wall-pane[data-key=\\"' + needKey + '\\"] .wp-dormant span:last-child")?.textContent'));
+  await evalExpr('window.__wall.cfg.dormantMs = 60000; true');
+  await evalExpr('document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); true');
+
+  console.log('\nneeds you: stream mode shows no command text');
+  const surface = await evalExpr(attnSurface);
+  check(typeof surface === 'string' && surface.length > 100 && !surface.includes(SECRET_UI), 'no title, chip, tooltip, picker row, notification or inbox row carries the command', String(surface).slice(0, 200));
+  const apiBodies = await evalExpr('Promise.all([fetch("/api/agents").then((r) => r.json()), fetch("/api/sessions?source=dsh").then((r) => r.json())]).then(([a, s]) => JSON.stringify([a.groups.flatMap((g) => g.agents).map((x) => x.attention), s.sessions.map((x) => x.attention)]))', true);
+  check(!apiBodies.includes(SECRET_UI), 'and neither do the attention records the server sends');
+
+  console.log('\nneeds you: it clears');
+  fs.appendFileSync(fixture.liveLog, frame([decidedEvent('ui-ask-1')]));
+  check(await waitFor('document.getElementById("liveText").textContent !== "NEEDS YOU"', 8000), 'the header goes back to the live state', await evalExpr('document.getElementById("liveText").textContent'));
+  await refreshAgents();
+  check(await waitFor('window.__attention.needs === 0 && !/^\\(\\d+\\)/.test(document.title)', 8000), 'the count and the title clear', await evalExpr('document.title'));
+  check(await waitFor('document.getElementById("inboxBtn").classList.contains("hidden")', 6000), 'the inbox button goes away when nothing needs you');
+  check(await evalExpr('!document.getElementById("favicon").dataset.badge'), 'and the favicon badge with it');
+  fs.rmSync(needDir, { recursive: true, force: true });
 
   console.log('\nrepeated actions');
   await evalExpr(`(() => { for (let i = 0; i < 5; i++) termNote('✎ edit   repeated/same-file.js', C.greenDim); return true; })()`);

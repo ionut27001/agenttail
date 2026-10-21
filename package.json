@@ -45,7 +45,7 @@
   ],
   "scripts": {
     "start": "node server.js",
-    "test": "node test/smoke.test.mjs && node test/roots.test.mjs && node test/redact.test.mjs && node test/sources.test.mjs && node test/control.test.mjs && node test/agents.test.mjs && node test/ui.test.mjs && node test/ui-control.test.mjs",
+    "test": "node test/smoke.test.mjs && node test/roots.test.mjs && node test/redact.test.mjs && node test/sources.test.mjs && node test/control.test.mjs && node test/harness.test.mjs && node test/agents.test.mjs && node test/attention.test.mjs && node test/ui.test.mjs && node test/ui-control.test.mjs",
     "demo": "node scripts/demo-session.mjs",
     "capture": "node scripts/capture.mjs",
     "build:sea": "node scripts/build-sea.mjs"

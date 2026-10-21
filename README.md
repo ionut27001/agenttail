@@ -45,19 +45,19 @@ A zero-runtime-dependency Node 24 server plus a single-page UI. It reads local l
 
 ## Supported sources
 
-| Source | | Logs read from | Shown |
-| --- | --- | --- | --- |
-| DeepSeek Harness | ✓ | `~/.dsh/sessions/**/session.v4.jsonl.zstd` | edits, commands, background jobs, thinking, tool calls, tokens/cost |
-| Claude Code | ✓ | `~/.claude/projects/**/*.jsonl` | messages, thinking, tool calls, subagents, custom titles, turns, tokens/API-equivalent cost |
-| Antigravity CLI | ◐ | `~/.gemini/antigravity/**` | normalized messages, thinking, tool calls and file edits |
+| Source | | Logs read from | Shown | Needs you |
+| --- | --- | --- | --- | --- |
+| DeepSeek Harness | ✓ | `~/.dsh/sessions/**/session.v4.jsonl.zstd` | edits, commands, background jobs, thinking, tool calls, tokens/cost | permission prompts, from the log |
+| Claude Code | ✓ | `~/.claude/projects/**/*.jsonl`, plus the status fields of `~/.claude/sessions/*.json` | messages, thinking, tool calls, subagents, custom titles, turns, tokens/API-equivalent cost | permission and input prompts (status file), questions and plans (transcript) |
+| Antigravity CLI | ◐ | `~/.gemini/antigravity/**` | normalized messages, thinking, tool calls and file edits | not visible: it writes no signal for an open approval prompt |
 
-✓ full adapter · ◐ normalized/partial. Only sessions whose logs exist locally are listed; empty sessions are hidden behind a picker toggle.
+✓ full adapter · ◐ normalized/partial. Only sessions whose logs exist locally are listed; empty sessions are hidden behind a picker toggle. **Needs you** is described [below](#needs-you).
 
 <details>
 <summary><b>Source adapter details</b></summary>
 
 - **DeepSeek Harness** reads `session.v4.jsonl.zstd` frames from `~/.dsh/sessions`, decodes them with Node's built-in zlib and understands edits, commands, background jobs, thinking and token/cost usage. The title prefers the local nickname, then a real `session/title` (fallback titles derived from the first prompt are ignored), then the last real user message (first 60 characters), then the first prompt.
-- **Claude Code** reads `~/.claude/projects` transcripts, including custom titles, thinking blocks, tool calls, subagents and pending live writes. Each reply counts once (Claude Code repeats a reply's usage on every content-block line), turns run from a real prompt to `end_turn`, and every reply is priced at Anthropic's API list price for its own model: cache reads, 5-minute and 1-hour cache writes, Haiku 5.5's long-prompt rate card, Opus 5.5 fast mode and web searches included. The header labels it **≈ API**: on a subscription it is a yardstick for how much work the session was, not your bill.
+- **Claude Code** reads `~/.claude/projects` transcripts, including custom titles, thinking blocks, tool calls, subagents and pending live writes. Each reply counts once (Claude Code repeats a reply's usage on every content-block line), turns run from a real prompt to `end_turn`, and every reply is priced at Anthropic's API list price for its own model: cache reads, 5-minute and 1-hour cache writes, Haiku 5.5's long-prompt rate card, Opus 5.5 fast mode and web searches included. The header labels it **≈ API**: on a subscription it is a yardstick for how much work the session was, not your bill. While a Claude Code process is alive, the status fields of its `~/.claude/sessions/<pid>.json` (busy, idle or waiting, and what it waits for) decide the live state and the [needs-you](#needs-you) signal; only those fields are read and the `.key` files next to them are never opened.
 - **Antigravity CLI** reads `~/.gemini/antigravity` conversations and normalizes messages, thinking, tool calls and file edits.
 - Sessions sort live first, then by last activity. The header shows only the short id; the picker carries the full title and details. Nicknames live in `nicknames.json` in the config directory (never in `.dsh`) and are redacted like every other label.
 
@@ -92,6 +92,7 @@ Requirements: Node 24+, Windows, macOS or Linux. Windows is the tested platform;
 - 🌡️ **Edit heat** — the tree tracks edits, failures and deleted files; hover reports `N edits · last … · M failed`. `.tmp`, `_*`, `node_modules`, `.git` and build directories are hidden unless **show hidden files** is enabled.
 - ⌨️ **Console and job progress** — running spinner, elapsed time, collapsible multi-line commands, `(+N lines)` outputs, a live job bar and a `[n/N]` mini progress bar. Failed commands flash red and show `✗ COMMAND FAILED` for three seconds.
 - 💬 **Chat and Log** — Chat groups tool calls and thinking for reading; Log is the full trajectory for auditing (the **MD** button exports it as Markdown), with a summary per turn (model, tools by kind, files changed, failures, tokens, cost, duration). Agent replies render as markdown: headings, lists, tables, quotes, code and links.
+- 🔔 **Needs you** — every source says when an agent is blocked on you: an amber dot and `NEEDS YOU · permission · Bash` in the picker, a chip in the overview, an amber frame on the wall (that pane never shrinks), a count in the tab title and favicon, an optional desktop notification and one inbox for everything waiting. See [Needs you](#needs-you).
 - 👥 **Several agents at once** — an overview of every agent active in the last 30 minutes (dsh, Claude Code, Antigravity), grouped by git repository (worktrees count as the same repo), each with its own colour, branch, model and current action. The activity bar names the other agents on the repo you are viewing, and the tree marks the files they edited. `Alt+W` opens the [watch wall](#watching-several-agents).
 - 🎭 **Console on stage** — while the agent runs a command the console comes up over the editor; when it edits, the console goes back to its dock; when it has nothing to show it shrinks to a slim rail and the agent pane gets the room. Switch to a plain docked console from the console header.
 - 🐾 **Tail, the mascot** — the logo come to life: it reacts to what the agent does, thinks out loud while the model thinks and plays games on a long think. See [Meet Tail](#meet-tail).
@@ -161,7 +162,7 @@ Matrix (default), amber, red (crimson and bone), ice, dracula, neon (synthwave) 
 - **Each pane is a small agenttail**: an editor that types edits in as they happen, a console with commands, output and exit status, a scoreboard (edits, commands, failures, green streak, TOK/S) and the context meter.
 - **Tail lives in every pane.** Each agent gets its own Tail, reacting to that agent's commands and turns; while it thinks, its thought bubble opens with the clock and, on a long think, a game you can take over with **▶ play** (Esc ends the game, a second Esc closes the wall).
 - **The stage follows the agent.** The console comes up while a command runs and makes way for the editor afterwards; reasoning and replies run as a caption. The dock under each pane switches or pins the view, and 💬 opens the conversation: your messages and the agent's replies.
-- **Waiting is visible.** A step with no output yet says `waiting on the model` with a running clock, and after five minutes `stalled?`. Quiet agents shrink to a slim column so the working ones get the space.
+- **Waiting is visible.** A step with no output yet says `waiting on the model` with a running clock, and after five minutes `stalled?`. Quiet agents shrink to a slim column so the working ones get the space, except an agent that [needs you](#needs-you): its pane gets an amber frame and a `NEEDS YOU` chip and never shrinks, however long it is silent.
 - **One file tree for the team.** The left column lists every file the agents touched, per repository, with edit counts, one dot per agent and each agent's current file marked in its colour. Two agents on the same file flash as a clash. Click a file to open it in that agent's editor.
 - **A timeline** underneath lays out every action per agent.
 - **Layouts**: FOCUS (one stage per pane) or SPLIT (editor and console stacked); replies as captions, in a side column or inside the console.
@@ -199,6 +200,25 @@ Downgrades require two consecutive polls to agree; upgrades apply immediately. T
 **Visual effects** in Settings (the gear in the header): replay speed, effect intensity, boot sequence, matrix rain, spark line, cursor, glitch, heat, follow mode, show system and **show hidden files**.
 
 </details>
+
+## Needs you
+
+An agent that waits for a permission, an answer or a decision writes nothing, so it is easy to miss. agenttail gives every source one state:
+
+- **NEEDS YOU** (amber): the agent cannot continue until you act.
+- **READY** (green): the turn ended and the agent waits for its next prompt.
+- otherwise the usual live, idle or finished state.
+
+Each signal says how it was seen (`acp`, status file, log, transcript) and how sure it is; desktop notifications fire for `sure` and `probable` only.
+
+| Source | Signal | Sure? |
+| --- | --- | --- |
+| dsh | an `approval/asked` in the session log with no matching `approval/decided`, while the session still looks live. A decision of `unavailable` (nobody could be asked) and an ask older than 30 minutes (a crash) do not count. | sure |
+| Claude Code | `status: waiting` in `~/.claude/sessions/<pid>.json` while that process is alive: a permission prompt, input needed, a sandbox request, a worker request or an open dialog. Without it, an unanswered `AskUserQuestion` or `ExitPlanMode` in the transcript. Any other open tool call says nothing: it looks the same whether you are deciding or the command is slow. | sure (status file), probable (transcript) |
+| Antigravity | none yet. agenttail says so: approval prompts are not visible for Antigravity. | n/a |
+| owned by agenttail (`--allow-control`) | a pending ACP permission request, known exactly | sure |
+
+One session is counted once however many signals saw it (an owned session shows up in the log and over ACP). Where it shows: the session picker (needs-you rows first), the agents overview, the watch wall, the tab title (`(2) ⚠ agenttail`) and favicon, an opt-in desktop notification (Settings, only while the tab is in the background) and the inbox button in the activity bar (`Alt+I`), which lists everything that needs you with **Open session**; for owned sessions it also has **Approve** and **Reject** in place. Tail perks up when something starts needing you. In stream mode every one of these shows the kind of wait and the tool name only, never a command or a path, and the inbox has no Approve or Reject buttons (control is locked).
 
 ## Stream mode
 
@@ -238,7 +258,7 @@ Every control POST needs `Authorization: Bearer <token>` in addition to the exis
 
 - **New session** — pick an allowlisted workspace, a permission preset (`workspace-write` by default, `read-only`, or `danger-full-access` with an explicit confirmation), a model from the live dsh catalog (including custom providers such as Ollama configured in the ACP profile), and a first message.
 - **Input** — Enter sends; Shift+Enter adds a newline. A message sent during a running turn is queued and sent when that turn ends. The model picker next to the input switches the model for the next turn (the live dsh catalog). Pasted images are sent only when the agent declares image prompts; dsh's ACP does not, so agenttail says so instead of sending them.
-- **Approvals** — the exact command or diff appears in the chat and the activity bar, with Approve and Reject. Reject accepts an optional short reason. agenttail never auto-approves.
+- **Approvals** — the exact command, file paths and diff appear first, the agent's own title last, with Approve and Reject. Approve always means "allow once": agenttail never picks an agent's "always allow" option, and refuses to approve a request that came with no command or file details, or a card that changed after you saw it (it shows what changed). Reject accepts an optional short reason. The inbox (`Alt+I`) lists the pending approvals of every owned session with Approve and Reject in place. agenttail never auto-approves.
 - **Stop** — cancels the running turn and kills the tool process. **End** closes the owned session; it becomes view-only.
 - **Owned vs view-only** — sessions started by agenttail are marked ◈. Sessions started by the Desktop app or another process are view-only: dsh does not expose a live attach surface, and a second process cannot resume an active session (`session … is already owned by an active write handle`).
 
@@ -248,12 +268,13 @@ Risks in plain words: control starts a coding agent that can run commands and ed
 
 ## Security and privacy
 
-- **Read-only by default.** Without `--allow-control` the server only reads session logs, transcripts and workspace files; its only writes are local nicknames and optional config files in the per-user config directory. Control is opt-in and starts its own dsh sessions; the Desktop app's sessions are never attached to.
+- **Read-only by default.** Without `--allow-control` the server only reads session logs, transcripts, workspace files and, for [needs you](#needs-you), the status fields of Claude Code's `~/.claude/sessions/<pid>.json` files; its only writes are local nicknames and optional config files in the per-user config directory. Control is opt-in and starts its own dsh sessions; the Desktop app's sessions are never attached to.
 - **Localhost only.** The server binds to `127.0.0.1`; there is no remote listener. Read-only endpoints have no authentication; control endpoints require the per-start token.
 - **DNS rebinding blocked.** Every request must carry `Host: 127.0.0.1:<port>` or `Host: localhost:<port>`, otherwise `403`.
 - **CSRF blocked.** POST requests require an `Origin` matching the exact Host and `Content-Type: application/json`, otherwise `403` before the body is read. Control POSTs additionally require `Authorization: Bearer <token>`.
 - **Control locked in stream mode.** With stream mode on (the default), the input box and approval buttons are hidden and control requests return `403`.
 - **No auto-approve.** Every approval is a human click; the dsh permission preset is the enforcement boundary.
+- **Claude Code status files.** Only the numbered `~/.claude/sessions/<pid>.json` files are opened, and only the pid, session id, status, what it waits for and when are kept. The sibling `*.key` files are never opened. A status counts only while its process is alive (a signal-0 check, nothing is sent to it) and fresh. `AGENTTAIL_CLAUDE_SESSIONS_DIR` changes the folder.
 - **No telemetry.** agenttail collects no analytics, crash reports or usage data.
 - **No external requests from agenttail.** Monaco, xterm.js and JetBrains Mono are vendored under `public/vendor/` with their licenses. The page loads no CDN and works offline. A controlled dsh session may call its configured model provider, just like a normal dsh session.
 
@@ -298,6 +319,20 @@ The session workspace is always allowed. Junctions/symlinks are followed only wh
 
 `dshProfile` defaults to `acp`; `dshHome` and `patch` are optional. A custom provider such as Ollama must be configured in that ACP profile (or passed as a `patch` overlay) before it appears in the model picker. `workspaces` is the only required field.
 
+The same file can describe several harnesses in a `harnesses` block instead of the `dsh…` keys (which keep working and are read as `harnesses.dsh` when the block is absent):
+
+```json
+{
+  "workspaces": ["E:\\dev\\scratch"],
+  "defaultHarness": "dsh",
+  "harnesses": {
+    "dsh": { "label": "DeepSeek Harness", "profile": "acp" }
+  }
+}
+```
+
+Each entry takes `label`, `kind` (`dsh` or `acp`), `command` and `args` (absolute paths recommended), `envPass` (names of environment variables to pass through), `env` (fixed values), `presets` (`{ id, label, danger?, env | mode | config }`), `defaultPreset` and `log` (which adapter shows its sessions). Commands come only from this file, never from the page or an API request, and agenttail never downloads or installs a harness. A harness other than dsh gets only the basic environment (path, system, temp and home variables) plus `envPass`; environment values never reach the page or the audit log. A `danger` preset, or switching a running session to its mode, needs the explicit confirmation. The New Session dialog shows a harness picker only when there is more than one, with the command line that will run. In this release only harnesses shown by the dsh log adapter can be started; driving Claude Code, Antigravity and other harnesses is the next release (see [docs/dev/hub-roadmap.md](docs/dev/hub-roadmap.md)).
+
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `PORT` | `8787` | HTTP port, bound to `127.0.0.1` |
@@ -311,6 +346,7 @@ The session workspace is always allowed. Junctions/symlinks are followed only wh
 | `AGENTTAIL_STREAM_MODE` | `on` | Set `off` to disable redaction (not recommended) |
 | `DSH_SESSIONS_ROOT` | `~/.dsh/sessions` | DeepSeek Harness session root |
 | `CLAUDE_PROJECTS_ROOT` | `~/.claude/projects` | Claude Code transcripts |
+| `AGENTTAIL_CLAUDE_SESSIONS_DIR` | `~/.claude/sessions` | Claude Code status files (status fields only) |
 | `ANTIGRAVITY_ROOT` | `~/.gemini/antigravity` | Antigravity transcripts |
 | `AGENTTAIL_NO_OPEN` | unset | Set `1` to skip opening the browser |
 
@@ -329,6 +365,7 @@ The session workspace is always allowed. Junctions/symlinks are followed only wh
 | `Ctrl+Shift+.` | dock the agent pane to the right side (full height) or back under the editor |
 | `Alt+A` | open the agents overview |
 | `Alt+W` | watch the live agents side by side, one pane each |
+| `Alt+I` | open the inbox: everything that needs you |
 | `?` | list every keyboard shortcut |
 
 </details>
@@ -370,7 +407,8 @@ The control design and the dsh ACP evidence are recorded in [docs/dev/input-desi
 - `sources` — Claude custom titles/subagents/thinking/pending live, replies counted once, turns and API-equivalent prices, Antigravity normalization, tokens, deletes and live tail.
 - `control` — opt-in gate (404), token (401), stream-mode lockout (403), foreign Origin (403), ACP start/message/approve/stop/close, queueing, audit-without-bodies.
 - `agents` — the agents overview API, repository and worktree grouping, colours, `/app/` asset security, stream tail and lite mode.
-- `ui` — headless Edge: header, compact picker, meters, activity states, follow, tree legend/tooltips/show-hidden, skeleton/loading bar, chat Chat|Log and grouped tools, replay, splitter persistence, themes, the console stage, Tail and its ten games, the watch wall (panes, focus stage, chat modes, team tree, timeline, quiet agents, a Tail per pane), vendored assets, reduced motion and 900/720 px layouts.
+- `attention` — the needs-you model and merge, dsh open asks (closed, `unavailable`, crashed), Claude Code status files (busy, each waiting reason, dead pid, unknown shape, a `.key` file left unread) and transcript rules, Antigravity, an owned session counted once, and the inbox endpoint.
+- `ui` — headless Edge: header, compact picker, meters, activity states, follow, tree legend/tooltips/show-hidden, skeleton/loading bar, chat Chat|Log and grouped tools, replay, splitter persistence, themes, the console stage, Tail and its ten games, the watch wall (panes, focus stage, chat modes, team tree, timeline, quiet agents, a Tail per pane), needs-you (header, tab title and favicon count, notification, picker, overview, wall, inbox, no command text), vendored assets, reduced motion and 900/720 px layouts.
 
 Build a standalone Windows exe and the package/portable archives with `node scripts/build-sea.mjs`. Artifacts go to `dist/` (git-ignored).
 
@@ -379,6 +417,7 @@ Build a standalone Windows exe and the package/portable archives with `node scri
 - Only the newest sessions per source are listed (60 dsh/Claude, 40 Antigravity).
 - Control starts one `dsh --profile acp` process per owned session, because the permission preset is process-level in dsh. ACP is automation-only: no plans, commands, terminals or client filesystem operations.
 - Sessions started outside agenttail are view-only; dsh rejects a second controller for an active session.
+- Needs-you for Claude Code relies on a status file Claude Code writes for itself; its layout is not a documented contract, so an unexpected shape means no signal and the transcript rules take over. A permission prompt is invisible in the transcript alone. Antigravity has no signal. Browser notifications work only while the agenttail tab is open.
 - The tree is a snapshot (2,500 nodes, 12 levels); files created later appear when touched if their parent is known.
 - Peak/off-peak pricing ignores public holidays; the Claude API-equivalent cost uses list prices (no batch, regional or long-context surcharges) and skips models without a list price; GPU metering needs `nvidia-smi`.
 - Windows is tested. macOS and Linux are untested. The Windows exe is unsigned, so SmartScreen may warn.

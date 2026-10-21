@@ -1,5 +1,26 @@
 # Unreleased
 
+- Needs you: every session shows when its agent is waiting on you, not just
+  working or idle, with no flags. DeepSeek Harness sessions from their open
+  approval prompts in the log; Claude Code from its own status files (status
+  fields only, never the key files next to them, checked against the process
+  start time) and from open questions or plan approvals in the transcript;
+  owned sessions from their pending approvals. Antigravity says plainly that
+  its prompts are not visible yet. It shows in the session picker, the agents
+  overview, the watch wall (a pane that needs you never shrinks away), the
+  tab title and favicon, and desktop notifications. An inbox (`Alt+I`) lists
+  everything that needs you, with Approve and Reject in place for owned
+  sessions. Idle sessions now read "ready".
+- Safer approvals: Approve always means "allow once" and never picks an
+  agent's "always allow" option; cards show the command, paths and diff
+  before the agent's own title; a card whose details change after you saw it
+  must be seen again; a request with no details cannot be approved; pending
+  approvals end with their turn and none is taken after Stop.
+- Groundwork for driving more harnesses: a `harnesses` block in
+  `control.json` (old files keep working), capabilities read from the agent
+  instead of assumed, a mode picker, a stricter environment for harnesses
+  other than dsh, the agent's error output shown when it fails, and a server
+  that survives a misbehaving agent.
 - A project site on GitHub Pages: a replayed session with the console on
   stage, Tail to pet and to play with, all ten games playing themselves in
   an arcade, the seven themes recolouring the page, and stream mode
