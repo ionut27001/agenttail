@@ -1098,13 +1098,17 @@ function controlDescriptor(record) {
 
 function safeApproval(approval) {
   if (!approval) return approval;
-  const diff = approval.diff
-    ? {
-        path: approval.diff.path ? redactor.text(approval.diff.path) : null,
-        oldText: redactor.text(approval.diff.oldText || ''),
-        newText: redactor.text(approval.diff.newText || ''),
-      }
-    : null;
+  const safeDiff = (entry) => ({
+    path: entry.path ? redactor.text(entry.path) : null,
+    oldText: redactor.text(entry.oldText || ''),
+    newText: redactor.text(entry.newText || ''),
+    isNew: entry.isNew === true,
+  });
+  const diff = approval.diff ? safeDiff(approval.diff) : null;
+  const diffs = Array.isArray(approval.diffs) ? approval.diffs.map(safeDiff) : undefined;
+  const locations = Array.isArray(approval.locations)
+    ? approval.locations.map((place) => ({ ...place, path: redactor.text(place.path || '') }))
+    : undefined;
   const raw = approval.rawInput && typeof approval.rawInput === 'object'
     ? Object.fromEntries(Object.entries(approval.rawInput).map(([key, value]) => [
         key,
@@ -1117,6 +1121,8 @@ function safeApproval(approval) {
     command: redactor.text(approval.command),
     content: redactor.text(approval.content),
     diff,
+    ...(diffs ? { diffs } : {}),
+    ...(locations ? { locations } : {}),
     rawInput: raw,
   };
 }

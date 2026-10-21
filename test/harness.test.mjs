@@ -18,7 +18,7 @@ fs.mkdirSync(workspace, { recursive: true });
 process.env.DSH_SESSIONS_ROOT = path.join(tmp, 'sessions');
 
 const { ControlManager } = require('../lib/control');
-const { chooseOption } = require('../lib/acp-normalize');
+const { chooseOption, toolCallFacts, normalizeApproval, publicApproval } = require('../lib/acp-normalize');
 
 const failures = [];
 function check(cond, msg, extra) {
@@ -112,6 +112,58 @@ try {
     const r4 = await mgr.approval(fourth.id, fourth.approval.approvalId, 'reject');
     check(r4.optionId === 'reject-always', 'Reject uses reject_always when it is the only reject option', r4.optionId);
     await mgr.close(fourth.id);
+  }
+
+  console.log('\napproval normaliser');
+  {
+    const diff = toolCallFacts({
+      toolCallId: 't1',
+      title: 'Edit a file',
+      kind: 'edit',
+      locations: [{ path: 'a.txt', line: 2 }, { nope: true }],
+      content: [
+        { type: 'content', content: { type: 'text', text: 'explanation' } },
+        { type: 'diff', path: 'a.txt', oldText: 'one', newText: 'two' },
+        { type: 'diff', path: 'new.txt', oldText: null, newText: 'fresh' },
+      ],
+    });
+    check(diff.diff?.path === 'a.txt' && diff.diff.oldText === 'one' && diff.diff.newText === 'two', 'a diff content block becomes the approval diff');
+    check(diff.diffs.length === 2 && diff.diffs[1].isNew === true && diff.diffs[1].oldText === '', 'every diff is kept and a new file is marked');
+    check(diff.locations.length === 1 && diff.locations[0].line === 2, 'locations are kept, malformed ones dropped');
+    check(diff.content === 'explanation' && diff.command === null && diff.rawInput === null, 'text content is kept and nothing is invented');
+    const fromRaw = toolCallFacts({ toolCallId: 't2', title: 'x', kind: 'edit', rawInput: { file_path: 'b.txt', old_string: 'x', new_string: 'y' } });
+    check(fromRaw.diff?.path === 'b.txt' && fromRaw.diff.newText === 'y' && fromRaw.locations[0]?.path === 'b.txt', 'a diff from rawInput old/new strings still works and gives a location');
+    const both = toolCallFacts({ toolCallId: 't3', rawInput: { old_string: 'raw' }, content: [{ type: 'diff', path: 'c', oldText: 'a', newText: 'b' }] });
+    check(both.diffs.length === 1 && both.diff.path === 'c', 'content diffs win over rawInput strings');
+    const argv = toolCallFacts({ toolCallId: 't4', rawInput: { command: ['git', 'status'] } });
+    check(argv.command === 'git status', 'an argv array command is shown as one line');
+    const big = toolCallFacts({ toolCallId: 't5', content: [{ type: 'diff', path: 'big', oldText: '', newText: 'x'.repeat(30000) }] });
+    check(big.truncated === true && big.diff.newText.length < 30000, 'an oversized diff is cut and flagged');
+    const approval = normalizeApproval({ harness: 'h', requestId: 7, toolCall: { toolCallId: 't1', title: 'T' }, options: allowFirst });
+    check(approval.origin === 'harness' && approval.harness === 'h' && approval.approvalId === '7', 'normalised approvals carry origin and harness');
+    const shown = publicApproval(approval);
+    check(shown.canApprove === true && shown.canReject === true && shown.kind === shown.toolKind, 'the public approval says what can be decided');
+    check(publicApproval(normalizeApproval({ requestId: 1, toolCall: {}, options: [{ optionId: 'a', kind: 'allow_always' }] })).canApprove === false, 'no allow_once means it cannot be approved');
+  }
+
+  console.log('\napproval cards from the wire');
+  {
+    const mgr = manager(legacy, 'cards');
+    const only = await beginAndAsk(mgr, 'diff-only');
+    check(only.approval?.diff?.newText === 'new line' && only.approval.command === null && only.approval.rawInput === null, 'a diff-only tool call gives a card with the diff', JSON.stringify(only.approval));
+    check(only.approval?.locations?.[0]?.path === 'docs/README.md' && only.approval.title === 'Update README' && only.approval.toolKind === 'edit', 'the diff-only card has the path, the title and the tool kind');
+    await mgr.approval(only.id, only.approval.approvalId, 'approve');
+    await mgr.close(only.id);
+
+    const inline = await beginAndAsk(mgr, 'diff-inline');
+    check(inline.approval?.diffs?.length === 2 && inline.approval.diffs[1].isNew === true, 'a request that carries its own content shows every diff', JSON.stringify(inline.approval));
+    await mgr.approval(inline.id, inline.approval.approvalId, 'reject');
+    await mgr.close(inline.id);
+
+    const lying = await beginAndAsk(mgr, 'deceptive-title');
+    check(lying.approval?.command === 'rm -rf build' && lying.approval.title === 'Read a file', 'the raw command is on the card next to a harmless title', JSON.stringify(lying.approval));
+    await mgr.approval(lying.id, lying.approval.approvalId, 'reject');
+    await mgr.close(lying.id);
   }
 } finally {
   delete process.env.FAKE_ACP_PROFILE;

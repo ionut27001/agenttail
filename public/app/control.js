@@ -297,17 +297,45 @@
     renderApproval();
   }
 
+  function diffText(diff) {
+    const path = diff.path || '(file)';
+    const oldLines = String(diff.oldText || '').split('\n').map((line) => `- ${line}`).join('\n');
+    const newLines = String(diff.newText || '').split('\n').map((line) => `+ ${line}`).join('\n');
+    return `${path}${diff.isNew ? ' (new file)' : ''}\n--- old\n${oldLines}\n+++ new\n${newLines}`;
+  }
+
+  /**
+   * The card shows what the agent will actually do (command, files, edits)
+   * first, and the title the agent wrote for it last: a harmless title over a
+   * dangerous input is the cheapest way to fool a reviewer.
+   */
   function approvalText(approval) {
-    if (approval.command) return `$ ${approval.command}`;
-    if (approval.diff) {
-      const path = approval.diff.path || '(file)';
-      const oldLines = String(approval.diff.oldText || '').split('\n').map((line) => `- ${line}`).join('\n');
-      const newLines = String(approval.diff.newText || '').split('\n').map((line) => `+ ${line}`).join('\n');
-      return `${path}\n--- old\n${oldLines}\n+++ new\n${newLines}`;
+    const parts = [];
+    if (approval.canApprove === false) {
+      parts.push('This agent offered no allow-once option, so it cannot be approved here. Reject it, or Stop the turn.');
     }
-    if (approval.content) return approval.content;
-    if (approval.rawInput) return JSON.stringify(approval.rawInput, null, 2);
-    return approval.title || '(no command details were sent)';
+    if (approval.command) parts.push(`$ ${approval.command}`);
+    const diffs = approval.diffs && approval.diffs.length ? approval.diffs : (approval.diff ? [approval.diff] : []);
+    const diffPaths = new Set(diffs.map((diff) => diff.path));
+    const places = (approval.locations || []).filter((place) => !diffPaths.has(place.path));
+    if (places.length) parts.push(places.map((place) => `${place.path}${place.line ? `:${place.line}` : ''}`).join('\n'));
+    for (const diff of diffs) parts.push(diffText(diff));
+    if (!parts.length || (!approval.command && !diffs.length && !places.length)) {
+      if (approval.content) parts.push(approval.content);
+      else if (approval.rawInput) parts.push(JSON.stringify(approval.rawInput, null, 2));
+      else parts.push('(the agent sent no command or file details)');
+    }
+    if (approval.truncated) parts.push('(the input is larger than what is shown here)');
+    if (approval.title) parts.push(`the agent calls this: ${approval.title}`);
+    return parts.join('\n\n');
+  }
+
+  /** Header of the card: tool kind and the first file, from the raw input. */
+  function approvalHead(approval) {
+    const diff = approval.diffs && approval.diffs[0] ? approval.diffs[0] : approval.diff;
+    const place = (approval.locations && approval.locations[0]) || diff || null;
+    const where = place && place.path ? ` · ${place.path}` : (approval.command ? ' · command' : '');
+    return `${approval.kind || approval.toolKind || 'request'}${where}`;
   }
 
   function renderApproval() {
@@ -321,14 +349,16 @@
       badge.classList.add('hidden');
       return;
     }
-    $c('approvalTool').textContent = approval.title + (approval.kind ? ` · ${approval.kind}` : '');
+    $c('approvalTool').textContent = approvalHead(approval);
     $c('approvalDetail').textContent = approvalText(approval);
+    $c('approvalApprove').disabled = control.busy || approval.canApprove === false;
+    $c('approvalApprove').title = approval.canApprove === false ? 'No allow-once option was offered' : '';
     panel.classList.remove('hidden');
     badge.classList.remove('hidden');
     badge.textContent = control.approvals.length > 1
       ? `⚠ ${control.approvals.length} APPROVALS`
       : '⚠ APPROVAL';
-    badge.title = approval.title || 'Approval needed';
+    badge.title = approvalHead(approval) || 'Approval needed';
     if (document.activeElement !== $c('approvalReason') && document.activeElement !== $c('composerInput')) {
       $c('approvalApprove').focus({ preventScroll: true });
     }

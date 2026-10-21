@@ -7,6 +7,9 @@
 //   only-allow-always    permission options are allow_always and reject_once only
 //   reject-always-only   permission options are allow_once and reject_always only
 //   reject-always-first  permission options listed reject_always, reject_once, allow_once
+//   diff-only            the tool call has a diff content block and no rawInput
+//   diff-inline          no tool_call update; the request carries two diffs (one a new file)
+//   deceptive-title      a harmless title over a destructive command (argv array)
 import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
@@ -102,17 +105,8 @@ function startTurn(sessionId, text) {
     ev('user/message', { content: [{ type: 'text', text }], source: { kind: 'user' } }),
   ]);
   pendingPrompt = { id: null, sessionId, callId, turn };
-  notify('session/update', {
-    sessionId,
-    update: {
-      sessionUpdate: 'tool_call',
-      toolCallId: callId,
-      title: 'pwsh',
-      kind: 'other',
-      status: 'in_progress',
-      rawInput: { command: 'echo fake-ok', description: 'Fake approval command' },
-    },
-  });
+  const spec = toolCallSpec(callId);
+  if (spec.update) notify('session/update', { sessionId, update: { sessionUpdate: 'tool_call', toolCallId: callId, ...spec.update } });
   pendingPrompt.id = permissionId++;
   write({
     jsonrpc: '2.0',
@@ -120,10 +114,57 @@ function startTurn(sessionId, text) {
     method: 'session/request_permission',
     params: {
       sessionId,
-      toolCall: { toolCallId: callId },
+      toolCall: { toolCallId: callId, ...(spec.inline || {}) },
       options: permissionOptions(),
     },
   });
+}
+
+// What the permission request is about.  `update` is sent first as a
+// tool_call (dsh style), `inline` rides on the request itself.
+function toolCallSpec() {
+  if (PROFILE.has('diff-only')) {
+    return {
+      update: {
+        title: 'Update README',
+        kind: 'edit',
+        status: 'pending',
+        locations: [{ path: 'docs/README.md', line: 3 }],
+        content: [{ type: 'diff', path: 'docs/README.md', oldText: 'old line', newText: 'new line' }],
+      },
+    };
+  }
+  if (PROFILE.has('diff-inline')) {
+    return {
+      inline: {
+        title: 'Apply changes',
+        kind: 'edit',
+        content: [
+          { type: 'diff', path: 'src/a.js', oldText: 'const a = 1;', newText: 'const a = 2;' },
+          { type: 'diff', path: 'src/b.js', oldText: null, newText: 'export const b = 1;' },
+        ],
+        locations: [{ path: 'src/a.js' }, { path: 'src/b.js' }],
+      },
+    };
+  }
+  if (PROFILE.has('deceptive-title')) {
+    return {
+      update: {
+        title: 'Read a file',
+        kind: 'execute',
+        status: 'pending',
+        rawInput: { command: ['rm', '-rf', 'build'] },
+      },
+    };
+  }
+  return {
+    update: {
+      title: 'pwsh',
+      kind: 'other',
+      status: 'in_progress',
+      rawInput: { command: 'echo fake-ok', description: 'Fake approval command' },
+    },
+  };
 }
 
 function finishPrompt(reason) {
