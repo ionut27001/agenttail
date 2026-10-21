@@ -27,6 +27,7 @@
         ['ok', '✓', 'commands that succeeded'],
         ['bad', '✗', 'commands that failed'],
         ['streak', '🔥', 'green runs in a row'],
+        ['rate', 'tok/s', 'output tokens per second over the last 30 s'],
       ]) {
         const part = node('span', `sc sc-${k} zero`);
         part.title = title;
@@ -37,8 +38,16 @@
       }
       const stateEl = head.querySelector('.wp-state');
       head.insertBefore(box, stateEl);
-      const score = { edits: 0, commands: 0, ok: 0, bad: 0, streak: 0, best: 0 };
+      const score = { edits: 0, commands: 0, ok: 0, bad: 0, streak: 0, best: 0, rate: 0 };
       const shell = new Set();
+      // TOK/S like the main header (outputRate in main.js), from this pane's replies.
+      const timeline = [];
+      const showRate = () => {
+        score.rate = outputRate(30000, timeline);
+        parts.rate.querySelector('b').textContent = fmtRate(score.rate);
+        parts.rate.classList.toggle('zero', score.rate === 0);
+      };
+      const rateTimer = setInterval(showRate, 1000);
       const set = (k, pop) => {
         parts[k].querySelector('b').textContent = String(score[k]);
         parts[k].classList.toggle('zero', score[k] === 0);
@@ -50,6 +59,11 @@
       };
       return {
         onEvent(ev) {
+          if (ev.t === 'say' && ev.usage && ev.usage.output) {
+            timeline.push({ t: ev.time || Date.now(), tokens: ev.usage.output });
+            if (timeline.length > 200) timeline.splice(0, timeline.length - 200);
+            if (!pane.history) showRate();
+          }
           if (ev.t === 'call') {
             if (EDIT_TOOLS.has(ev.name)) { score.edits += 1; set('edits', true); }
             if (ev.name === 'pwsh') { score.commands += 1; shell.add(ev.callId); set('commands', true); }
@@ -72,7 +86,7 @@
             parts.streak.classList.toggle('hot', score.streak >= 3);
           }
         },
-        dispose() { box.remove(); },
+        dispose() { clearInterval(rateTimer); box.remove(); },
         get score() { return { ...score }; },
       };
     },

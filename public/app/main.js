@@ -2659,11 +2659,16 @@ function drawSpark() {
 }
 
 /** Output tokens per second over the last windowMs of the log. */
-function outputRate(windowMs) {
+/** Output tokens per second over the last windowMs of a timeline of { t, tokens } (the wall panes keep their own). */
+function outputRate(windowMs, timeline = tokenTimeline) {
   const now = Date.now();
   let tokens = 0;
-  for (const x of tokenTimeline) if (now - x.t <= windowMs) tokens += x.tokens;
+  for (const x of timeline) if (now - x.t <= windowMs) tokens += x.tokens;
   return tokens / (windowMs / 1000);
+}
+
+function fmtRate(r) {
+  return r === 0 ? '0' : r >= 1000 ? `${(r / 1000).toFixed(1)}k` : r >= 10 ? String(Math.round(r)) : r.toFixed(1);
 }
 
 /** The TOK/S number: a 30 s average, so a burst at the end of a step does not flicker it. */
@@ -2671,7 +2676,7 @@ function renderRate() {
   const el = $('mRate');
   if (!el) return;
   const r = outputRate(30000);
-  el.textContent = r === 0 ? '0' : r >= 1000 ? `${(r / 1000).toFixed(1)}k` : r >= 10 ? String(Math.round(r)) : r.toFixed(1);
+  el.textContent = fmtRate(r);
   el.title = `${r.toFixed(1)} output tokens per second over the last 30 s`;
 }
 setInterval(renderRate, 1000);

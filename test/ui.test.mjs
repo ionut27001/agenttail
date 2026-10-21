@@ -720,7 +720,7 @@ try {
   await evalExpr(`${livePane}.querySelector('.dk-console').click(); true`);
   check(await evalExpr(`window.__wall.views()['dsh:${fixture.liveId}'] === 'editor'`), 'and clicking again follows the agent');
   const score = await evalExpr(`[...${livePane}.querySelectorAll('.wp-score .sc b')].map((b) => Number(b.textContent))`);
-  check(score.length === 5 && score[0] >= 1 && score[1] >= 1 && score[2] >= 1, 'the pane scoreboard counts edits, commands and green runs', JSON.stringify(score));
+  check(score.length === 6 && score[0] >= 1 && score[1] >= 1 && score[2] >= 1, 'the pane scoreboard counts edits, commands and green runs', JSON.stringify(score));
   check(await waitFor(`window.__wallTree().files.some((f) => f.path === 'notes.md' && f.edits >= 1) && window.__wallTree().cursors['dsh:${fixture.liveId}'] === 'notes.md'`, 5000), 'the team tree lists the edited file with the agent cursor on it', JSON.stringify(await evalExpr(`window.__wallTree()`)));
   check(await evalExpr(`(() => { const s = document.getElementById('wallSide'); const r = s.querySelector('.wt-file[data-path="notes.md"]'); return s.getBoundingClientRect().width > 150 && !!r && !!r.querySelector('.wt-cursor') && !!r.querySelector('.wt-dot'); })()`), 'the tree sits in the left column with a cursor and an agent dot on the row');
   await evalExpr(`document.querySelector('#wallSide .wt-file[data-path="notes.md"]').click(); true`);
@@ -780,6 +780,24 @@ try {
   await evalExpr(`document.getElementById('wallLayoutMode').click(); true`);
   check(await waitFor(`!document.getElementById('wall').classList.contains('focus') && getComputedStyle(document.querySelector('#wallGrid .wall-pane:not(.dormant) .wp-side')).display !== 'none' && getComputedStyle(document.querySelector('#wallGrid .wp-caption')).display === 'none'`, 3000), 'in split the replies stay in the feed column, with no caption on top');
   await evalExpr(`document.getElementById('wallLayoutMode').click(); true`);
+  // Tail lives in every pane too, from the same factories as the main view's.
+  check(await evalExpr(`[...document.querySelectorAll('#wallGrid .wall-pane')].every((p) => p.querySelector('.wall-tail .tail-mascot') && p.querySelector('.wall-tail .think-card') && /tok\\/s/.test(p.querySelector('.wp-score .sc-rate').textContent))`), 'every pane has its own Tail, thought bubble and TOK/S');
+  check(await waitFor(`window.__wallTail(${livePane}).shown && ${livePane}.querySelector('.wall-tail').classList.contains('show')`, 4000), 'the working agent has Tail in its pane', JSON.stringify(await evalExpr(`window.__wallTail(${livePane})`)));
+  fs.appendFileSync(fixture.liveLog, frame([
+    ev('assistant/message', 37, { turn: 1, step: 2, message: { role: 'assistant', content: [{ type: 'reasoning', text: 'Weighing the wall bubble.' }] } }),
+  ]));
+  check(await waitFor(`window.__wallTail(${livePane}).bubble.thinking && ${livePane}.querySelector('.think-card').classList.contains('show') && /Weighing the wall bubble/.test(${livePane}.querySelector('.tc-line').textContent)`, 5000), 'a thinking agent opens the thought bubble in its pane', JSON.stringify(await evalExpr(`window.__wallTail(${livePane})`)));
+  await evalExpr(`window.__thinkBubble.cfg.gameAfterMs = 0; true`);
+  check(await waitFor(`window.__wallTail(${livePane}).bubble.playing && window.__wallTail(${livePane}).bubble.frames > 5`, 4000), 'a long think starts a game in the pane', JSON.stringify(await evalExpr(`window.__wallTail(${livePane})`)));
+  await evalExpr(`(() => { const c = ${livePane}.querySelector('.think-card'); if (c.classList.contains('watch-only')) c.querySelector('.tc-next').click(); c.querySelector('.tc-play').click(); return true; })()`);
+  check(await waitFor(`window.__wallTail(${livePane}).bubble.human`, 2000), 'play hands you the controls of the pane game');
+  await evalExpr(`document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); true`);
+  check(await waitFor(`!window.__wallTail(${livePane}).bubble.human`, 2000) && await evalExpr(`window.__wall.open_`), 'Esc ends the game and leaves the wall open');
+  await evalExpr(`window.__thinkBubble.cfg.gameAfterMs = 8000; true`);
+  fs.appendFileSync(fixture.liveLog, frame([
+    ev('assistant/message', 38, { turn: 1, step: 2, message: { role: 'assistant', content: [{ type: 'text', text: 'Done weighing.' }] } }),
+  ]));
+  check(await waitFor(`!${livePane}.querySelector('.think-card').classList.contains('show')`, 5000), 'the bubble closes when the agent replies');
   await evalExpr(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); true`);
   check(await evalExpr(`!window.__wall.open_ && window.__wall.panes === 0`), 'Esc closes the wall and its streams');
 
@@ -902,7 +920,8 @@ try {
   check(await waitFor(`window.__stage.state().playing && window.__stage.games.includes(window.__stage.state().game) && window.__stage.state().frames > 5 && getComputedStyle(document.querySelector('#thinkCard .tail-game')).display !== 'none'`, 4000), 'a long think starts one of the mascot games', JSON.stringify(await evalExpr(`window.__stage.state()`)));
   check(await evalExpr(`JSON.stringify(window.__stage.games.slice().sort()) === JSON.stringify(['breakout', 'chess', 'chomp', 'dash', 'flappy', 'invaders', 'runner', 'snake', 'tetris', 'typer'])`), 'ten games: snake, tetris, runner, chess, chomp, invaders, dash, breakout, flappy and typer');
   const playedGames = new Set();
-  for (let i = 0; i < 10; i++) {
+  // A round may already be under way (the wall's Tail test thinks in this session too), so go until all ten ran.
+  for (let i = 0; i < 20 && playedGames.size < 10; i++) {
     const f0 = await evalExpr(`window.__stage.state().frames`);
     const name = await evalExpr(`window.__stage.state().game`);
     await waitFor(`window.__stage.state().frames > ${f0 + 10} && /\\S/.test(document.querySelector('#thinkCard .tc-game').textContent)`, 3000);

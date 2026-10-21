@@ -666,6 +666,7 @@
         slots: { editor: editorSlot, console: consoleSlot },
         widgets: [],
       };
+      pane.modelWait = () => modelWait(pane);
       // Widgets (editor, console …) register in window.__wallHooks; each gets
       // the pane and then every event of its session.
       for (const [view, button] of [['editor', pane.focus.dkEditor], ['console', pane.focus.dkConsole], ['think', pane.focus.dkThink]]) {

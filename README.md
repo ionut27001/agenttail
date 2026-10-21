@@ -128,7 +128,8 @@ Requirements: Node 24+, Windows, macOS or Linux. Windows is the tested platform;
 
 `Alt+W` (or **Watch live** in the agents overview) splits the screen into one pane per live agent:
 
-- **Each pane is a small agenttail**: an editor that types edits in as they happen, a console with commands, output and exit status, a scoreboard (edits, commands, failures, green streak) and the context meter.
+- **Each pane is a small agenttail**: an editor that types edits in as they happen, a console with commands, output and exit status, a scoreboard (edits, commands, failures, green streak, TOK/S) and the context meter.
+- **Tail lives in every pane.** Each agent gets its own Tail, reacting to that agent's commands and turns; while it thinks, its thought bubble opens with the clock and, on a long think, a game you can take over with **▶ play** (Esc ends the game, a second Esc closes the wall).
 - **The stage follows the agent.** The console comes up while a command runs and makes way for the editor afterwards; reasoning and replies run as a caption. The dock under each pane switches or pins the view, and 💬 opens the conversation: your messages and the agent's replies.
 - **Waiting is visible.** A step with no output yet says `waiting on the model` with a running clock, and after five minutes `stalled?`. Quiet agents shrink to a slim column so the working ones get the space.
 - **One file tree for the team.** The left column lists every file the agents touched, per repository, with edit counts, one dot per agent and each agent's current file marked in its colour. Two agents on the same file flash as a clash. Click a file to open it in that agent's editor.

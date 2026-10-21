@@ -20,6 +20,10 @@
   gets ship sections and jump orbs, chess replays two famous games with
   sliding pieces, invaders gets shields and a saucer, chomp gets lanes,
   bombs and combos.
+- The watch wall catches up: every pane has its own Tail reacting to its
+  agent, a thought bubble with the clock and Tail's games on a long think
+  (▶ play works there too), and TOK/S in the scoreboard. Same code as the
+  main view: Tail and the bubble are now factories both use.
 - Claude Code sessions show a cost: what the same tokens would cost at
   Anthropic's API list prices, per model (labelled ≈ API, since a
   subscription is not billed per token), in the header and per turn.
