@@ -25,6 +25,11 @@
     return agent.source === 'dsh' ? agent.id : `${agent.source}:${agent.id}`;
   }
 
+  /** Working now, or waiting on you: both belong on the wall. */
+  function isWatchable(agent) {
+    return agent.state === 'live' || attnNeeds(agent.attention);
+  }
+
   function findMe() {
     if (!agents.data || !state.sessionId) return { group: null, me: null };
     for (const group of agents.data.groups) {
@@ -76,11 +81,17 @@
       label = `${data.live} LIVE AGENT${data.live === 1 ? '' : 'S'}`;
     }
     if (overlaps.length) label += ` · ⚠ ${overlaps.length} SHARED FILE${overlaps.length === 1 ? '' : 'S'}`;
+    // Agents waiting on you come first, whatever source they are.
+    const needs = data.needsYou || 0;
+    if (needs) label = `⚠ ${needs} ${needs === 1 ? 'NEEDS' : 'NEED'} YOU · ${label}`;
     chip.appendChild(document.createTextNode(label));
     chip.classList.toggle('warn', overlaps.length > 0);
-    chip.title = others.length
-      ? others.map((a) => `${agentName(a)}: ${activityText(a)}`).join('\n')
-      : 'Agents working right now (click for the overview)';
+    chip.classList.toggle('attn', needs > 0);
+    chip.title = needs
+      ? data.groups.flatMap((g) => g.agents).filter((a) => attnNeeds(a.attention)).map((a) => `${agentName(a)}: ${attnLabel(a.attention)}`).join('\n')
+      : others.length
+        ? others.map((a) => `${agentName(a)}: ${activityText(a)}`).join('\n')
+        : 'Agents working right now (click for the overview)';
     chip.classList.remove('hidden');
   }
 
@@ -135,7 +146,8 @@
       const head = el('div', 'ag-group-head');
       head.appendChild(el('b', '', group.name));
       head.appendChild(el('span', 'dim', `${group.git ? 'git repo' : 'folder'} · ${group.agents.length} agent${group.agents.length === 1 ? '' : 's'} · ${group.live} live`));
-      const watchable = group.agents.filter((a) => a.state === 'live');
+      if (group.needsYou) head.appendChild(el('span', 'ag-need', `${group.needsYou} need${group.needsYou === 1 ? 's' : ''} you`));
+      const watchable = group.agents.filter(isWatchable);
       if (watchable.length) {
         const watch = el('button', 'ag-watch', '◫ WATCH SIDE BY SIDE');
         watch.type = 'button';
@@ -159,7 +171,7 @@
       const grid = el('div', 'ag-grid');
       const shared = new Set(group.overlaps.map((o) => o.path));
       for (const agent of group.agents) {
-        const card = el('button', `ag-card ${agent.state}`);
+        const card = el('button', `ag-card ${agent.state}${attnNeeds(agent.attention) ? ' needs-you' : ''}`);
         card.type = 'button';
         card.style.setProperty('--c', colorOf(agent));
         card.dataset.key = agent.key;
@@ -173,10 +185,24 @@
         card.appendChild(top);
         card.appendChild(el('div', 'ag-title', agent.title));
         const meta = el('div', 'ag-meta');
+        // What the agent waits for comes first: it is the line that must not be cut off.
+        const att = agent.attention;
+        if (attnNeeds(att)) {
+          const chip = el('span', 'ag-wait', `⚠ ${attnLabel(att)}${agent.approvals > 1 ? ` ×${agent.approvals}` : ''}`);
+          chip.title = attnTitle(att);
+          meta.appendChild(chip);
+        } else if (att && att.level === 'ready') {
+          const chip = el('span', 'ag-ready', '✓ ready');
+          chip.title = attnTitle(att);
+          meta.appendChild(chip);
+        } else if (agent.source === 'antigravity') {
+          const chip = el('span', 'ag-note', 'approval prompts not visible');
+          chip.title = 'Antigravity does not show agenttail when it waits for an approval';
+          meta.appendChild(chip);
+        }
         if (agent.repo && agent.repo.branch) meta.appendChild(el('span', 'br', `⎇ ${agent.repo.branch}${agent.repo.removed ? ' (worktree removed)' : agent.repo.worktree ? ' (worktree)' : ''}`));
         if (agent.model) meta.appendChild(el('span', '', agent.model));
         if (agent.owned) meta.appendChild(el('span', '', '◈ owned'));
-        if (agent.approvals) meta.appendChild(el('span', 'ag-wait', `⚠ ${agent.approvals} approval${agent.approvals === 1 ? '' : 's'} waiting`));
         meta.appendChild(el('span', '', ago(agent.lastEventAt)));
         card.appendChild(meta);
         const act = el('div', 'ag-act');
@@ -217,6 +243,7 @@
     markTree();
     renderPanel();
     attention.update(agents.data);
+    document.dispatchEvent(new CustomEvent('agenttail:agents', { detail: agents.data }));
   }
 
   function setOpen(open) {
@@ -258,7 +285,7 @@
     refresh();
   }, 5000);
   setTimeout(refresh, 800);
-  window.__agents = { refresh, open: setOpen, get data() { return agents.data; } };
+  window.__agents = { refresh, open: setOpen, hashFor, get data() { return agents.data; } };
 
   /* ---------- watch wall ---------- */
   // Pane widgets: { create(pane) -> { onEvent(ev), onHistoryEnd(), dispose() } }.
@@ -290,6 +317,8 @@
   const CAPTION_MS = 9000;        // reasoning captions fade after this
   const wall = (() => {
     const panes = [];
+    // How long a working pane may stay silent before it counts as quiet (tests shorten it).
+    const cfg = { dormantMs: DORMANT_MS };
     const MAX_PANES = 4;
     const MAX_ROWS = 220;
 
@@ -585,6 +614,9 @@
       head.appendChild(dot(agent));
       head.appendChild(el('span', 'wp-src', agent.sourceLabel));
       if (agent.repo && agent.repo.branch) head.appendChild(el('span', 'wp-branch', `⎇ ${agent.repo.branch}`));
+      // Before the title, so the title is what gives way when the pane is narrow.
+      const attnEl = el('span', 'wp-attn hidden');
+      head.appendChild(attnEl);
       const title = el('span', 'wp-title', agent.title);
       title.title = 'Open this session in the main view';
       title.addEventListener('click', () => { close(); location.hash = hashFor(agent); });
@@ -658,7 +690,8 @@
         updateDormant(pane);
       });
       const pane = {
-        agent, root, act, feed, filesEl, stateEl, calls: new Map(), files: [], stick: true, history: true, action: null,
+        agent, root, act, feed, filesEl, stateEl, attnEl, attention: agent.attention || null,
+        calls: new Map(), files: [], stick: true, history: true, action: null,
         dormantText, lastActiveAt: 0, state: agent.state, pinned: false,
         view: 'editor', pinnedView: null, jobs: new Set(), openCalls: new Set(), lastView: 'editor',
         focus: { thinkTitle, thinkReason, thinkReply, dkEditor, dkConsole, dkConsoleText, dkJob, dkThink, dkThinkText, caption, captionKind, captionText },
@@ -667,6 +700,7 @@
         widgets: [],
       };
       pane.modelWait = () => modelWait(pane);
+      drawAttention(pane);
       // Widgets (editor, console …) register in window.__wallHooks; each gets
       // the pane and then every event of its session.
       for (const [view, button] of [['editor', pane.focus.dkEditor], ['console', pane.focus.dkConsole], ['think', pane.focus.dkThink]]) {
@@ -719,6 +753,10 @@
           stateEl.classList.toggle('live', st.state === 'live');
           root.classList.toggle('live', st.state === 'live');
           pane.state = st.state;
+          if (st.attention !== undefined) {
+            pane.attention = st.attention;
+            drawAttention(pane);
+          }
           if (Array.isArray(st.jobs)) {
             pane.jobs = new Set(st.jobs.map((j) => j.jobId));
             pane.focus.dkJob.classList.toggle('hidden', pane.jobs.size === 0);
@@ -732,6 +770,17 @@
       return pane;
     }
 
+    /** An amber frame and a header chip while the agent waits on you. */
+    function drawAttention(pane) {
+      const needs = attnNeeds(pane.attention);
+      pane.root.classList.toggle('needs-you', needs);
+      pane.attnEl.classList.toggle('hidden', !needs);
+      // Short in a narrow header; the tool name is in the tooltip.
+      pane.attnEl.textContent = needs ? attnLabel(pane.attention).split(' · ').slice(0, 2).join(' · ') : '';
+      pane.attnEl.title = needs ? attnTitle(pane.attention) : '';
+      updateDormant(pane);
+    }
+
     /**
      * A pane is dormant when its agent is not working (idle/finished) or has
      * produced nothing for a minute. Dormant panes shrink to a slim column
@@ -739,10 +788,11 @@
      */
     function updateDormant(pane) {
       const quietFor = Date.now() - (pane.lastActiveAt || 0);
-      const quiet = pane.state !== 'live' || quietFor > DORMANT_MS;
+      // An agent blocked on a person writes nothing, so silence must never shrink its pane.
+      const quiet = !attnNeeds(pane.attention) && (pane.state !== 'live' || quietFor > cfg.dormantMs);
       pane.quiet = quiet;
       const label = pane.state !== 'live'
-        ? (pane.state === 'idle' ? 'waiting for you' : 'finished')
+        ? (pane.state === 'idle' ? 'ready' : 'finished')
         : modelWait(pane) ? waitText(pane, modelWait(pane)) : `thinking quietly · ${ago(pane.lastActiveAt)}`;
       pane.dormantText.textContent = label;
       applyDormant();
@@ -855,9 +905,9 @@
       const data = agents.data;
       if (!data) return [];
       const { group, me } = findMe();
-      const mine = group ? group.agents.filter((a) => a.state === 'live' && a !== me) : [];
+      const mine = group ? group.agents.filter((a) => isWatchable(a) && a !== me) : [];
       const others = mine.length >= 1 ? mine
-        : data.groups.flatMap((g) => g.agents).filter((a) => a.state === 'live' && a !== me);
+        : data.groups.flatMap((g) => g.agents).filter((a) => isWatchable(a) && a !== me);
       // The session being viewed is always the first pane (it shrinks if quiet).
       return me ? [me, ...others] : others;
     }
@@ -870,11 +920,14 @@
       get open_() { return !$a('wall').classList.contains('hidden'); },
       get panes() { return panes.length; },
       get dormant() { return panes.filter((p) => p.root.classList.contains('dormant')).map((p) => p.agent.key); },
+      get needsYou() { return panes.filter((p) => attnNeeds(p.attention)).map((p) => p.agent.key); },
+      get quiet() { return panes.filter((p) => p.quiet).map((p) => p.agent.key); },
+      cfg,
       views: () => Object.fromEntries(panes.map((p) => [p.agent.key, p.pinnedView || p.view])),
       prefs: wallPrefs,
     };
   })();
-  $a('agentsWatchLive').addEventListener('click', () => wall.open((agents.data ? agents.data.groups.flatMap((g) => g.agents) : []).filter((a) => a.state === 'live')));
+  $a('agentsWatchLive').addEventListener('click', () => wall.open((agents.data ? agents.data.groups.flatMap((g) => g.agents) : []).filter(isWatchable)));
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && wall.open_) { wall.close(); return; }
     // Ctrl+Shift+W closes the browser window, so the wall uses Alt+W.
@@ -890,9 +943,9 @@
   const attention = (() => {
     const baseTitle = document.title;
     const NOTIFY_KEY = 'agenttail-notify';
-    const prev = new Map(); // agent key -> { state, approvals }
+    const prev = new Map(); // agent key -> { state, needs }
     const done = new Map(); // agents that stopped while the tab was hidden
-    let approvals = 0;
+    let needs = 0; // sessions waiting on you
     let seeded = false;
     let iconImage = null;
     let notify = false;
@@ -910,7 +963,7 @@
     function drawIcon() {
       const link = $a('favicon');
       if (!link) return;
-      const count = approvals + done.size;
+      const count = needs + done.size;
       if (!count) {
         if (link.dataset.badge) {
           link.type = 'image/svg+xml';
@@ -919,7 +972,7 @@
         }
         return;
       }
-      const colour = approvals ? '#ffb020' : '#37f28a';
+      const colour = needs ? '#ffb020' : '#37f28a';
       const paint = () => {
         const canvas = document.createElement('canvas');
         canvas.width = 32;
@@ -950,27 +1003,30 @@
     }
 
     function render() {
-      const count = approvals + done.size;
-      const mark = approvals ? '⚠ ' : done.size ? '✓ ' : '';
+      const count = needs + done.size;
+      const mark = needs ? '⚠ ' : done.size ? '✓ ' : '';
       document.title = count ? `(${count}) ${mark}${baseTitle}` : baseTitle;
       drawIcon();
     }
 
     function update(data) {
       const list = data ? data.groups.flatMap((g) => g.agents) : [];
-      approvals = list.reduce((sum, a) => sum + (a.approvals || 0), 0);
+      needs = list.filter((a) => attnNeeds(a.attention)).length;
       for (const agent of list) {
         const before = prev.get(agent.key);
-        if (seeded && before) {
-          if ((agent.approvals || 0) > (before.approvals || 0)) {
-            desktop('Approval needed', `${label(agent)}: ${agent.title}`, `approval:${agent.key}`);
+        const waiting = attnNeeds(agent.attention);
+        if (seeded && waiting && !(before && before.needs)) {
+          // Names and the kind of wait only; never a command, in any mode.
+          if (agent.attention.certainty !== 'guess') {
+            desktop('Needs you', `${label(agent)}: ${agent.title}\n${attnLabel(agent.attention)}`, `needs:${agent.key}`);
           }
-          if (before.state === 'live' && agent.state !== 'live' && document.hidden) {
-            done.set(agent.key, agent);
-            desktop('Agent stopped working', `${label(agent)}: ${agent.title}`, `done:${agent.key}`);
-          }
+          try { if (window.__buddy) window.__buddy.react('perk', { line: 'someone needs you' }); } catch { /* the mascot is optional */ }
         }
-        prev.set(agent.key, { state: agent.state, approvals: agent.approvals || 0 });
+        if (seeded && before && before.state === 'live' && agent.state !== 'live' && !waiting && document.hidden) {
+          done.set(agent.key, agent);
+          desktop('Agent stopped working', `${label(agent)}: ${agent.title}`, `done:${agent.key}`);
+        }
+        prev.set(agent.key, { state: agent.state, needs: waiting });
       }
       seeded = true;
       render();
@@ -1000,7 +1056,12 @@
       });
     }
 
-    return { update, get count() { return approvals + done.size; }, get done() { return [...done.keys()]; } };
+    return {
+      update,
+      get count() { return needs + done.size; },
+      get needs() { return needs; },
+      get done() { return [...done.keys()]; },
+    };
   })();
   window.__attention = attention;
 })();

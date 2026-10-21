@@ -109,7 +109,7 @@ async function agentsPayload() {
   for (const group of data.groups) {
     for (const agent of group.agents) {
       const owned = ownedSession(agent.source, agent.id);
-      agent.approvals = owned && owned.approvals ? owned.approvals.size : 0;
+      agent.approvals = owned && typeof owned.pendingApprovals === 'function' ? owned.pendingApprovals().length : 0;
     }
   }
   return data;
