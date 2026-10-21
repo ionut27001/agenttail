@@ -187,6 +187,7 @@ const server = spawn(process.execPath, [path.join(import.meta.dirname, '..', 'se
     DSH_SESSIONS_ROOT: dshRoot,
     CLAUDE_PROJECTS_ROOT: claudeRoot,
     ANTIGRAVITY_ROOT: path.join(agyRoot, 'brain'),
+    AGENTTAIL_CLAUDE_SESSIONS_DIR: path.join(tmp, 'claude-sessions'),
     DSH_ROOTS_FILE: rootsFile,
     DSH_REDACT_FILE: redactFile,
     DSH_POLL_MS: '150',

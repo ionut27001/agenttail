@@ -167,6 +167,7 @@ const server = spawn(process.execPath, [path.join(root, 'server.js')], {
       AGENTTAIL_NO_OPEN: '1',
     DSH_SESSIONS_ROOT: fixture.sessionsRoot,
     CLAUDE_PROJECTS_ROOT: claudeRoot,
+    AGENTTAIL_CLAUDE_SESSIONS_DIR: path.join(tmp, 'claude-sessions'),
     DSH_POLL_MS: '200',
     DSH_NICKNAMES_FILE: path.join(tmp, 'nicknames.json'),
   },

@@ -95,6 +95,20 @@ try {
   const again = await buildAgents(sessions, { now, labelFor: (k) => k });
   check(JSON.stringify(again.groups.map((g) => g.agents.map((x) => x.color))) === JSON.stringify(data.groups.map((g) => g.agents.map((x) => x.color))), 'colours are stable between snapshots');
 
+  console.log('\nneeds you');
+  const waitingNow = { level: 'needs-you', reason: 'permission', since: now - 90000, via: 'status-file', certainty: 'sure', tool: 'Bash', detail: 'permission prompt' };
+  const attn = await buildAgents([
+    { source: 'dsh', id: 'quiet', title: 'Quiet', state: 'live', cwd: plain, lastEventAt: now - 500, touched: [] },
+    { source: 'claude', id: 'blocked', title: 'Blocked', state: 'finished', cwd: plain, lastEventAt: now - 5 * 3600 * 1000, touched: [], attention: waitingNow },
+    { source: 'dsh', id: 'ready', title: 'Ready', state: 'idle', cwd: plain, lastEventAt: now - 20000, touched: [], attention: { level: 'ready', reason: null, since: now - 20000, via: 'log', certainty: 'sure' } },
+  ], { now, text: (s) => String(s).replace('Bash', 'B***'), labelFor: (k) => k });
+  const blocked = attn.groups.flatMap((g) => g.agents).find((x) => x.id === 'blocked');
+  check(!!blocked, 'an agent waiting on you is listed even when it is old and its state says finished');
+  check(attn.groups[0].agents[0].id === 'blocked', 'and listed first');
+  check(attn.needsYou === 1 && attn.groups[0].needsYou === 1, 'the snapshot and the group count the agents that need you', JSON.stringify([attn.needsYou, attn.groups[0].needsYou]));
+  check(blocked?.attention?.tool === 'B***' && blocked.attention.reason === 'permission', 'the attention record passes the redactor', JSON.stringify(blocked?.attention));
+  check(attn.groups.flatMap((g) => g.agents).find((x) => x.id === 'quiet')?.attention.level === 'none', 'an agent with no attention record gets none');
+
   console.log('\n/api/agents');
   const fixture = buildFixture(path.join(tmp, 'server'));
   const PORT = 8905;
@@ -106,6 +120,7 @@ try {
       AGENTTAIL_CONFIG_DIR: path.join(tmp, 'server'),
       DSH_SESSIONS_ROOT: fixture.sessionsRoot,
       CLAUDE_PROJECTS_ROOT: path.join(tmp, 'no-claude'),
+      AGENTTAIL_CLAUDE_SESSIONS_DIR: path.join(tmp, 'no-claude-sessions'),
       ANTIGRAVITY_ROOT: path.join(tmp, 'no-antigravity'),
     },
     stdio: ['ignore', 'pipe', 'pipe'],
