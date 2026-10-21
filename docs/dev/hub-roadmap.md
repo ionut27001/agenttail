@@ -110,6 +110,28 @@ The full music video ships with 0.7, when agents calling each other is real.
   README states plainly that users must follow Anthropic's terms for their
   plan when Claude Code is driven by another program.
 
+- Permission modes come from the harness, never from agenttail (author,
+  2026-10-21). Lists go stale: the design above names a Claude Code `default`
+  mode, but Claude Code 2.1.304 offers `manual`, `acceptEdits`, `auto`,
+  `plan`, `dontAsk` and `bypassPermissions`.
+  - Driving: the choices are what the agent declares (ACP config options or
+    modes, as 0.4 already does), or, for Claude Code's headless mode, the
+    `--permission-mode` choices read from the installed `claude` itself.
+  - Watching: show the harness's own name, read from its records (Claude Code
+    writes `permissionMode` on each user entry of the transcript; dsh records
+    its preset and approval policy).
+  - agenttail adds only a risk tier for the badge colour (asks, edits on its
+    own, plan only, bypass), from a small table of known names; an unknown
+    name shows neutrally with its own name and is never guessed. Bypass-tier
+    modes (`bypassPermissions`, `danger-full-access` and the like) get a loud
+    BYPASS badge everywhere and need the explicit confirmation to start or
+    switch into.
+  - On top of the harness's modes, agenttail offers "bypass with a safety
+    net": the agent runs in an asking mode and agenttail approves its requests
+    itself, except a denylist (recursive deletes, force pushes, writes outside
+    the workspace, secrets) that still comes to the human. Every request is
+    seen and audited.
+
 These defaults can change; the questions below record the trade-offs.
 
 ## Decisions for the author
