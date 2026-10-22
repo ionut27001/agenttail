@@ -1122,7 +1122,8 @@ try {
   check(keyTaken, 'while you play, the game takes its keys');
   await evalExpr(`document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); true`);
   check(await waitFor(`!window.__stage.state().human`, 2000), 'Esc gives the controls back to Tail');
-  for (let i = 0; i < 10 && (await evalExpr(`window.__stage.state().game`)) !== 'chomp'; i++) await evalExpr(`document.querySelector('#thinkCard .tc-next').click(); true`);
+  // Games are dealt from a shuffled deck: reaching one can take the rest of this deck and all of the next.
+  for (let i = 0; i < 25 && (await evalExpr(`window.__stage.state().game`)) !== 'chomp'; i++) await evalExpr(`document.querySelector('#thinkCard .tc-next').click(); true`);
   check(await waitFor(`(JSON.parse(localStorage.getItem('agenttail-tail-records') || '{}').chomp || 0) >= 1 && /★ \\d/.test(document.querySelector('#thinkCard .tc-game').textContent)`, 15000), 'game records are kept across sessions', await evalExpr(`localStorage.getItem('agenttail-tail-records')`));
   await evalExpr(`window.__stage.cfg.stallMs = 1; true`);
   check(await waitFor(`window.__stage.state().stalled && /STALLED\\?/.test(document.querySelector('#thinkCard .tc-title').textContent) && /no output for/.test(document.querySelector('#thinkCard .tc-time').textContent)`, 3000), 'a long silence turns the window into a stalled warning');
