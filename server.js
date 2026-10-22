@@ -27,7 +27,7 @@ const claude = require('./lib/claude');
 const antigravity = require('./lib/antigravity');
 const { deletionsFromCommand } = require('./lib/deletes');
 const { jobLogFromCommand } = require('./lib/jobs');
-const { PRICES, CLAUDE_PRICES } = require('./lib/pricing');
+const { DSH_PRICES, CLAUDE_PRICES, dshCost } = require('./lib/pricing');
 const { version: VERSION } = require('./package.json');
 const { analyzeLog, restate } = require('./lib/session-analysis');
 const attention = require('./lib/attention');
@@ -388,6 +388,7 @@ async function listSessions() {
       steps: analysis ? analysis.steps : null,
       tokens: analysis ? analysis.tokens : null,
       cost: analysis ? analysis.cost : null,
+      unpriced: analysis ? analysis.unpriced : [],
       model: analysis ? analysis.model : null,
       provider: analysis ? analysis.provider : null,
       preset: analysis ? analysis.preset : null,
@@ -451,6 +452,7 @@ class SessionStream extends EventTarget {
     this.openApprovals = new Map(); // approval id -> { id, at, tool }: asked, not yet decided
     this.lastEndAt = 0;
     this.lastEventAt = 0;
+    this.route = null; // { provider, model } of the latest request/context
     this.stateTracker = new LiveTracker();
     this.statusKey = '';
     this.rootsCfg = null;
@@ -508,6 +510,7 @@ class SessionStream extends EventTarget {
   }
 
   reset() {
+    this.route = null;
     this.openApprovals.clear();
     this.offset = 0;
     this.pending = Buffer.alloc(0);
@@ -748,8 +751,9 @@ class SessionStream extends EventTarget {
       } catch {
         continue;
       }
-      const ui = projectEvent(ev);
+      const ui = projectEvent(ev, this.route);
       if (!ui) continue;
+      if (ui.t === 'route') this.route = { provider: ui.provider, model: ui.model };
       this.mapPaths(ui);
       if (typeof ui.seq === 'number') {
         if (ui.seq <= this.lastSeq) continue;
@@ -893,7 +897,18 @@ function labelForSystem(kind, text) {
   return '⟐ system';
 }
 
-function projectEvent(ev) {
+function usageOf(u) {
+  if (!u) return null;
+  return {
+    input: u.inputTokens || 0,
+    output: u.outputTokens || 0,
+    cacheRead: u.cacheReadTokens || 0,
+    cacheWrite: u.cacheWriteTokens || 0,
+  };
+}
+
+/** `route` is the provider and model the request last announced, for a reply that names none. */
+function projectEvent(ev, route = null) {
   const t = ev && ev.type;
   if (!t) return null;
   const d = ev.data || {};
@@ -949,7 +964,10 @@ function projectEvent(ev) {
       const thinking = Array.isArray(msg.content)
         ? msg.content.filter((b) => b && b.type === 'reasoning' && typeof b.text === 'string' && b.text.trim()).map((b) => b.text).join('\n\n')
         : '';
-      const usage = d.usage || null;
+      // A reply is priced for the provider and model that served it, not the session's last route.
+      const provider = msg.source?.provider || route?.provider || null;
+      const model = msg.source?.model || route?.model || null;
+      const usage = usageOf(d.usage);
       return {
         ...base,
         t: 'say',
@@ -957,15 +975,20 @@ function projectEvent(ev) {
         thinking: thinking ? clip(thinking, 20000) : undefined,
         turn: d.turn,
         step: d.step,
-        usage: usage
-          ? {
-              input: usage.inputTokens || 0,
-              output: usage.outputTokens || 0,
-              cacheRead: usage.cacheReadTokens || 0,
-              cacheWrite: usage.cacheWriteTokens || 0,
-            }
-          : null,
+        usage,
+        provider,
+        model,
+        cost: usage ? dshCost(usage, ev.time, provider, model) : null,
       };
+    }
+
+    case 'compaction/summary': {
+      // The summary is a model call of its own: its tokens and cost count.
+      const provider = d.provider ?? d.source?.provider ?? route?.provider ?? null;
+      const model = d.model ?? d.source?.model ?? route?.model ?? null;
+      const usage = usageOf(d.usage);
+      if (!usage) return null;
+      return { ...base, t: 'usage', kind: 'compaction', turn: d.turn, usage, provider, model, cost: dshCost(usage, ev.time, provider, model) };
     }
 
     case 'user/message': {
@@ -1276,7 +1299,7 @@ async function serveStream(req, res, record, options = {}) {
       attention: pageAttention(attention.merge(record.attention, ownedAttentionFor(record.source, record.id))),
     },
     streamSafe: redactor.enabled,
-    prices: record.source === 'dsh' ? PRICES : record.source === 'claude' ? CLAUDE_PRICES : null,
+    prices: record.source === 'dsh' ? DSH_PRICES : record.source === 'claude' ? CLAUDE_PRICES : null,
     pollMs: POLL_MS,
     historyCount: stream.events.length,
     control: controlDescriptor(record),
@@ -1836,6 +1859,7 @@ const server = http.createServer(async (req, res) => {
             steps: s.steps ?? null,
             tokens: s.tokens ?? null,
             cost: s.cost ?? null,
+            ...(s.unpriced && s.unpriced.length ? { unpriced: s.unpriced.map((name) => redactor.text(name)) } : {}),
             model: s.model ?? null,
             provider: s.provider ?? null,
             preset: s.preset ?? null,

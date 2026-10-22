@@ -8,6 +8,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { buildFixture, frame, ev } from './fixture.mjs';
 import { LiveTracker, stateFrom, OPEN_TURN_MS } from '../lib/live.js';
 import { analyzeEvents, restate } from '../lib/session-analysis.js';
+import { dshCost } from '../lib/pricing.js';
 
 const PORT = 8899;
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -117,6 +118,39 @@ const staleSessionId = 'session-abababab-1111-2222-3333-444444444444';
 openStepLog(staleSessionId, 3 * 60 * 60 * 1000);
 const quietSessionId = 'session-cdcdcdcd-1111-2222-3333-444444444444';
 openStepLog(quietSessionId, 20 * 60 * 1000);
+
+// Cost per provider and model, at a fixed off-peak time (a Saturday): each million-token reply on a
+// different route, a compaction call, and a last reply that names no route and takes the request's.
+const costAt = Date.UTC(2026, 9, 17, 12, 0, 0);
+const MILLION = { inputTokens: 1_000_000, outputTokens: 1_000_000, cacheReadTokens: 1_000_000, cacheWriteTokens: 0 };
+const costEvent = (seq, type, data) => ({ type, seq, time: costAt + seq * 1000, data });
+const costReply = (seq, source) => costEvent(seq, 'assistant/message', {
+  turn: 1, step: seq,
+  message: { role: 'assistant', ...(source ? { source } : {}), content: [{ type: 'text', text: `reply ${seq}` }] },
+  usage: MILLION,
+});
+function costLog(sessionId, events) {
+  const dir = path.join(fixture.sessionsRoot, '--tmp-fixture-workspace--', sessionId);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'session.v4.jsonl.zstd'), frame([
+    { type: 'session', version: 4, id: sessionId, createdAt: costAt, cwd: fixture.workspace },
+    costEvent(1, 'turn/start', { turn: 1 }),
+    ...events,
+    costEvent(20, 'turn/end', { turn: 1 }),
+  ]));
+}
+const costSessionId = 'session-efefefef-1111-2222-3333-444444444444';
+costLog(costSessionId, [
+  costReply(2, { provider: 'deepseek-official', model: 'deepseek-flash' }),
+  costReply(3, { provider: 'deepseek-official', model: 'deepseek-v4-pro' }),
+  costReply(4, { provider: 'deepseek-account', model: 'deepseek-flash' }),
+  costReply(5, { provider: 'ollama', model: 'minimax-m3.1-flash:cloud' }),
+  costEvent(6, 'compaction/summary', { provider: 'deepseek-official', model: 'deepseek-flash', usage: MILLION }),
+  costEvent(7, 'request/context', { provider: 'deepseek-official', model: 'deepseek-v4-pro', contextWindow: 1_000_000 }),
+  costReply(8, null),
+]);
+const ollamaSessionId = 'session-fafafafa-1111-2222-3333-444444444444';
+costLog(ollamaSessionId, [costReply(2, { provider: 'ollama', model: 'minimax-m3.1-flash:cloud' })]);
 
 const failures = [];
 function check(cond, msg, extra) {
@@ -332,6 +366,39 @@ try {
   const aged = restate(fresh, t0 + OPEN_TURN_MS + 60_000);
   check(aged.rawState === 'finished' && /stopped without ending its turn/.test(aged.stateDetail), 'a cached analysis is re-derived as time passes, so a quiet run leaves live', JSON.stringify({ state: aged.rawState, detail: aged.stateDetail }));
 
+  console.log('\ncost per provider and model');
+  const near = (a, b) => Math.abs(a - b) < 1e-9;
+  const flashCost = 0.15 + 0.003 + 0.6; // one million of each token kind, off-peak
+  const proCost = 0.66 + 0.022 + 1.98;
+  const usage1m = { input: 1e6, output: 1e6, cacheRead: 1e6, cacheWrite: 0 };
+  check(near(dshCost(usage1m, costAt, 'deepseek-official', 'deepseek-flash'), flashCost), 'deepseek-flash is priced at the flash rates');
+  check(near(dshCost(usage1m, costAt, 'deepseek-official', 'deepseek-v4-flash'), flashCost), 'the legacy name deepseek-v4-flash is billed as flash');
+  check(near(dshCost(usage1m, costAt, 'deepseek-official', 'deepseek-v4-pro'), proCost), 'deepseek-v4-pro is priced at the pro rates');
+  check(dshCost(usage1m, costAt, 'deepseek-account', 'deepseek-flash') === null, 'the deepseek-account route has no price, whatever its model');
+  check(dshCost(usage1m, costAt, 'ollama', 'minimax-m3.1-flash:cloud') === null && dshCost(usage1m, costAt, 'ollama', 'deepseek-flash') === null, 'ollama has no price, even for a model named like a DeepSeek one');
+  check(dshCost(usage1m, costAt, undefined, undefined) === null && dshCost(usage1m, costAt, 'constructor', 'toString') === null, 'an unknown or missing route has no price');
+  const peakAt = Date.UTC(2026, 9, 19, 2, 0, 0); // a Monday, 02:00 UTC
+  check(near(dshCost(usage1m, peakAt, 'deepseek-official', 'deepseek-flash'), 2 * flashCost) && near(dshCost(usage1m, peakAt, 'deepseek-official', 'deepseek-v4-pro'), 2 * proCost), 'peak hours double both tables');
+
+  const mixed = (await getJson('/api/sessions')).body.sessions.find((s) => s.id === costSessionId);
+  // flash reply + pro reply + flash compaction + a route-less reply on pro (the request announced it)
+  const wantCost = 2 * flashCost + 2 * proCost;
+  check(near(mixed?.cost, wantCost), 'the session list prices each reply for its own route, the compaction call and the route-less reply included', `${mixed?.cost} vs ${wantCost}`);
+  check(mixed?.tokens === 6 * 3e6, 'every reply and the compaction call count in tokens, priced or not', String(mixed?.tokens));
+  check(JSON.stringify(mixed?.unpriced) === JSON.stringify(['deepseek-account', 'ollama']), 'the list names the routes with tokens only', JSON.stringify(mixed?.unpriced));
+  const tokensOnly = (await getJson('/api/sessions')).body.sessions.find((s) => s.id === ollamaSessionId);
+  check(tokensOnly?.cost === null && tokensOnly?.tokens === 3e6 && JSON.stringify(tokensOnly?.unpriced) === '["ollama"]', 'a session with nothing priced shows tokens and no cost', JSON.stringify({ cost: tokensOnly?.cost, tokens: tokensOnly?.tokens }));
+  const costSse = await readSse(`${BASE}/api/stream?id=${costSessionId}&lite=1`, (e) => e.event === 'historyEnd');
+  const costEvents = costSse.filter((e) => e.event === 'ev').map((e) => e.data).filter((e) => e.usage);
+  const priced = costEvents.filter((e) => typeof e.cost === 'number');
+  check(costEvents.length === 6 && priced.length === 4, 'six usage events reach the page, four with a cost', JSON.stringify(costEvents.map((e) => [e.t, e.provider, e.cost])));
+  check(near(priced.reduce((sum, e) => sum + e.cost, 0), mixed?.cost), 'the page sums what the server priced: the same number as the list');
+  check(costEvents.filter((e) => e.cost === null).map((e) => e.provider).join() === 'deepseek-account,ollama', 'a reply with no price carries no cost, not zero');
+  check(costEvents.some((e) => e.t === 'usage' && e.kind === 'compaction' && near(e.cost, flashCost)), 'the compaction call arrives as a usage event with its own cost');
+  check(near(costEvents.find((e) => e.provider === 'deepseek-official' && e.model === 'deepseek-v4-pro' && e.t === 'say' && e.step === 8)?.cost, proCost), 'a reply that names no route is priced for the route its request announced');
+  const costMeta = costSse.find((e) => e.event === 'meta')?.data.prices;
+  check(costMeta?.listEstimate === true && /^\d{4}-\d{2}-\d{2}$/.test(costMeta?.date) && !('offPeak' in costMeta), 'the page gets a labelled list-price estimate with the table date, not a rate table to apply itself', JSON.stringify(costMeta));
+
   console.log('\nnicknames');
   const nickRes = await fetch(BASE + '/api/nickname', {
     method: 'POST',
@@ -433,7 +500,7 @@ try {
   const pwshCall = events.find((e) => e.t === 'call' && e.name === 'pwsh');
   check(!!pwshCall && pwshCall.args.command === 'node --test', 'pwsh args carry the command');
   const meta = hist.find((e) => e.event === 'meta');
-  check(!!meta && meta.data.prices.offPeak.output === 0.6, 'pricing table is sent to the page');
+  check(!!meta && meta.data.prices.listEstimate === true, 'a labelled price estimate is sent to the page');
   const historyDone = hist.find((e) => e.event === 'historyEnd');
   check(!!historyDone && historyDone.data.count > 0, 'historyEnd reports a count');
   check(!!meta && meta.data.historyCount === historyDone.data.count, 'meta reports the history count for the loading bar', JSON.stringify({ historyCount: meta?.data.historyCount, count: historyDone?.data.count }));

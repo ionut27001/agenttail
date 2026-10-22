@@ -6,6 +6,9 @@ import zlib from 'node:zlib';
 
 const now = Date.now();
 
+// Every real assistant message names the provider and model that served it.
+export const FLASH_SOURCE = { provider: 'deepseek-official', model: 'deepseek-flash' };
+
 export const NOTES_FINAL = ['# Notes', '', 'First line.', '',
   'The agent appends a longer paragraph here so the replay animation is clearly',
   'visible: it types this text in place of the previous file content, one',
@@ -74,6 +77,7 @@ export function buildFixture(baseDir) {
         step: 1,
         message: {
           role: 'assistant',
+          source: FLASH_SOURCE,
           content: [
             { type: 'reasoning', text: 'Thinking through the patch before editing.' },
             { type: 'text', text: 'I will update the constant, then run the test suite.' },
@@ -171,7 +175,7 @@ export function buildFixture(baseDir) {
       data: {
         turn: 1,
         step: 2,
-        message: { role: 'assistant', content: [{ type: 'text', text: 'Test 2 is flaky; writing a note instead of changing it.' }] },
+        message: { role: 'assistant', source: FLASH_SOURCE, content: [{ type: 'text', text: 'Test 2 is flaky; writing a note instead of changing it.' }] },
         usage: { inputTokens: 900, outputTokens: 30, cacheReadTokens: 9000, cacheWriteTokens: 0, totalTokens: 9930 },
       },
     },
@@ -228,6 +232,7 @@ export function buildFixture(baseDir) {
         turn: 1, step: 3,
         message: {
           role: 'assistant',
+          source: FLASH_SOURCE,
           content: [{
             type: 'text',
             text: '**Bold** and _italic_ with ![shot](assets/shot.png)\n\n| File | What |\n| --- | --- |\n| a.js | first |\n| bb.js | second |\n\n```\ncode line\n```',

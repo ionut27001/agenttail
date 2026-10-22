@@ -970,21 +970,17 @@ function tokenTotal(usage) {
 }
 
 /**
- * What one reply cost in USD. Claude replies carry the server's own figure at
- * Anthropic's API list prices (what the tokens would cost on the API, even on
- * a subscription); DeepSeek replies are priced here by the band they fell in.
+ * What one reply cost in USD: the server's own figure, which it computed from
+ * the reply's provider and model (Claude at Anthropic's API list prices, what
+ * the tokens would cost on the API even on a subscription; DeepSeek at its
+ * list prices by the band the reply fell in). A reply with no price counts 0.
  */
 function replyCost(usage, time, cost) {
-  const p = state.prices;
-  if (!p || !usage) return 0;
-  if (p.apiEquivalent) return typeof cost === 'number' && Number.isFinite(cost) ? cost : 0;
-  const rate = isPeak(time || Date.now()) ? p.peak : p.offPeak;
-  return ((usage.input || 0) * rate.cacheMiss +
-    (usage.cacheRead || 0) * rate.cacheHit +
-    (usage.output || 0) * rate.output) / p.unit;
+  if (!state.prices || !usage) return 0;
+  return typeof cost === 'number' && Number.isFinite(cost) ? cost : 0;
 }
 
-function addUsage(usage, time, cost) {
+function addUsage(usage, time, cost, provider) {
   if (!usage) return;
   state.stats.input += usage.input || 0;
   state.stats.output += usage.output || 0;
@@ -1000,10 +996,14 @@ function addUsage(usage, time, cost) {
   const p = state.prices;
   if (!p) { renderStats(); return; }
   state.stats.cost += replyCost(usage, time, cost);
-  if (p.apiEquivalent) {
-    if (typeof cost !== 'number' && tokenTotal(usage) > 0) state.stats.unpriced = (state.stats.unpriced || 0) + 1;
-  } else {
-    state.stats.peak = isPeak(time || Date.now());
+  if (typeof cost === 'number') {
+    state.stats.pricedTokens = (state.stats.pricedTokens || 0) + tokenTotal(usage);
+    if (p.listEstimate) state.stats.peak = isPeak(time || Date.now());
+  } else if (tokenTotal(usage) > 0) {
+    state.stats.unpriced = (state.stats.unpriced || 0) + 1;
+    const by = state.stats.unpricedBy || (state.stats.unpricedBy = {});
+    const name = provider || 'unknown provider';
+    by[name] = (by[name] || 0) + 1;
   }
   renderStats();
 }
@@ -1049,8 +1049,18 @@ function renderStats() {
     const unpriced = s.unpriced ? `\n${s.unpriced} ${s.unpriced === 1 ? 'reply' : 'replies'} from a model with no list price ${s.unpriced === 1 ? 'is' : 'are'} not counted.` : '';
     $('mCost').title = `API equivalent: what these tokens would cost at ${state.prices.model}, $${s.cost.toFixed(4)}. Each reply is priced by its own model, with cache reads, 5-minute and 1-hour cache writes, fast mode and web searches at their own rates. A subscription is not billed per token, so this is a yardstick, not your bill.${unpriced}${approx ? '\n' + approx : ''}`;
   } else {
-    $('mCost').innerHTML = `$${fmtUsd(s.cost)}<span class="period" id="mPeriod">${s.peak ? 'peak' : 'low'}</span>`;
-    $('mCost').title = `${state.prices.model} · $${s.cost.toFixed(4)} estimated · cache hit $${state.prices.offPeak.cacheHit}/M, cache miss $${state.prices.offPeak.cacheMiss}/M, output $${state.prices.offPeak.output}/M off-peak. DeepSeek charges 2× during peak hours; this estimate uses the band of each reply ("low" = off-peak).${approx ? '\n' + approx : ''}`;
+    // DeepSeek: a list-price estimate, priced reply by reply on the server.
+    const names = Object.keys(s.unpricedBy || {});
+    const tokensOnly = names.length > 0 && !s.pricedTokens;
+    const rest = names.length ? `Tokens only for ${names.join(', ')}: ${s.unpriced} ${s.unpriced === 1 ? 'reply has' : 'replies have'} no public per-token price and ${s.unpriced === 1 ? 'is' : 'are'} not in the cost.` : '';
+    const basis = `List-price estimate, not a bill: ${state.prices.model} of ${state.prices.date}. Each reply is priced for its own provider and model; DeepSeek charges 2× during peak hours and the band of each reply is used ("low" = off-peak).`;
+    if (tokensOnly) {
+      $('mCost').innerHTML = '—<span class="period" id="mPeriod">TOKENS ONLY</span>';
+      $('mCost').title = `${rest}\n${basis}`;
+    } else {
+      $('mCost').innerHTML = `$${fmtUsd(s.cost)}<span class="period" id="mPeriod">${names.length ? 'part' : (s.peak ? 'peak' : 'low')}</span>`;
+      $('mCost').title = `$${s.cost.toFixed(4)} · ${basis}${rest ? '\n' + rest : ''}${approx ? '\n' + approx : ''}`;
+    }
   }
   updateStatsChip();
 }
@@ -1100,7 +1110,10 @@ function updateStatsChip() {
   const chip = $('statsChip');
   if (!chip) return;
   const s = state.stats;
-  const cost = !state.prices ? 'no cost estimate' : state.prices.apiEquivalent ? `$${s.cost.toFixed(4)} at API prices` : `$${s.cost.toFixed(4)} estimated`;
+  const noPrice = state.prices?.listEstimate && !s.pricedTokens && s.unpriced > 0;
+  const cost = !state.prices || noPrice ? 'no cost estimate'
+    : state.prices.apiEquivalent ? `$${s.cost.toFixed(4)} at API prices`
+      : `$${s.cost.toFixed(4)} list-price estimate${s.unpriced ? ' (part of the session has no price)' : ''}`;
   const approx = state.prices ? approxCostLine(s.cost) : '';
   const base = [`${s.steps} steps`, `${(s.input + s.output + s.cacheRead + s.cacheWrite).toLocaleString('en-US')} tokens`, cost].join(' · ');
   chip.title = approx ? `${base}\n${approx}` : base;
@@ -1587,7 +1600,7 @@ async function applyEvent(ev) {
 
     case 'say': {
       if (ev.usage) {
-        addUsage(ev.usage, ev.time, ev.cost);
+        addUsage(ev.usage, ev.time, ev.cost, ev.provider);
         if (state.currentTurnItem && state.currentTurnItem.turn === ev.turn) {
           const u = state.currentTurnItem.usage;
           u.input += ev.usage.input || 0;
@@ -1610,7 +1623,7 @@ async function applyEvent(ev) {
     }
 
     case 'usage':
-      if (ev.usage) addUsage(ev.usage, ev.time, ev.cost);
+      if (ev.usage) addUsage(ev.usage, ev.time, ev.cost, ev.provider);
       break;
 
     case 'deleted': {
@@ -2283,7 +2296,8 @@ function sessionOption(s) {
     s.firstUser ? `first prompt: ${String(s.firstUser).replace(/\s+/g, ' ').slice(0, 300)}` : '',
     s.steps !== null && s.steps !== undefined ? `${s.steps} steps` : '',
     s.tokens !== null && s.tokens !== undefined ? `${s.tokens.toLocaleString('en-US')} tokens` : '',
-    s.cost !== null && s.cost !== undefined ? `$${s.cost.toFixed(4)}` : '',
+    s.cost !== null && s.cost !== undefined ? `$${s.cost.toFixed(4)}${s.source === 'dsh' ? ' list-price estimate' : ''}` : '',
+    s.unpriced?.length ? `tokens only for ${s.unpriced.join(', ')} (no list price)` : '',
     s.nickname ? `nickname: ${s.nickname}` : '',
   ].filter(Boolean).join('\n');
   return opt;
@@ -2304,7 +2318,8 @@ function sessionFullTitle(s) {
     s.firstUser ? `first prompt: ${String(s.firstUser).replace(/\s+/g, ' ').slice(0, 300)}` : '',
     s.steps !== null && s.steps !== undefined ? `${s.steps} steps` : '',
     s.tokens !== null && s.tokens !== undefined ? `${s.tokens.toLocaleString('en-US')} tokens` : '',
-    s.cost !== null && s.cost !== undefined ? `$${s.cost.toFixed(4)}` : '',
+    s.cost !== null && s.cost !== undefined ? `$${s.cost.toFixed(4)}${s.source === 'dsh' ? ' list-price estimate' : ''}` : '',
+    s.unpriced?.length ? `tokens only for ${s.unpriced.join(', ')} (no list price)` : '',
     s.nickname ? `nickname: ${s.nickname}` : '',
   ].filter(Boolean).join('\n');
 }

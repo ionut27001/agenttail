@@ -35,6 +35,15 @@
   forever and sorts first. An open step or turn with no event for 30 minutes
   reads "stopped without ending its turn"; a long silent tool wait under that
   limit is still live.
+- DeepSeek Harness cost is now priced reply by reply from the provider and
+  model that served it: `deepseek-flash` (and its old name `deepseek-v4-flash`)
+  and `deepseek-v4-pro` at DeepSeek's published list prices; the signed-in
+  `deepseek-account` route, Ollama and every other model show tokens only,
+  where Ollama and MiniMax traffic used to be priced as DeepSeek. Compaction
+  calls now count in tokens and cost. The figure is labelled a list-price
+  estimate with the date of the price table, says "tokens only for ..." when
+  part of a session had no price, and the session list shows the same number
+  as the open session.
 
 ---
 

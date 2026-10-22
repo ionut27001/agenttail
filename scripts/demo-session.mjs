@@ -120,6 +120,7 @@ function initialHistory() {
         turn, step: turn,
         message: {
           role: 'assistant',
+          source: { provider: 'deepseek-official', model: 'deepseek-flash' },
           content: [
             { type: 'reasoning', text: 'Checking the project layout before changing anything.' },
             { type: 'text', text: `Working on demo step ${turn}.` },
@@ -181,7 +182,7 @@ async function playTeam() {
   const usage = { inputTokens: 900, outputTokens: 40, cacheReadTokens: 1500, cacheWriteTokens: 0, totalTokens: 2440 };
   const think = (mate, text) => appendTo(mate.log, {
     type: 'assistant/message', seq: seq++, time: Date.now(),
-    data: { turn: 1, step: 1, message: { role: 'assistant', content: [{ type: 'reasoning', text }] }, usage },
+    data: { turn: 1, step: 1, message: { role: 'assistant', source: { provider: 'deepseek-official', model: 'deepseek-flash' }, content: [{ type: 'reasoning', text }] }, usage },
   });
   const use = (mate, name, callId, input) => appendTo(mate.log, {
     type: 'tool/call', seq: seq++, time: Date.now(),
@@ -283,6 +284,7 @@ async function play() {
       turn: 4, step: 1,
       message: {
         role: 'assistant',
+        source: { provider: 'deepseek-official', model: 'deepseek-flash' },
         content: [
           { type: 'reasoning', text: 'The build is running in the background. While it compiles I will fix add() with the smallest possible change, document it, and then run the test suite.' },
         ],
@@ -341,6 +343,7 @@ async function play() {
       turn: 4, step: 1,
       message: {
         role: 'assistant',
+        source: { provider: 'deepseek-official', model: 'deepseek-flash' },
         content: [{ type: 'text', text: 'add() is fixed and documented, and the build finished cleanly. The failing multiply test is intentional and shows how errors are rendered.' }],
       },
       usage: { inputTokens: 900, outputTokens: 45, cacheReadTokens: 1400, cacheWriteTokens: 0, totalTokens: 2345 },
