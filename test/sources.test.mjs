@@ -496,10 +496,12 @@ try {
     endStep('x3', 'no', 'refusal'),
   ]);
   const mtEnds = mt.events.filter((e) => e.t === 'turnEnd');
-  check(turnRows(mt) === 'turn:1 turnEnd:1 turn:2 turnEnd:2 turn:3 turnEnd:3', 'a reply that stops on max_tokens closes its turn; end_turn and refusal still do', turnRows(mt));
+  check(turnRows(mt) === 'turn:1 turnEnd:1 turn:2 turnEnd:2 turn:3 turnEnd:3', 'end_turn and refusal still close their turns around a max_tokens one', turnRows(mt));
   check(mtEnds[0].reason === 'max_tokens' && mtEnds[1].reason === undefined && mtEnds[2].reason === undefined, 'only the max_tokens turn carries the cut-short reason', JSON.stringify(mtEnds.map((e) => e.reason)));
   const cut = feedStream('cut', [prompt('write more'), endStep('y1', 'cut off mid-sen', 'max_tokens')]);
   check(cut.events.at(-1).t === 'turnEnd' && cut.events.at(-1).turn === 1 && cut.turnOpen === false, 'a max_tokens reply closes its turn at once, not after 30 minutes', JSON.stringify(cut.events.map((e) => e.t)));
+  const proto = feedStream('origin-proto', [prompt('hm', { origin: { kind: 'constructor' } })]);
+  check(proto.events.find((e) => e.t === 'user')?.origin === 'constructor', 'an origin named like an object property is kept as its raw value', JSON.stringify(proto.events.find((e) => e.t === 'user')?.origin));
   check(sig({ type: 'assistant', message: { stop_reason: 'max_tokens', content: [{ type: 'text', text: 'cut' }] } }) === false, 'max_tokens closes the turn for the session list, too');
 
   const turnDir = path.join(tmp, 'turn-meta');
@@ -585,7 +587,7 @@ try {
   const build = callWith((c) => c.args.command === 'node build.js');
   const grep = callWith((c) => c.name === 'grep');
   check(pairCalls.length === 9, 'every tool call of a planner response becomes a call', String(pairCalls.length));
-  check(!!fro && /fast/.test(fro.args.description || '') && !JSON.stringify(fro.args).includes('Level'), 'an unmapped tool is a generic call with a short argument summary', JSON.stringify(fro && fro.args));
+  check(!!fro && fro.args.description === 'args: Mode, Level' && !JSON.stringify(fro.args).includes('fast'), 'an unmapped tool is a generic call that names its arguments but never shows their values', JSON.stringify(fro && fro.args));
   check(resultOf(fro)?.text === 'frobnicated fine', 'the unmapped call gets its own result', resultOf(fro)?.text);
   check(resultOf(build)?.text.includes('built ok') && !resultOf(build).isError, 'the command gets its own result', resultOf(build)?.text);
   check(!!grep && grep.args.pattern === 'answer' && resultOf(grep)?.text.includes('Found 1 match'), 'grep_search is a grep call that gets its own result', JSON.stringify(grep));
@@ -613,6 +615,30 @@ try {
   check(!!bigResult && bigResult.text.includes('LONGBODY') && bigResult.text.length > 4000 && !bigResult.text.includes('[truncated]'), 'a truncated result body is read from transcript_full.jsonl', String(bigResult?.text.length));
   const fullEditCall = fullEvs.find((e) => e.t === 'call' && e.name === 'edit');
   check(!!fullEditCall && fullEditCall.args.new_string.length > 4000, 'a truncated edit body is read from transcript_full.jsonl', String(fullEditCall?.args.new_string.length));
+
+  // A full transcript that appears (or catches up) after the stream opened: switch at the line already read.
+  {
+    const agyLib = createRequire(import.meta.url)('../lib/antigravity.js');
+    const prevCli = process.env.ANTIGRAVITY_CLI_DIR;
+    process.env.ANTIGRAVITY_CLI_DIR = path.join(tmp, 'no-agy-cli');
+    const lateDir = path.join(tmp, 'agy-late', '.system_generated', 'logs');
+    fs.mkdirSync(lateDir, { recursive: true });
+    const lateCut = path.join(lateDir, 'transcript.jsonl');
+    const lateFull = path.join(lateDir, 'transcript_full.jsonl');
+    const jsonl = (lines) => lines.map((l) => JSON.stringify(l)).join('\n') + '\n';
+    fs.writeFileSync(lateCut, jsonl(agyCutLines.slice(0, 2)));
+    const late = agyLib.open({ id: 'agy-late', source: 'antigravity', file: lateCut, cwd: workspace }, { mapPath: (cwd, p) => p, redactor: { event: (e) => e, text: (v) => v }, maxEvents: 1000 });
+    await late._poll();
+    fs.appendFileSync(lateCut, jsonl(agyCutLines.slice(2)));
+    fs.writeFileSync(lateFull, jsonl(agyFullLines));
+    await late._poll();
+    if (prevCli === undefined) delete process.env.ANTIGRAVITY_CLI_DIR;
+    else process.env.ANTIGRAVITY_CLI_DIR = prevCli;
+    const lateBig = late.events.find((e) => e.t === 'call' && e.args.command === 'node big.js');
+    const lateResult = late.events.find((e) => e.t === 'result' && e.callId === lateBig?.callId);
+    check(late.tail.file === lateFull && !!lateResult && lateResult.text.includes('LONGBODY') && !lateResult.text.includes('[truncated]'), 'a full transcript that appears after the stream opened is used from then on', String(lateResult?.text.length));
+    check(late.events.filter((e) => e.t === 'user').length === 1 && late.events.filter((e) => e.t === 'call').length === 2, 'switching files repeats no line already shown', JSON.stringify(late.events.map((e) => e.t)));
+  }
 
   const agents = await getJson('/api/agents');
   const agyAgent = (agents.body.groups || []).flatMap((g) => g.agents).find((a) => a.source === 'antigravity' && a.id === agyConv);

@@ -1253,7 +1253,7 @@ function termUser(text, agent, origin) {
 const ORIGIN_TAGS = { queued: 'queued', task_notification: 'task notification', peer: 'another agent', sdk: 'SDK', scheduled: 'scheduled' };
 function originTag(origin) {
   if (!origin || origin === 'person' || origin === 'system') return null;
-  return ORIGIN_TAGS[origin] || String(origin);
+  return (Object.hasOwn(ORIGIN_TAGS, origin) && ORIGIN_TAGS[origin]) || String(origin);
 }
 
 /*
