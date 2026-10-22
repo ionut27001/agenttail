@@ -19,7 +19,7 @@ const zlib = require('node:zlib');
 const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
 const { Roots } = require('./lib/roots');
-const { Redactor, safeRedact, RECORD_KEYS } = require('./lib/redact');
+const { Redactor, safeRedact, RECORD_KEYS, PATH_KEYS } = require('./lib/redact');
 const { keyFor, relativeInside, isInside } = require('./lib/util');
 const { ControlManager, PRESETS, DEFAULT_PRESET, MAX_MESSAGE } = require('./lib/control');
 const { buildAgents } = require('./lib/agents');
@@ -1150,7 +1150,7 @@ async function findSession(source, id) {
 function sseWrite(res, event, data, done) {
   if (res.destroyed || res.writableEnded) return;
   try {
-    const safe = event === 'ev' ? data : redactor.value(data, { keep: RECORD_KEYS, done });
+    const safe = event === 'ev' ? data : redactor.value(data, { keep: RECORD_KEYS, paths: PATH_KEYS, done });
     res.write(`event: ${event}\ndata: ${JSON.stringify(safe)}\n\n`);
   } catch {
     /* client vanished */
@@ -1462,7 +1462,7 @@ function readJsonBody(req, limit) {
  * fields the caller already redacted (file contents, tree names).
  */
 function sendJson(res, status, payload, done) {
-  const body = JSON.stringify(redactor.value(payload, { keep: RECORD_KEYS, done }));
+  const body = JSON.stringify(redactor.value(payload, { keep: RECORD_KEYS, paths: PATH_KEYS, done }));
   res.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
     'Cache-Control': 'no-store',

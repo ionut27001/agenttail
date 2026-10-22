@@ -210,6 +210,17 @@ fs.writeFileSync(claudeSub, [
   }),
 ].map((l) => JSON.stringify(l)).join('\n') + '\n');
 
+// A session working inside a private root. Its cwd is written with forward slashes while
+// roots.json holds the native form, so only the path treatment (not a literal match) hides it.
+const claudePrivId = 'eeeeeeee-3333-4444-8555-ffffffffffff';
+const privCwd = path.join(PRIVATE_ROOT, 'proj').split(path.sep).join('/');
+fs.mkdirSync(path.join(PRIVATE_ROOT, 'proj'), { recursive: true });
+fs.mkdirSync(path.join(claudeRoot, 'proj-private'), { recursive: true });
+fs.writeFileSync(path.join(claudeRoot, 'proj-private', `${claudePrivId}.jsonl`), [
+  { type: 'user', timestamp: iso(1), uuid: 'p1', cwd: privCwd, sessionId: claudePrivId, message: { role: 'user', content: 'hello' } },
+  { type: 'assistant', timestamp: iso(2), uuid: 'p2', cwd: privCwd, sessionId: claudePrivId, message: { id: 'msg_priv1', model: 'fixture-model', role: 'assistant', content: [{ type: 'text', text: 'hi' }], usage: claudeUsage } },
+].map((l) => JSON.stringify(l)).join('\n') + '\n');
+
 const agyCall = (name, args) => ({ name, args });
 fs.writeFileSync(agyFile, [
   { step_index: 0, source: 'USER_EXPLICIT', type: 'USER_INPUT', created_at: iso(1), content: `<USER_REQUEST>\n${marked('request')}\n</USER_REQUEST>` },
@@ -449,6 +460,15 @@ try {
     return out;
   };
 
+  console.log('\nstream mode: a working directory inside a private root');
+  const privList = JSON.parse((await getText(BASE, '/api/sessions?source=claude')).text).sessions;
+  const privRow = privList.find((x) => x.id === claudePrivId);
+  check(privRow && privRow.cwd === '[private]', 'the session list masks a private working directory written with other separators', privRow && privRow.cwd);
+  const privSse = await readSseLive(`${BASE}/api/stream?source=claude&id=${claudePrivId}`);
+  const privMeta = privSse.events.find((e) => e.event === 'meta');
+  check(privMeta?.data.session.cwd === '[private]', 'the stream meta masks it too', privMeta?.data.session.cwd);
+  check(!privSse.text.includes('PrivateData') && !JSON.stringify(privList).includes('PrivateData'), 'no response names the private folder');
+
   const agentsRes = await getText(BASE, '/api/agents');
   leaks('GET /api/agents', agentsRes.text);
   check(agentsRes.text.includes(`claude:${claudeId}`) && agentsRes.text.includes(`antigravity:${agyId}`), 'the agents overview lists both fixtures (ids intact)');
@@ -518,6 +538,31 @@ try {
   const newMeta = r.event({ t: 'result', callId: 'toolu_1', text: 'ok', isError: false, meta: { path: null, operation: 'update', key: 'abcdef012345', extra: marked('meta') } });
   check(!JSON.stringify(newMeta).includes(MARK.ip) && newMeta.meta.operation === 'update' && newMeta.meta.key === 'abcdef012345',
     'a result meta field nobody listed is redacted; operation and key stay');
+  // Protocol keys are for the event itself. A tool parameter or a nested field that happens to
+  // carry one of those names is user data, even when its value looks like a token or an address.
+  const sneaky = r.event({
+    t: 'call', callId: 'toolu_1', name: 'kv_get',
+    args: { key: 'sk-abcdefghijklmnop12', id: '10.1.2.3', state: 'ghp_abcdefghijklmnopqrstuv', nested: { type: 'AKIAABCDEFGHIJKLMNOP', at: '192.168.1.5' } },
+  });
+  check(!/sk-abcdefghijklmnop12|10\.1\.2\.3|ghp_abcdefghijklmnopqrstuv|AKIAABCDEFGHIJKLMNOP|192\.168\.1\.5/.test(JSON.stringify(sneaky)),
+    'call arguments named key, id, state, type or at are redacted', JSON.stringify(sneaky.args));
+  const sneakyMeta = r.event({ t: 'result', callId: 'toolu_1', text: 'ok', meta: { path: null, key: 'sk-abcdefghijklmnop12', kind: '192.168.1.5' } });
+  check(!/sk-abcdefghijklmnop12|192\.168\.1\.5/.test(JSON.stringify(sneakyMeta)), 'result meta fields named key or kind are redacted', JSON.stringify(sneakyMeta.meta));
+  const sneakyTop = r.event({ t: 'say', text: 'x', usage: { id: 'sk-abcdefghijklmnop12' }, extra: { key: '192.168.1.5', state: 'live' }, state: '10.9.8.7' });
+  check(!/sk-abcdefghijklmnop12|192\.168\.1\.5|10\.9\.8\.7/.test(JSON.stringify(sneakyTop)), 'an unlisted object, and a protocol key holding an address, are redacted', JSON.stringify(sneakyTop));
+  const listy = r.value({ list: [{ id: 'sk-abcdefghijklmnop12', state: 'live', key: '10.1.2.3' }] });
+  check(!/sk-abcdefghijklmnop12|10\.1\.2\.3/.test(JSON.stringify(listy)) && listy.list[0].state === 'live', 'value(): a protocol key holding a token or an address is redacted too');
+
+  // A private working directory is hidden whole, whatever separators the log and the config use.
+  const rp = new Redactor({ configPath: redactFile, enabled: true });
+  // On Windows the root is written with forward slashes and the cwd with backslashes, so a literal match alone misses it.
+  const privUnit = path.join(tmp, 'PrivUnit');
+  await rp.setPrivateRoots([privUnit.split(path.sep).join('/')]);
+  const privCwdWin = path.join(privUnit, 'proj');
+  check(rp.value({ cwd: privCwdWin }, { paths: ['cwd'] }).cwd === '[private]', 'value(): keys in opts.paths get the path treatment');
+  check(rp.value({ session: { cwd: privCwdWin, title: 'x' } }, { paths: ['cwd'] }).session.cwd === '[private]', 'value(): ... at any depth');
+  check(rp.event({ t: 'say', text: 'x', cwd: privCwdWin }).cwd === '[private]', 'events: an unlisted cwd field gets the path treatment');
+
   let deep = marked('deep');
   for (let i = 0; i < 60; i++) deep = { next: deep };
   const cut = JSON.stringify(r.event({ t: 'say', text: 'x', deep }));
