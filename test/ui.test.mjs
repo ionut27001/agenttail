@@ -654,6 +654,17 @@ try {
   check(termText.includes('[image: shot]'), 'console shows images as [image: name]');
   check(/File\s+What/.test(termText), 'console renders markdown tables as aligned text');
 
+  // xterm keeps its own selection, which the browser's copy never sees: the page copies it.
+  check(await evalExpr(`(() => { const t = window.__agenttailTerm; t.selectAll(); return t.hasSelection(); })()`), 'the console text can be selected');
+  const copied = await evalExpr(`(() => { const dt = new DataTransfer(); const ev = new ClipboardEvent('copy', { clipboardData: dt, bubbles: true, cancelable: true }); document.dispatchEvent(ev); return { text: dt.getData('text/plain'), prevented: ev.defaultPrevented }; })()`);
+  check(copied && copied.prevented && copied.text.includes('node --test'), 'the browser copy takes the console selection', JSON.stringify(copied).slice(0, 120));
+  await evalExpr(`document.getElementById('term').click(); true`);
+  await sleep(300);
+  check(await evalExpr(`(() => { const t = window.__agenttailTerm; const b = t.buffer.active; for (let i = 0; i < b.length; i++) if (b.getLine(i).translateToString(true).includes('expanded:')) return false; return t.hasSelection(); })()`), 'a click that ends a selection keeps it and expands nothing');
+  await evalExpr(`document.getElementById('consoleCopy').click(); true`);
+  check(await waitFor(`/^(copied|copy failed)/.test(document.getElementById('consoleCopy').textContent)`, 3000), 'the copy button answers', await evalExpr(`document.getElementById('consoleCopy').textContent`));
+  await evalExpr(`window.__agenttailTerm.clearSelection(); true`);
+
   await evalExpr(`document.getElementById('term').click(); true`);
   await sleep(700);
   const expandedText = await evalExpr(`(() => { const b = window.__agenttailTerm.buffer.active; let s = ''; for (let i = 0; i < b.length; i++) s += b.getLine(i).translateToString(true) + '\\n'; return s; })()`);

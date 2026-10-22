@@ -395,6 +395,69 @@ if (term.onData) term.onData(() => {}); // read-only
 // Exposed for tests and for anyone who wants to copy the transcript buffer.
 window.__agenttailTerm = term;
 
+/* xterm keeps its own selection, which the browser's copy never sees: copy it ourselves. */
+function consoleText() {
+  if (term.hasSelection()) return term.getSelection();
+  const b = term.buffer.active;
+  const lines = [];
+  for (let i = 0; i < b.length; i++) {
+    const line = b.getLine(i);
+    if (!line) continue;
+    const text = line.translateToString(true);
+    if (line.isWrapped && lines.length) lines[lines.length - 1] += text;
+    else lines.push(text);
+  }
+  while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
+  return lines.join('\n');
+}
+async function writeClipboard(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    const area = document.createElement('textarea');
+    area.value = text;
+    area.setAttribute('readonly', '');
+    area.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0';
+    document.body.appendChild(area);
+    area.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch { ok = false; }
+    area.remove();
+    return ok;
+  }
+}
+async function copyConsole() {
+  const btn = $('consoleCopy');
+  const selected = term.hasSelection();
+  const ok = await writeClipboard(consoleText());
+  if (!btn) return;
+  btn.textContent = ok ? (selected ? 'copied ✓' : 'copied all ✓') : 'copy failed';
+  clearTimeout(copyConsole.timer);
+  copyConsole.timer = setTimeout(() => { btn.textContent = 'copy'; }, 1400);
+}
+$('consoleCopy').addEventListener('click', (e) => { e.stopPropagation(); copyConsole(); });
+term.attachCustomKeyEventHandler((e) => {
+  const copyKey = (e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'c' || e.key === 'C');
+  if (e.type === 'keydown' && copyKey && term.hasSelection()) {
+    copyConsole();
+    return false;
+  }
+  return true;
+});
+// The browser's own Copy (menu or shortcut) while the selection is in the console.
+document.addEventListener('copy', (e) => {
+  if (!term.hasSelection() || String(window.getSelection ? window.getSelection() : '').length) return;
+  e.clipboardData.setData('text/plain', term.getSelection());
+  e.preventDefault();
+});
+// Right-click copies the selection, as in Windows Terminal; without one the menu stays.
+$('term').addEventListener('contextmenu', (e) => {
+  if (!term.hasSelection()) return;
+  e.preventDefault();
+  copyConsole();
+});
+
 // xterm 256-colour indices per theme, so terminal output stays readable when
 // the foreground/background pair changes (matrix keeps its original colours).
 const ANSI_PALETTES = {
@@ -441,7 +504,8 @@ function pushExpandable(rest, label) {
 }
 
 document.getElementById('term').addEventListener('click', () => {
-  if (window.getSelection && String(window.getSelection()).length) return;
+  // A drag that selected text ends in a click: keep the selection instead of expanding.
+  if (term.hasSelection() || (window.getSelection && String(window.getSelection()).length)) return;
   const item = expansions.pop();
   if (!item) { term.scrollToBottom(); return; }
   const chunk = item.rest.slice(0, 12000);
