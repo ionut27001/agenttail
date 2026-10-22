@@ -145,6 +145,98 @@ fs.writeFileSync(log, frame(logEvents));
 const old = new Date(Date.now() - 600000);
 fs.utimesSync(log, old, old);
 
+// Claude Code and Antigravity fixtures: every free-text field carries the same
+// markers (a token, a user name in a home path, an email, an IPv4 address), so
+// one assertion per response shows nothing leaks. The workspace sits under a
+// real "Users/<name>" folder, so the session's own working directory names the user too.
+const MARK = { token: 'sk-fixture-ABCDEF0123456789', user: 'fixtureuser', email: 'fixture.person@example.org', ip: '203.0.113.77' };
+const MARKERS = [MARK.token, 'ABCDEF0123456789', MARK.user, MARK.email, MARK.ip];
+const marked = (label) => `${label} ${MARK.token} mail ${MARK.email} at ${MARK.ip} in C:\\Users\\${MARK.user}\\Documents\\a.txt and /home/${MARK.user}/work/b.txt`;
+const agentWs = path.join(tmp, 'Users', MARK.user, 'work');
+const claudeRoot = path.join(tmp, 'claude-projects');
+const claudeStatusDir = path.join(tmp, 'claude-sessions');
+const agyBrain = path.join(tmp, 'antigravity', 'brain');
+const claudeId = 'aaaaaaaa-1111-4222-8333-bbbbbbbbbbbb';
+const agyId = 'cccccccc-2222-4333-8444-dddddddddddd';
+const claudeFile = path.join(claudeRoot, 'proj', `${claudeId}.jsonl`);
+const claudeSub = path.join(claudeRoot, 'proj', claudeId, 'subagents', 'agent-fixture01.jsonl');
+const agyFile = path.join(agyBrain, agyId, '.system_generated', 'logs', 'transcript.jsonl');
+const iso = (offsetSeconds) => new Date(Date.now() - 20000 + offsetSeconds * 1000).toISOString();
+
+fs.mkdirSync(path.join(agentWs, 'src'), { recursive: true });
+fs.mkdirSync(claudeStatusDir, { recursive: true });
+fs.mkdirSync(path.dirname(claudeSub), { recursive: true });
+fs.mkdirSync(path.dirname(agyFile), { recursive: true });
+fs.writeFileSync(path.join(agentWs, 'src', 'app.js'), `// ${marked('source')}\nexport const answer = 42;\n`);
+fs.writeFileSync(path.join(agentWs, 'notes.txt'), `${marked('notes')}\n`);
+fs.writeFileSync(path.join(agentWs, 'gone.txt'), 'delete me\n');
+
+const claudeEntry = (e) => ({ cwd: agentWs, sessionId: claudeId, ...e });
+const claudeUsage = { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
+const claudeReply = (n, content) => claudeEntry({
+  type: 'assistant', timestamp: iso(n), uuid: `a${n}`,
+  message: { id: `msg_fixture${n}`, model: `fixture-model-${MARK.ip}`, role: 'assistant', content, usage: claudeUsage },
+});
+const claudeResult = (n, id, content) => claudeEntry({
+  type: 'user', timestamp: iso(n + 0.5), uuid: `r${n}`,
+  message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content, is_error: false }] },
+});
+fs.writeFileSync(claudeFile, [
+  { type: 'custom-title', customTitle: marked('title'), sessionId: claudeId },
+  { type: 'agent-name', agentName: marked('agent'), sessionId: claudeId },
+  claudeEntry({ type: 'user', timestamp: iso(1), uuid: 'u1', message: { role: 'user', content: marked('prompt') } }),
+  claudeEntry({ type: 'user', timestamp: iso(1.5), uuid: 'u2', message: { role: 'user', content: [{ type: 'text', text: marked('block prompt') }] } }),
+  claudeReply(2, [
+    { type: 'thinking', thinking: marked('thinking') },
+    { type: 'text', text: marked('reply') },
+    { type: 'tool_use', id: 'toolu_fx1', name: 'Bash', input: { command: `echo ${marked('cmd')}`, description: marked('describe') } },
+  ]),
+  claudeResult(2, 'toolu_fx1', [{ type: 'text', text: marked('output') }]),
+  claudeReply(3, [{ type: 'tool_use', id: 'toolu_fx2', name: 'Edit', input: { file_path: path.join(agentWs, 'src', 'app.js'), old_string: marked('old'), new_string: marked('new') } }]),
+  claudeResult(3, 'toolu_fx2', marked('edited')),
+  claudeReply(4, [{ type: 'tool_use', id: 'toolu_fx3', name: 'Write', input: { file_path: `/home/${MARK.user}/outside.txt`, content: marked('written') } }]),
+  claudeResult(4, 'toolu_fx3', marked('wrote')),
+  claudeReply(5, [{ type: 'tool_use', id: 'toolu_fx4', name: 'Read', input: { file_path: `C:\\Users\\${MARK.user}\\Documents\\a.txt` } }]),
+  claudeResult(5, 'toolu_fx4', marked('read')),
+  claudeReply(6, [{ type: 'tool_use', id: 'toolu_fx5', name: 'Bash', input: { command: 'rm gone.txt', description: marked('remove') } }]),
+  claudeResult(6, 'toolu_fx5', marked('removed')),
+].map((l) => JSON.stringify(l)).join('\n') + '\n');
+fs.writeFileSync(path.join(path.dirname(claudeFile), claudeId, 'custom-title.json'), JSON.stringify({ customTitle: marked('folder title') }));
+fs.writeFileSync(claudeSub, [
+  claudeEntry({ type: 'user', isSidechain: true, timestamp: iso(7), message: { role: 'user', content: marked('subagent task') } }),
+  claudeEntry({
+    type: 'assistant', isSidechain: true, timestamp: iso(8),
+    message: { id: 'msg_fxsub', model: `fixture-model-${MARK.ip}`, role: 'assistant', content: [{ type: 'text', text: marked('subagent reply') }], usage: claudeUsage },
+  }),
+].map((l) => JSON.stringify(l)).join('\n') + '\n');
+
+const agyCall = (name, args) => ({ name, args });
+fs.writeFileSync(agyFile, [
+  { step_index: 0, source: 'USER_EXPLICIT', type: 'USER_INPUT', created_at: iso(1), content: `<USER_REQUEST>\n${marked('request')}\n</USER_REQUEST>` },
+  {
+    step_index: 1, source: 'MODEL', type: 'PLANNER_RESPONSE', created_at: iso(2), content: marked('plan'), thinking: marked('thinking'),
+    input_tokens: 10, output_tokens: 5, cache_read_tokens: 0,
+    tool_calls: [agyCall('run_command', { CommandLine: JSON.stringify(`echo ${marked('cmd')}`), Cwd: JSON.stringify(agentWs) })],
+  },
+  { step_index: 2, source: 'MODEL', type: 'GENERIC', created_at: iso(3), content: `The command exited with code 0.\nOutput:\n${marked('output')}` },
+  {
+    step_index: 3, source: 'MODEL', type: 'PLANNER_RESPONSE', created_at: iso(4), input_tokens: 10, output_tokens: 5,
+    tool_calls: [agyCall('replace_file_content', { TargetFile: JSON.stringify(path.join(agentWs, 'src', 'app.js')), TargetContent: JSON.stringify(marked('old')), ReplacementContent: JSON.stringify(marked('new')) })],
+  },
+  { step_index: 4, source: 'MODEL', type: 'GENERIC', created_at: iso(5), content: marked('edited') },
+  {
+    step_index: 5, source: 'MODEL', type: 'PLANNER_RESPONSE', created_at: iso(6), input_tokens: 10, output_tokens: 5,
+    tool_calls: [agyCall('write_to_file', { TargetFile: JSON.stringify(`/home/${MARK.user}/outside.txt`), CodeContent: JSON.stringify(marked('written')) })],
+  },
+  { step_index: 6, source: 'MODEL', type: 'GENERIC', created_at: iso(7), content: marked('wrote') },
+  {
+    step_index: 7, source: 'MODEL', type: 'PLANNER_RESPONSE', created_at: iso(8), input_tokens: 10, output_tokens: 5,
+    tool_calls: [agyCall('view_file', { AbsolutePath: JSON.stringify(`C:\\Users\\${MARK.user}\\Documents\\a.txt`) })],
+  },
+  { step_index: 8, source: 'MODEL', type: 'GENERIC', created_at: iso(9), content: marked('read') },
+  { step_index: 9, source: 'SYSTEM', type: 'ERROR_MESSAGE', created_at: iso(10), error: marked('error') },
+].map((l) => JSON.stringify(l)).join('\n') + '\n');
+
 const servers = [];
 function startServer(port, extraArgs = []) {
   const child = spawn(process.execPath, [path.join(import.meta.dirname, '..', 'server.js'), ...extraArgs], {
@@ -153,8 +245,10 @@ function startServer(port, extraArgs = []) {
       PORT: String(port),
       AGENTTAIL_NO_OPEN: '1',
       DSH_SESSIONS_ROOT: sessionsRoot,
-      // Never the machine's own Antigravity folders: a real conversation would join the fixtures.
-      ANTIGRAVITY_ROOT: path.join(tmp, 'no-antigravity', 'brain'),
+      // Never the machine's own Claude Code or Antigravity folders: a real session would join the fixtures.
+      CLAUDE_PROJECTS_ROOT: claudeRoot,
+      AGENTTAIL_CLAUDE_SESSIONS_DIR: claudeStatusDir,
+      ANTIGRAVITY_ROOT: agyBrain,
       DSH_ROOTS_FILE: path.join(tmp, 'roots.json'),
       DSH_REDACT_FILE: redactFile,
       DSH_POLL_MS: '150',
@@ -166,6 +260,44 @@ function startServer(port, extraArgs = []) {
   child.stderr.on('data', (d) => process.stderr.write('  [server:err] ' + d));
   servers.push(child);
   return child;
+}
+
+/** Reads an SSE stream through the history, runs `afterHistory`, and keeps reading for `extraMs` more. */
+async function readSseLive(url, { afterHistory, extraMs = 900 } = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10000);
+  const events = [];
+  let ended = false;
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      let idx;
+      while ((idx = buf.indexOf('\n\n')) !== -1) {
+        const raw = buf.slice(0, idx);
+        buf = buf.slice(idx + 2);
+        const evLine = raw.split('\n').find((l) => l.startsWith('event: '));
+        const dataLine = raw.split('\n').find((l) => l.startsWith('data: '));
+        if (!evLine || !dataLine) continue;
+        events.push({ event: evLine.slice(7), data: JSON.parse(dataLine.slice(6)) });
+        if (events.at(-1).event === 'historyEnd' && !ended) {
+          ended = true;
+          if (afterHistory) afterHistory();
+          setTimeout(() => controller.abort(), extraMs);
+        }
+      }
+    }
+  } catch (err) {
+    if (err.name !== 'AbortError') throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+  return { events, text: JSON.stringify(events) };
 }
 
 async function readAllSse(url) {
@@ -295,8 +427,112 @@ try {
   const offEnv = await (await fetch(`${OFF_BASE}/api/file?id=${id}&path=${encodeURIComponent('.env')}`)).json();
   check(offEnv.content.includes(SECRETS.sk), 'file contents are raw when stream mode is off');
 
+  console.log('\nstream mode: Claude Code and Antigravity, every endpoint the page reads');
+  const getText = async (base, url) => {
+    const res = await fetch(base + url);
+    return { status: res.status, text: await res.text() };
+  };
+  const leaks = (name, text) => {
+    const hit = MARKERS.filter((m) => text.includes(m));
+    check(hit.length === 0, `${name}: no marker in the response`, hit.join(', '));
+  };
+  const appended = {
+    claude: () => fs.appendFileSync(claudeFile, JSON.stringify(claudeReply(9, [{ type: 'text', text: marked('live reply') }])) + '\n'),
+    antigravity: () => fs.appendFileSync(agyFile, JSON.stringify({
+      step_index: 10, source: 'MODEL', type: 'PLANNER_RESPONSE', created_at: iso(12), content: marked('live reply'), input_tokens: 1, output_tokens: 1,
+    }) + '\n'),
+  };
+  const fileKeys = (node, out = []) => {
+    if (!node) return out;
+    if (node.type === 'file' && node.key) out.push(node.key);
+    for (const child of node.children || []) fileKeys(child, out);
+    return out;
+  };
+
+  const agentsRes = await getText(BASE, '/api/agents');
+  leaks('GET /api/agents', agentsRes.text);
+  check(agentsRes.text.includes(`claude:${claudeId}`) && agentsRes.text.includes(`antigravity:${agyId}`), 'the agents overview lists both fixtures (ids intact)');
+  leaks('GET /api/sources', (await getText(BASE, '/api/sources')).text);
+
+  for (const [source, id] of [['claude', claudeId], ['antigravity', agyId]]) {
+    const q = `source=${source}&id=${id}`;
+    const sessionsRes = await getText(BASE, `/api/sessions?source=${source}`);
+    leaks(`GET /api/sessions?source=${source}`, sessionsRes.text);
+    check(JSON.parse(sessionsRes.text).sessions.some((s) => s.id === id), `${source}: the fixture session is listed with its id intact`);
+
+    const full = await readSseLive(`${BASE}/api/stream?${q}`, { afterHistory: appended[source] });
+    leaks(`${source}: SSE meta, tree, history, status and a live event`, full.text);
+    const evs = full.events.filter((e) => e.event === 'ev').map((e) => e.data);
+    check(full.events.some((e) => e.event === 'meta') && full.events.some((e) => e.event === 'tree') && full.events.some((e) => e.event === 'status'),
+      `${source}: meta, tree and status events arrived`);
+    check(evs.some((e) => e.t === 'call') && evs.some((e) => e.t === 'result') && evs.some((e) => e.t === 'say') && evs.some((e) => e.t === 'user'),
+      `${source}: call, result, say and user events arrived`);
+    check(evs.some((e) => typeof e.text === 'string' && e.text.includes('live reply')), `${source}: an event appended after connecting is delivered and redacted`);
+    check(full.text.includes('▓'), `${source}: redactions use block glyphs`);
+    const calls = evs.filter((e) => e.t === 'call');
+    check(calls.every((e) => /^(?:toolu_fx\d|agy-[\w-]+)$/.test(e.callId)), `${source}: call ids pass through untouched`, calls.map((e) => e.callId).join(' '));
+    check(calls.some((e) => /^[0-9a-f]{12}$/.test(e.args?.key || '')), `${source}: file keys pass through untouched`);
+    check(evs.some((e) => e.t === 'deleted') === (source === 'claude'), `${source}: deleted files are reported only where the command removes one`);
+
+    const lite = await readSseLive(`${BASE}/api/stream?${q}&tail=150&lite=1`);
+    leaks(`${source}: SSE as the watch wall reads it (tail, lite)`, lite.text);
+    const hidden = await readSseLive(`${BASE}/api/stream?${q}&hidden=1`);
+    leaks(`${source}: SSE with hidden files`, hidden.text);
+
+    const treeRes = await getText(BASE, `/api/tree?${q}`);
+    leaks(`${source}: GET /api/tree`, treeRes.text);
+    leaks(`${source}: GET /api/tree?hidden=1`, (await getText(BASE, `/api/tree?${q}&hidden=1`)).text);
+    const keys = fileKeys(JSON.parse(treeRes.text).tree);
+    check(keys.length >= 2, `${source}: the tree lists the workspace files`, String(keys.length));
+    for (const key of keys) leaks(`${source}: GET /api/file?key=${key}`, (await getText(BASE, `/api/file?${q}&key=${key}`)).text);
+    const appFile = await getText(BASE, `/api/file?${q}&path=${encodeURIComponent('src/app.js')}`);
+    leaks(`${source}: GET /api/file by path`, appFile.text);
+    check(appFile.text.includes('answer') && appFile.text.includes('▓'), `${source}: a file keeps its code and loses the markers`);
+    for (const bad of [`C:\\Users\\${MARK.user}\\Documents\\a.txt`, `/home/${MARK.user}/work/b.txt`, `missing-${MARK.token}.txt`]) {
+      const res = await getText(BASE, `/api/file?${q}&path=${encodeURIComponent(bad)}`);
+      leaks(`${source}: GET /api/file error for ${bad.slice(0, 12)}`, res.text);
+    }
+
+    // The same fixture with stream mode off must carry the markers, or the checks above prove nothing.
+    const raw = await getText(OFF_BASE, `/api/sessions?source=${source}`);
+    check(raw.text.includes(MARK.email), `${source}: the fixture carries the markers when stream mode is off`);
+  }
+
   console.log('\nredactor unit checks');
   const r = new Redactor({ configPath: redactFile, enabled: true });
+  const future = r.event({
+    t: 'say', seq: 7, time: 1700000000000, callId: 'call_abcdef1234567890', id: 'session-550e8400-e29b-41d4-a716-446655440000', agent: 'agent-fixture01',
+    text: 'ok', futureField: marked('top'), future: { deep: [{ note: marked('nested') }, [marked('list')]], count: 3, flag: true, [MARK.email]: 'k' },
+  });
+  check(!JSON.stringify(future).includes(MARK.email) && !JSON.stringify(future).includes(MARK.user) && !JSON.stringify(future).includes(MARK.ip) && !JSON.stringify(future).includes(MARK.token),
+    'an unknown field, nested in objects and arrays, comes out redacted', JSON.stringify(future).slice(0, 200));
+  check(future.future.count === 3 && future.future.flag === true, 'numbers and booleans in unknown fields are untouched');
+  check(future.t === 'say' && future.seq === 7 && future.time === 1700000000000 && future.callId === 'call_abcdef1234567890'
+    && future.id === 'session-550e8400-e29b-41d4-a716-446655440000' && future.agent === 'agent-fixture01',
+    'protocol keys come out unchanged', JSON.stringify(future).slice(0, 200));
+  const odd = r.event({ t: 'step', id: MARK.email, turn: 1 });
+  check(!odd.id.includes(MARK.email), 'a protocol key holding something that is not a token is redacted anyway', odd.id);
+  const newArgs = r.event({ t: 'call', callId: 'toolu_1', name: 'pwsh', args: { command: 'ls', key: 'abcdef012345', target: marked('arg'), replace_all: true, offset: 4 } });
+  check(!JSON.stringify(newArgs).includes(MARK.user) && newArgs.args.key === 'abcdef012345' && newArgs.args.replace_all === true && newArgs.args.offset === 4,
+    'a call argument nobody listed is redacted; key, booleans and numbers stay');
+  const newMeta = r.event({ t: 'result', callId: 'toolu_1', text: 'ok', isError: false, meta: { path: null, operation: 'update', key: 'abcdef012345', extra: marked('meta') } });
+  check(!JSON.stringify(newMeta).includes(MARK.ip) && newMeta.meta.operation === 'update' && newMeta.meta.key === 'abcdef012345',
+    'a result meta field nobody listed is redacted; operation and key stay');
+  let deep = marked('deep');
+  for (let i = 0; i < 60; i++) deep = { next: deep };
+  const cut = JSON.stringify(r.event({ t: 'say', text: 'x', deep }));
+  check(!cut.includes(MARK.email) && cut.includes('[truncated]'), 'an event nested past the depth limit is cut, never passed on');
+  const body = r.value({
+    list: [{ path: marked('p'), id: 'claude:' + claudeId, state: 'live', reason: 'permission', done: 'already redacted ' + MARK.ip }],
+    [`/home/${MARK.user}/k`]: 1,
+  }, { keep: ['reason'], done: ['done'] });
+  check(!body.list[0].path.includes(MARK.email) && !body.list[0].path.includes(MARK.user), 'value(): redacts strings at any depth');
+  check(body.list[0].done === 'already redacted ' + MARK.ip, 'value(): fields the caller listed as done are left alone');
+  check(body.list[0].id === 'claude:' + claudeId && body.list[0].state === 'live' && body.list[0].reason === 'permission', 'value(): protocol keys and the keys passed in `keep` stay verbatim');
+  check(!Object.keys(body).some((k) => k.includes(MARK.user)), 'value(): a map key that holds data is redacted');
+  const off = new Redactor({ configPath: redactFile, enabled: false });
+  const rawEvent = { t: 'say', text: marked('raw'), future: { x: marked('raw') } };
+  check(off.event(rawEvent) === rawEvent && off.value(rawEvent) === rawEvent, 'with redaction off, events and values are returned as they are');
   const uname = process.env.USERNAME || 'user';
   for (const sample of [`C:\\Users\\${uname}\\x.txt`, `/c/Users/${uname}/x`, `c:\\users\\${uname}\\y`]) {
     check(!r.text(sample).toLowerCase().includes(uname.toLowerCase()), `path form redacted: ${sample}`, r.text(sample));

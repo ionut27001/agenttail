@@ -233,6 +233,7 @@ Stream mode is **on by default**. Redaction happens on the server before anythin
 - **Network**: IPv4/IPv6 addresses (including IPs inside URLs, with ports preserved), MAC addresses, PlayStation-style hostnames and `SSID:` values.
 - **Opaque identifiers**: UUIDs, call/tool/message/request ids and `pwsh-…` job ids in log text.
 - **Private roots and release names**: configured paths and scene-style release archives.
+- **Everything else, by default**: every text field of every event and response is redacted unless it is an id or one of the few protocol words the page matches on, so a field added later is never shown raw. Session lists, the agents overview, the live header, file and tree responses and error messages go through the same redactor.
 
 Replacement is length-preserving (`▓`) where possible. If redaction throws, the event is **dropped** (`fail closed`); it is never sent raw. Add literals or regexes in `redact.json`, then verify the result before sharing anything.
 
@@ -404,7 +405,7 @@ The control design and the dsh ACP evidence are recorded in [docs/dev/input-desi
 
 - `smoke` — dsh API/SSE, live/idle/finished states, stale-mtime growth, hysteresis, system user classification, nicknames, job output, sorting, source counts, sys samples, Host/Origin/Content-Type checks.
 - `roots` — allowlisted roots, junction follow/deny, opaque keys, traversal, touched deep paths, ignore list/show-hidden.
-- `redact` — every redaction category, IP:port/UUID/opaque-id rules, network boundaries, live `redact.json`, fail-closed and off mode.
+- `redact` — every redaction category, IP:port/UUID/opaque-id rules, network boundaries, live `redact.json`, fail-closed and off mode, and a Claude Code and an Antigravity fixture whose every text field carries a token, a user name in a home path, an email and an IP, checked across every endpoint the page reads.
 - `sources` — Claude custom titles/subagents/thinking/pending live, replies counted once, turns and API-equivalent prices, Antigravity normalization, tokens, deletes and live tail.
 - `control` — opt-in gate (404), token (401), stream-mode lockout (403), foreign Origin (403), ACP start/message/approve/stop/close, queueing, audit-without-bodies.
 - `agents` — the agents overview API, repository and worktree grouping, colours, `/app/` asset security, stream tail and lite mode.
