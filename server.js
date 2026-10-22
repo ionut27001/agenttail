@@ -547,6 +547,9 @@ class SessionStream extends EventTarget {
    * so the page can say so where it is read (chat, log, console).
    */
   notePermission(ui) {
+    // Only a session that already had a whole reading can "switch": the first
+    // events of a log may arrive as sandbox and policy with no preset yet.
+    const hadReading = !!(this.perm.preset || (this.perm.sandbox && this.perm.policy));
     if (ui.t === 'preset') this.perm.preset = ui.preset;
     else if (ui.t === 'sandbox') this.perm.sandbox = ui.mode;
     else if (ui.t === 'policy') this.perm.policy = ui.policy;
@@ -555,7 +558,7 @@ class SessionStream extends EventTarget {
     this.permission = tiers.fromDsh(this.perm);
     // A switch writes the preset, the sandbox and the policy one after another: the
     // alert waits for the whole burst so it names where the session ended up.
-    if (tiers.enteredBypass(before, this.permission) && !this.alertPending) this.alertPending = { time: ui.time, from: before.tier };
+    if (hadReading && tiers.enteredBypass(before, this.permission) && !this.alertPending) this.alertPending = { time: ui.time, from: before.tier };
   }
 
   /** Say that the session switched into the bypass tier, once the events that set it have all been read. */

@@ -364,6 +364,34 @@ writeDsh(dshAutoId, [
   dshEv('turn/start', 3, { turn: 1 }),
   dshEv('turn/end', 4, { turn: 1 }),
 ]);
+// No preset event: sandbox and policy alone set the mode, so this is where it starts, not a switch.
+const dshNoPresetId = 'session-aaaaaaaa-0000-0000-0000-000000000007';
+writeDsh(dshNoPresetId, [
+  dshSession(dshNoPresetId),
+  dshEv('sandbox/mode', 0, { mode: 'danger-full-access' }),
+  dshEv('approval/policy', 1, { policy: 'never' }),
+  dshEv('turn/start', 2, { turn: 1 }),
+  dshEv('turn/end', 3, { turn: 1 }),
+]);
+// A log over the 24 MB scan limit that set bypass at its start: only the tail is read for
+// the rest, so the mode must still come from the head. One frame per event, as dsh writes.
+const dshBigId = 'session-aaaaaaaa-0000-0000-0000-000000000008';
+{
+  const crypto = await import('node:crypto');
+  const filler = crypto.randomBytes(48 * 1024).toString('base64');
+  const parts = [frame([dshSession(dshBigId)]), frame([dshEv('permission/preset', 0, { preset: 'danger-full-access' })]),
+    frame([dshEv('sandbox/mode', 1, { mode: 'danger-full-access' })]), frame([dshEv('approval/policy', 2, { policy: 'never' })])];
+  let size = parts.reduce((n, b) => n + b.length, 0);
+  for (let i = 0; size < 25 * 1024 * 1024; i++) {
+    // Random text does not compress, so each frame really adds its size to the file.
+    const b = frame([dshEv('filler/noise', 3, { blob: filler.slice(i % 64) + i })]);
+    parts.push(b);
+    size += b.length;
+  }
+  parts.push(frame([dshEv('turn/start', 4, { turn: 1 })]), frame([dshEv('turn/end', 5, { turn: 1 })]));
+  fs.mkdirSync(path.join(dshWs, dshBigId), { recursive: true });
+  fs.writeFileSync(path.join(dshWs, dshBigId, 'session.v4.jsonl.zstd'), Buffer.concat(parts));
+}
 writeDsh(dshCustomId, [
   dshSession(dshCustomId),
   dshEv('permission/preset', 0, { preset: 'custom' }),
@@ -848,6 +876,34 @@ try {
   check(!startsEvs.some((e) => e.t === 'permissionAlert'), 'DeepSeek Harness: a session that starts in bypass was not switched, so no alert');
   const autoEvs = eventsOf(await readSse(`${BASE}/api/stream?source=dsh&id=${encodeURIComponent(dshAutoId)}`, (e) => e.event === 'status'));
   check(!autoEvs.some((e) => e.t === 'permissionAlert'), 'DeepSeek Harness: a reviewer is not a bypass, so no alert');
+  const noPresetEvs = eventsOf(await readSse(`${BASE}/api/stream?source=dsh&id=${encodeURIComponent(dshNoPresetId)}`, (e) => e.event === 'status'));
+  check(dshOf(dshNoPresetId)?.tier === 'bypass' && !noPresetEvs.some((e) => e.t === 'permissionAlert'),
+    'DeepSeek Harness: sandbox and policy with no preset set where a session starts, so no switch alert', JSON.stringify([dshOf(dshNoPresetId), noPresetEvs.filter((e) => e.t === 'permissionAlert')]));
+  check(dshOf(dshBigId)?.tier === 'bypass' && dshOf(dshBigId).fullAccess === true,
+    'DeepSeek Harness: a log too big to read whole still shows the bypass its start set', JSON.stringify(dshOf(dshBigId)));
+
+  // ANTIGRAVITY_ROOT pointed at the editor's brain, with no CLI log beside it: editor conversations.
+  {
+    const agyLib = createRequire(import.meta.url)('../lib/antigravity.js');
+    const keep = ['ANTIGRAVITY_ROOT', 'ANTIGRAVITY_CLI_DIR', 'ANTIGRAVITY_CONFIG_FILE'].map((k) => [k, process.env[k]]);
+    const editorBrain = path.join(tmp, 'agy-editor-only', 'brain');
+    const conv = 'eeeeeeee-0000-0000-0000-000000000001';
+    fs.mkdirSync(path.join(editorBrain, conv, '.system_generated', 'logs'), { recursive: true });
+    fs.writeFileSync(path.join(editorBrain, conv, '.system_generated', 'logs', 'transcript.jsonl'),
+      JSON.stringify({ step_index: 0, source: 'USER_EXPLICIT', type: 'USER_INPUT', created_at: new Date().toISOString(), content: '<USER_REQUEST>\nhello\n</USER_REQUEST>' }) + '\n');
+    const settingsFile = path.join(tmp, 'agy-editor-only', 'config.json');
+    fs.writeFileSync(settingsFile, JSON.stringify({ userSettings: { permissionPreset: 'AGENT_PERMISSION_PRESET_TURBO' } }));
+    process.env.ANTIGRAVITY_ROOT = editorBrain;
+    process.env.ANTIGRAVITY_CONFIG_FILE = settingsFile;
+    delete process.env.ANTIGRAVITY_CLI_DIR;
+    let listed = [];
+    try { listed = await agyLib.listSessions({}); } finally {
+      for (const [k, v] of keep) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+    }
+    const ed = listed.find((s) => s.id === conv);
+    check(!!ed && ed.promptsVisible === false && ed.permission?.tier === 'bypass' && ed.permission.currency === 'configured',
+      'Antigravity: a brain folder with no CLI log beside it reads as the editor (settings, "configured as")', JSON.stringify(ed && { promptsVisible: ed.promptsVisible, permission: ed.permission }));
+  }
 
   const agentsPerm = (await getJson('/api/agents')).body;
   const everyAgent = (agentsPerm.groups || []).flatMap((g) => g.agents);

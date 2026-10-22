@@ -2270,9 +2270,11 @@ function attnNeeds(att) {
  * and a name outside the table shows as the harness wrote it.
  */
 const PERM_TIER_LABEL = { asks: 'ASKS', edits: 'EDITS', reviewer: 'REVIEWER', plan: 'PLAN', refuses: 'REFUSES', bypass: 'BYPASS' };
+// Worded to stay true for every harness: what exactly is asked differs (dsh asks
+// only for what its sandbox does not allow), so the harness's own words come first.
 const PERM_TIER_TEXT = {
-  asks: 'asks before it edits files or runs commands',
-  edits: 'edits files on its own, asks before commands',
+  asks: 'asks you before risky actions',
+  edits: 'edits files without asking; asks for some other actions',
   reviewer: 'a reviewer decides, not you',
   plan: 'plan only, no changes until the plan is approved',
   refuses: 'refuses what would need approval instead of asking',
