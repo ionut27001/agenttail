@@ -307,6 +307,8 @@ try {
     const result = r.event({ t: 'result', text: 'ok', meta: { path: outside } });
     check(!result.meta.path.toLowerCase().includes(uname.toLowerCase()), `result paths outside the workspace are redacted: ${outside}`, result.meta.path);
   }
+  const ran = r.event({ t: 'result', text: 'ok', meta: { path: null, operation: null, cwd: `C:\\Users\\${uname}\\project` } });
+  check(!ran.meta.cwd.toLowerCase().includes(uname.toLowerCase()), 'a command result does not carry its working directory unredacted', ran.meta.cwd);
   const inside = r.event({ t: 'call', name: 'edit', args: { file_path: 'src/app.js', old_string: 'a', new_string: 'b' } });
   check(inside.args.file_path === 'src/app.js', 'workspace-relative file paths stay as they are');
   check(!r.text('S-1-5-21-1-2-3-1001').includes('S-1-5-21'), 'SID redacted');

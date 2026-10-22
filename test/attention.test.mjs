@@ -703,6 +703,8 @@ try {
     check(liveMeta?.session?.attention?.level === 'needs-you' && liveStatus.state === 'live', 'and so does the stream meta; the state comes from the status file', J(liveMeta?.session?.attention));
     const dshLive = await readSse(`${BASE}/api/stream?source=dsh&id=${D.open}&lite=1`, (events) => events.some((e) => e.event === 'status'));
     check(dshLive.find((e) => e.event === 'status')?.data?.attention?.via === 'log', 'a dsh stream reports its open ask from the log');
+    const agyLive = await readSse(`${BASE}/api/stream?source=antigravity&id=${agyWait}&lite=1`, (events) => events.some((e) => e.event === 'status' && e.data?.attention?.level === 'needs-you'));
+    check(agyLive.some((e) => e.event === 'status' && e.data?.attention?.level === 'needs-you' && e.data.attention.via === 'log'), 'an open Antigravity session keeps its needs-you from the CLI log', J(agyLive.filter((e) => e.event === 'status').map((e) => e.data?.attention)));
     const idleLive = await readSse(`${BASE}/api/stream?source=claude&id=${ids.idle}&lite=1`, (events) => events.some((e) => e.event === 'status'));
     const idleStatus = idleLive.find((e) => e.event === 'status')?.data;
     check(idleStatus?.attention?.level === 'ready' && idleStatus.state === 'idle', 'an idle Claude Code stream is ready');
