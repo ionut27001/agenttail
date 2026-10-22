@@ -23,6 +23,11 @@
   turn of their own. Every prompt is labelled by who wrote it: a task
   notification, another agent, the SDK or a schedule shows with a small label
   in Chat, Log and the console instead of passing as your words.
+- Claude Code: a compaction no longer shows as your prompt or opens a turn of
+  its own; Chat and Log show a thin "context compacted" line, with the token
+  counts before and after when the transcript has them. A reply that stopped
+  on the output limit (max tokens) now ends its turn, noted as cut short, where
+  it used to stay open until the 30-minute timeout.
 - Antigravity: conversations of the Antigravity CLI, which keeps them in
   `~/.gemini/antigravity-cli`, are listed next to the editor's.
 - Safer approvals: Approve always means "allow once" and never picks an

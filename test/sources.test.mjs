@@ -398,6 +398,38 @@ try {
   const sdkStream = feedStream('queued-secret', [prompt('go'), queued('mail ada.lovelace@example.com now', { kind: 'secret-origin@example.com' })], new (createRequire(import.meta.url)('../lib/redact.js').Redactor)({ configPath: redactFile }));
   check(!JSON.stringify(sdkStream.events).includes('ada.lovelace@example.com') && !JSON.stringify(sdkStream.events).includes('secret-origin@example.com'), 'a queued prompt and an unknown origin go through the redactor');
 
+  // A compaction is not a prompt and not a turn; max_tokens ends a turn.
+  const cs = feedStream('compact', [
+    prompt('long task'),
+    endStep('c1', 'first part done', 'tool_use'),
+    { type: 'system', subtype: 'compact_boundary', content: 'Conversation compacted', compactMetadata: { trigger: 'auto', preTokens: 180000, postTokens: 12000 } },
+    prompt('This session is being continued from a previous conversation that ran out of context. Summary: ...', { isCompactSummary: true, isVisibleInTranscriptOnly: true }),
+    toolStep('t3'),
+    endStep('c2', 'all done'),
+    prompt('Still the summary of a second compaction, with no boundary line', { isVisibleInTranscriptOnly: true }),
+    prompt('next job'),
+  ]);
+  const compacted = cs.events.filter((e) => e.t === 'compacted');
+  check(compacted.length === 2 && compacted[0].before === 180000 && compacted[0].after === 12000 && compacted[0].trigger === 'auto', 'a compaction becomes one marker with the token counts of its boundary', JSON.stringify(compacted));
+  check(compacted[1] && compacted[1].before === undefined && compacted[1].after === undefined, 'a summary with no boundary still marks the compaction, without counts');
+  check(!cs.events.some((e) => e.t === 'user' && /continued from a previous|second compaction/.test(e.text)), 'a compaction summary is not shown as a prompt');
+  check(turnRows(cs) === 'turn:1 turnEnd:1 turn:2', 'a compaction in the middle of a session leaves the turn count unchanged', turnRows(cs));
+  check(sig({ type: 'user', isCompactSummary: true, message: { content: 'summary' } }) === null && sig({ type: 'user', isVisibleInTranscriptOnly: true, message: { content: 'summary' } }) === null, 'a compaction summary says nothing about the turn');
+  const mt = feedStream('maxtok', [
+    prompt('write a long essay'),
+    endStep('x1', 'Once upon a', 'max_tokens'),
+    prompt('go on'),
+    endStep('x2', 'fine', 'end_turn'),
+    prompt('refuse this'),
+    endStep('x3', 'no', 'refusal'),
+  ]);
+  const mtEnds = mt.events.filter((e) => e.t === 'turnEnd');
+  check(turnRows(mt) === 'turn:1 turnEnd:1 turn:2 turnEnd:2 turn:3 turnEnd:3', 'a reply that stops on max_tokens closes its turn; end_turn and refusal still do', turnRows(mt));
+  check(mtEnds[0].reason === 'max_tokens' && mtEnds[1].reason === undefined && mtEnds[2].reason === undefined, 'only the max_tokens turn carries the cut-short reason', JSON.stringify(mtEnds.map((e) => e.reason)));
+  const cut = feedStream('cut', [prompt('write more'), endStep('y1', 'cut off mid-sen', 'max_tokens')]);
+  check(cut.events.at(-1).t === 'turnEnd' && cut.events.at(-1).turn === 1 && cut.turnOpen === false, 'a max_tokens reply closes its turn at once, not after 30 minutes', JSON.stringify(cut.events.map((e) => e.t)));
+  check(sig({ type: 'assistant', message: { stop_reason: 'max_tokens', content: [{ type: 'text', text: 'cut' }] } }) === false, 'max_tokens closes the turn for the session list, too');
+
   const turnDir = path.join(tmp, 'turn-meta');
   fs.mkdirSync(turnDir, { recursive: true });
   const at = new Date().toISOString();

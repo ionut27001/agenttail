@@ -1572,6 +1572,11 @@ async function applyEvent(ev) {
         : chat.log.filter((x) => x.kind === 'turn' && x.turn === ev.turn).pop();
       if (item) {
         item.endedAt = ev.time || Date.now();
+        // A reply that ran into its output limit ends the turn mid-sentence.
+        if (ev.reason === 'max_tokens') {
+          item.cutShort = true;
+          chatPush({ kind: 'divider', text: 'cut short (max tokens)', chatOnly: true });
+        }
         state.turnCosts.push({ turn: item.turn, cost: item.cost, tokens: tokenTotal(item.usage) });
         if (state.turnCosts.length > 60) state.turnCosts.shift();
         drawTurnSpark();
@@ -1641,6 +1646,14 @@ async function applyEvent(ev) {
       const text = problemText(ev);
       chatPush({ kind: 'problem', text, problem: ev.kind });
       termNote(`✗ ${text}`, C.red);
+      break;
+    }
+
+    case 'compacted': {
+      // The agent's context was summarised; what follows no longer remembers all that came before.
+      const tokens = Number.isFinite(ev.before) && Number.isFinite(ev.after) ? ` (${fmtInt(ev.before)} → ${fmtInt(ev.after)} tokens)` : '';
+      chatPush({ kind: 'divider', text: `context compacted${tokens}` });
+      termNote('⇲ context compacted', C.grey);
       break;
     }
 
@@ -3961,6 +3974,9 @@ function chatAppend(item) {
     el.className = 'chat-problem';
     el.textContent = `✗ ${item.text}`;
     item.el = el;
+  } else if (item.kind === 'divider') {
+    el = dividerRow(item);
+    item.el = el;
   } else {
     el = document.createElement('div');
     const tag = item.kind === 'user' ? originTag(item.origin) : null;
@@ -3982,6 +3998,16 @@ function chatAppend(item) {
   }
   log.appendChild(el);
   if (followActive() || chat.pinned) log.scrollTop = log.scrollHeight;
+}
+
+/** A thin line across the conversation: the context was compacted, a reply was cut short. */
+function dividerRow(item) {
+  const el = document.createElement('div');
+  el.className = 'chat-divider';
+  const label = document.createElement('span');
+  label.textContent = item.text || '';
+  el.appendChild(label);
+  return el;
 }
 
 /** A collapsed "reasoning" toggle inside a reply. */
@@ -4057,13 +4083,13 @@ function chatPush(item) {
   closeStreamingThinking();
   if ((item.kind === 'agent' || item.kind === 'user') && !String(item.text || '').trim()) return;
   item.stream = !!state.historyDone && !state.replaying;
-  chatLogPush({ ...item });
+  if (!item.chatOnly) chatLogPush({ ...item });
   chat.items.push(item);
   if (chat.items.length > 400) {
     chat.items.splice(0, chat.items.length - 400);
     if (!layout.chatCollapsed) {
       const log = $('chatLog');
-      const first = log.querySelector('.chat-msg, .chat-think, .chat-tools, .chat-sys, .chat-problem');
+      const first = log.querySelector('.chat-msg, .chat-think, .chat-tools, .chat-sys, .chat-problem, .chat-divider');
       if (first) first.remove();
     }
   }
@@ -4231,6 +4257,10 @@ function renderLog() {
       log.appendChild(row);
       continue;
     }
+    if (item.kind === 'divider') {
+      log.appendChild(dividerRow(item));
+      continue;
+    }
     const row = document.createElement('div');
     row.className = `log-row ${item.kind === 'user' ? 'log-user' : 'log-say'}`;
     renderMarkdown(row, item.text || '');
@@ -4276,6 +4306,7 @@ function turnRow(item) {
   const files = item.files ? item.files.size : 0;
   if (files) part(plural(files, 'file') + ' changed', 'lt-files');
   if (item.errors) part(plural(item.errors, 'failure'), 'lt-err');
+  if (item.cutShort) part('cut short (max tokens)', 'lt-err');
   part(`${fmtInt(tokenTotal(item.usage))} tokens`);
   if (item.cost > 0) part(`$${item.cost.toFixed(4)}`);
   part(item.startedAt && item.endedAt ? fmtActivityTime(item.endedAt - item.startedAt) : 'running', item.endedAt ? '' : 'lt-run');

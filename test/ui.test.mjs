@@ -154,6 +154,11 @@ const claudeLines = [
   // A prompt typed mid-turn, and one that came from a schedule instead of the person.
   { type: 'attachment', cwd: fixture.workspace, sessionId: claudeId, timestamp: new Date().toISOString(), attachment: { type: 'queued_command', prompt: 'A word typed mid-turn.', commandMode: 'prompt' } },
   { type: 'user', cwd: fixture.workspace, sessionId: claudeId, timestamp: new Date().toISOString(), turnOrigin: 'scheduled', message: { role: 'user', content: 'Run the nightly sweep.' } },
+  // A compaction in the middle of the session, then a reply that ran into its output limit.
+  { type: 'system', subtype: 'compact_boundary', cwd: fixture.workspace, sessionId: claudeId, timestamp: new Date().toISOString(), compactMetadata: { trigger: 'auto', preTokens: 180000, postTokens: 12000 } },
+  { type: 'user', cwd: fixture.workspace, sessionId: claudeId, timestamp: new Date().toISOString(), isCompactSummary: true, message: { role: 'user', content: 'This session is being continued from a previous conversation. SUMMARY-TEXT' } },
+  { type: 'user', cwd: fixture.workspace, sessionId: claudeId, timestamp: new Date().toISOString(), message: { role: 'user', content: 'Write a very long essay.' } },
+  { type: 'assistant', cwd: fixture.workspace, sessionId: claudeId, timestamp: new Date().toISOString(), message: { id: 'msg_cut', model: 'claude-sonnet-5-5', role: 'assistant', stop_reason: 'max_tokens', content: [{ type: 'text', text: 'An essay that stops mid-sen' }] } },
 ];
 fs.writeFileSync(path.join(claudeRoot, 'E--TEST', `${claudeId}.jsonl`), claudeLines.map((l) => JSON.stringify(l)).join('\n') + '\n');
 const edgePath = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
@@ -1169,7 +1174,12 @@ try {
   await evalExpr(`document.getElementById('chatViewLog').click(); true`);
   await sleep(300);
   check(await evalExpr(`[...document.querySelectorAll('#chatLog .log-user')].some((e) => e.querySelector('.log-origin')?.textContent === 'scheduled' && e.textContent.includes('nightly sweep')) && [...document.querySelectorAll('#chatLog .log-user')].some((e) => e.querySelector('.log-origin')?.textContent === 'queued')`), 'the Log view labels queued and scheduled prompts');
+  check(await evalExpr(`[...document.querySelectorAll('#chatLog .chat-divider')].some((e) => /^context compacted \\(180\\.0k → 12\\.0k tokens\\)$/.test(e.textContent)) && !document.getElementById('chatLog').textContent.includes('SUMMARY-TEXT')`), 'the Log view shows a thin "context compacted" line, not the summary');
+  check(await evalExpr(`/cut short \\(max tokens\\)/.test([...document.querySelectorAll('#chatLog .log-turn')].pop()?.textContent || '')`), 'the cut-off turn says so in the Log view');
   await evalExpr(`document.getElementById('chatViewChat').click(); true`);
+  await sleep(300);
+  const dividers = await evalExpr(`[...document.querySelectorAll('#chatLog .chat-divider')].map((e) => e.textContent).join('|')`);
+  check(dividers === 'context compacted (180.0k → 12.0k tokens)|cut short (max tokens)', 'Chat shows the compaction divider and the cut-short note', dividers);
 
   await evalExpr(`location.hash = '${fixture.finishedId}'; true`);
   const hashSync = await waitFor(`document.getElementById('sourceSelect').value === 'dsh' && document.getElementById('sessionSelect').value === '${fixture.finishedId}'`, 20000);
