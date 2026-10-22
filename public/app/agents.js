@@ -200,6 +200,8 @@
           chip.title = 'The Antigravity editor does not show agenttail when it waits for an approval (the Antigravity CLI does, in its log)';
           meta.appendChild(chip);
         }
+        const permission = permBadge(agent.permission, true);
+        if (permission) meta.appendChild(permission);
         if (agent.repo && agent.repo.branch) meta.appendChild(el('span', 'br', `⎇ ${agent.repo.branch}${agent.repo.removed ? ' (worktree removed)' : agent.repo.worktree ? ' (worktree)' : ''}`));
         if (agent.model) meta.appendChild(el('span', '', agent.model));
         if (agent.owned) meta.appendChild(el('span', '', '◈ owned'));
@@ -614,6 +616,15 @@
       const head = el('div', 'wp-head');
       head.appendChild(dot(agent));
       head.appendChild(el('span', 'wp-src', agent.sourceLabel));
+      // The permission mode, where it is read: BYPASS loud, the rest quiet.
+      const permSlot = el('span', 'wp-perm');
+      head.appendChild(permSlot);
+      const drawPermission = (reading) => {
+        permSlot.textContent = '';
+        const badge = permBadge(reading, true);
+        if (badge) permSlot.appendChild(badge);
+      };
+      drawPermission(agent.permission);
       if (agent.repo && agent.repo.branch) head.appendChild(el('span', 'wp-branch', `⎇ ${agent.repo.branch}`));
       // Before the title, so the title is what gives way when the pane is narrow.
       const attnEl = el('span', 'wp-attn hidden');
@@ -754,6 +765,7 @@
           stateEl.classList.toggle('live', st.state === 'live');
           root.classList.toggle('live', st.state === 'live');
           pane.state = st.state;
+          if (st.permission) drawPermission(st.permission);
           if (st.attention !== undefined) {
             pane.attention = st.attention;
             drawAttention(pane);

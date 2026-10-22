@@ -910,6 +910,7 @@ const state = {
   preset: null,
   policy: null,
   sandbox: null,
+  permission: null,           // { tier, names, currency, fullAccess } of the open session
   turnCosts: [],              // one entry per completed turn
   currentTurnItem: null,
   deletedKeys: new Set(),
@@ -1649,6 +1650,14 @@ async function applyEvent(ev) {
       break;
     }
 
+    case 'permissionAlert': {
+      // The session just switched into a mode that skips the permission prompts.
+      const text = permAlertText(ev);
+      chatPush({ kind: 'alert', text });
+      termNote(`⚠ ${text}`, C.red);
+      break;
+    }
+
     case 'compacted': {
       // The agent's context was summarised; what follows no longer remembers all that came before.
       const tokens = Number.isFinite(ev.before) && Number.isFinite(ev.after) ? ` (${fmtInt(ev.before)} → ${fmtInt(ev.after)} tokens)` : '';
@@ -1937,6 +1946,8 @@ function resetView() {
   state.preset = null;
   state.policy = null;
   state.sandbox = null;
+  state.permission = null;
+  renderPermission();
   state.turnCosts = [];
   state.currentTurnItem = null;
   if (typeof window.__contextReset === 'function') window.__contextReset();
@@ -2028,6 +2039,8 @@ async function openSession(id) {
     state.stateDetail = data.session.stateDetail || '';
     state.attention = data.session.attention || null;
     state.problem = data.session.problem || null;
+    state.permission = data.session.permission || null;
+    renderPermission();
     state.historyTotal = Number(data.historyCount) || 0;
     state.historySeen = 0;
     document.body.classList.add('loading-session');
@@ -2100,6 +2113,10 @@ async function openSession(id) {
     if (data.state) state.state = data.state;
     if (data.stateDetail) state.stateDetail = data.stateDetail;
     if (data.attention !== undefined) state.attention = data.attention;
+    if (data.permission) {
+      state.permission = data.permission;
+      renderPermission();
+    }
     if (data.problem !== undefined && JSON.stringify(data.problem) !== JSON.stringify(state.problem)) {
       state.problem = data.problem;
       updateActivityBar();
@@ -2247,6 +2264,87 @@ function attnNeeds(att) {
   return !!att && att.level === 'needs-you';
 }
 
+/*
+ * Permission mode: the harness's own words plus a risk tier (lib/tiers.js).
+ * A tier always shows as text, never by colour alone; BYPASS is the loud one,
+ * and a name outside the table shows as the harness wrote it.
+ */
+const PERM_TIER_LABEL = { asks: 'ASKS', edits: 'EDITS', reviewer: 'REVIEWER', plan: 'PLAN', refuses: 'REFUSES', bypass: 'BYPASS' };
+const PERM_TIER_TEXT = {
+  asks: 'asks before it edits files or runs commands',
+  edits: 'edits files on its own, asks before commands',
+  reviewer: 'a reviewer decides, not you',
+  plan: 'plan only, no changes until the plan is approved',
+  refuses: 'refuses what would need approval instead of asking',
+  bypass: 'skips the permission prompts',
+  neutral: 'a mode name outside the risk table, shown as the harness wrote it',
+};
+const PERM_CURRENCY = {
+  exact: 'exact: every change is in the session log',
+  'last-prompt': 'as of the last prompt; a switch shows at the next one',
+  'process-start': 'as of process start; a mode changed inside the session is not logged',
+  configured: 'configured, not proof of what this conversation did',
+  unknown: 'not known',
+};
+
+/** The raw names that decided the tier, in the harness's own words. */
+function permWords(p) {
+  return p && Array.isArray(p.names) ? p.names.join(' + ') : '';
+}
+
+/** Badge text: BYPASS, ASKS ... or the raw name when the tier is neutral. Empty when there is no reading. */
+function permLabel(p, short) {
+  if (!p || !p.names || !p.names.length) return '';
+  if (p.tier === 'neutral') return permWords(p);
+  const label = PERM_TIER_LABEL[p.tier] || permWords(p);
+  return p.fullAccess && p.tier !== 'bypass' ? `${label}${short ? '+FULL' : ' · FULL ACCESS'}` : label;
+}
+
+/** Tooltip: the harness's words, the tier, and how current the reading is. */
+function permTitle(p) {
+  if (!p || !p.names || !p.names.length) return '';
+  const words = permWords(p);
+  const head = p.currency === 'configured' ? `configured as: ${words}`
+    : p.currency === 'exact' ? `permission mode: ${words}`
+      : `permission mode: ${words} (${p.currency === 'last-prompt' ? 'as of the last prompt' : p.currency === 'process-start' ? 'as of process start' : 'currency unknown'})`;
+  return [
+    head,
+    `risk tier: ${PERM_TIER_LABEL[p.tier] || 'not in the table'}${p.tier === 'neutral' ? '' : ` — ${PERM_TIER_TEXT[p.tier] || ''}`}`,
+    p.tier === 'neutral' ? PERM_TIER_TEXT.neutral : '',
+    p.fullAccess ? 'the sandbox allows full access' : '',
+    `reading: ${PERM_CURRENCY[p.currency] || PERM_CURRENCY.unknown}`,
+  ].filter(Boolean).join('\n');
+}
+
+/** A badge element, or null when there is nothing to show. */
+function permBadge(p, short) {
+  const label = permLabel(p, short);
+  if (!label) return null;
+  const el = document.createElement('span');
+  el.className = `perm-badge tier-${PERM_TIER_LABEL[p.tier] ? p.tier : 'neutral'}`;
+  el.textContent = label;
+  el.title = permTitle(p);
+  el.dataset.tier = p.tier;
+  return el;
+}
+
+/** The alert line for a switch into the bypass tier, in the words of the log. */
+function permAlertText(ev) {
+  const words = Array.isArray(ev.names) && ev.names.length ? ` (${ev.names.join(' + ')})` : '';
+  const was = ev.from && ev.from !== 'bypass' ? `, was ${PERM_TIER_LABEL[ev.from] || ev.from}` : '';
+  return `BYPASS: this session switched to a mode that skips permission prompts${words}${was}${ev.fullAccess ? ', full-access sandbox' : ''}`;
+}
+
+/** The header badge follows the open session's reading. */
+function renderPermission() {
+  const slot = $('permBadge');
+  if (!slot) return;
+  slot.textContent = '';
+  const badge = permBadge(state.permission || (state.session && state.session.permission));
+  slot.classList.toggle('hidden', !badge);
+  if (badge) slot.appendChild(badge);
+}
+
 /** NEEDS YOU · permission · Bash (names only: the server never sends command text). */
 function attnLabel(att) {
   if (!att) return '';
@@ -2328,7 +2426,8 @@ function sessionOption(s) {
   bits.push(shortId(s.id));
   bits.push(fmtRelative(s.lastEventAt || s.mtimeMs));
   if (s.model) bits.push(`${s.provider ? s.provider + '/' : ''}${s.model}`);
-  if (s.preset) bits.push(s.preset);
+  if (permLabel(s.permission, true)) bits.push(permLabel(s.permission, true));
+  else if (s.preset) bits.push(s.preset);
   if (s.steps !== null && s.steps !== undefined) bits.push(`${s.steps} st`);
   if (s.tokens !== null && s.tokens !== undefined) bits.push(`${fmtInt(s.tokens)} tok`);
   if (s.cost !== null && s.cost !== undefined) bits.push(`$${s.cost.toFixed(3)}`);
@@ -2346,7 +2445,7 @@ function sessionOption(s) {
     s.problem ? `provider problem: ${problemText(s.problem)}` : '',
     s.source === 'antigravity' && !s.promptsVisible ? 'approval prompts are not visible in the Antigravity editor' : '',
     s.model ? `model: ${s.provider ? s.provider + '/' : ''}${s.model}` : '',
-    s.preset ? `permission: ${s.preset}` : '',
+    permTitle(s.permission) || (s.preset ? `permission: ${s.preset}` : ''),
     s.policy ? `approval policy: ${s.policy}` : '',
     s.firstUser ? `first prompt: ${String(s.firstUser).replace(/\s+/g, ' ').slice(0, 300)}` : '',
     s.steps !== null && s.steps !== undefined ? `${s.steps} steps` : '',
@@ -2369,7 +2468,7 @@ function sessionFullTitle(s) {
     s.problem ? `provider problem: ${problemText(s.problem)}` : '',
     s.source === 'antigravity' && !s.promptsVisible ? 'approval prompts are not visible in the Antigravity editor' : '',
     s.model ? `model: ${s.provider ? s.provider + '/' : ''}${s.model}` : '',
-    s.preset ? `permission: ${s.preset}` : '',
+    permTitle(s.permission) || (s.preset ? `permission: ${s.preset}` : ''),
     s.policy ? `approval policy: ${s.policy}` : '',
     s.firstUser ? `first prompt: ${String(s.firstUser).replace(/\s+/g, ' ').slice(0, 300)}` : '',
     s.steps !== null && s.steps !== undefined ? `${s.steps} steps` : '',
@@ -2517,7 +2616,8 @@ function buildSessionMenu(list, emptyCount) {
       shortId(s.id),
       s.owned ? '◈ owned' : 'view only',
       s.model ? `${s.provider ? s.provider + '/' : ''}${s.model}` : '',
-      s.preset || '',
+      // The badge carries the permission mode; without a reading dsh still shows its preset.
+      permLabel(s.permission) ? '' : (s.preset || ''),
       fmtRelative(s.lastEventAt || s.mtimeMs),
       s.steps !== null && s.steps !== undefined ? `${s.steps} st` : '',
       s.tokens !== null && s.tokens !== undefined ? `${fmtInt(s.tokens)} tok` : '',
@@ -2531,6 +2631,8 @@ function buildSessionMenu(list, emptyCount) {
       updateSessionButton();
     }, s.id === $('sessionSelect').value);
     row.dataset.sessionId = s.id;
+    const permission = permBadge(s.permission, true);
+    if (permission) row.querySelector('.t').prepend(permission);
     row.classList.toggle('needs-you', attnNeeds(s.attention));
     row._searchText = sessionMenuSearchText(s);
   }
@@ -2575,7 +2677,7 @@ async function loadSessions(initial) {
     : all.filter((s) => !s.empty));
   state.sessions = list;
   const key = state.source + '::' + (state.showEmpty ? '1' : '0') + '::' + list
-    .map((s) => [s.id, s.state, s.title, s.steps, s.tokens, s.cost, s.lastEventAt, s.subagents, attnLabel(s.attention), s.problem && s.problem.kind].join('~'))
+    .map((s) => [s.id, s.state, s.title, s.steps, s.tokens, s.cost, s.lastEventAt, s.subagents, attnLabel(s.attention), s.problem && s.problem.kind, permLabel(s.permission), s.permission && s.permission.currency].join('~'))
     .join('|');
   if (!initial && key === sessionKey) return;
   sessionKey = key;
@@ -3973,10 +4075,10 @@ function chatAppend(item) {
     el.textContent = item.label || '⟐ system';
     el.title = mdToText(item.text || '').slice(0, 800);
     item.el = el;
-  } else if (item.kind === 'problem') {
+  } else if (item.kind === 'problem' || item.kind === 'alert') {
     el = document.createElement('div');
-    el.className = 'chat-problem';
-    el.textContent = `✗ ${item.text}`;
+    el.className = item.kind === 'alert' ? 'chat-problem perm-alert' : 'chat-problem';
+    el.textContent = `${item.kind === 'alert' ? '⚠' : '✗'} ${item.text}`;
     item.el = el;
   } else if (item.kind === 'divider') {
     el = dividerRow(item);
@@ -4257,10 +4359,10 @@ function renderLog() {
       log.appendChild(row);
       continue;
     }
-    if (item.kind === 'problem') {
+    if (item.kind === 'problem' || item.kind === 'alert') {
       const row = document.createElement('div');
-      row.className = 'log-row log-problem';
-      row.textContent = `✗ ${item.text}`;
+      row.className = item.kind === 'alert' ? 'log-row log-problem perm-alert' : 'log-row log-problem';
+      row.textContent = `${item.kind === 'alert' ? '⚠' : '✗'} ${item.text}`;
       log.appendChild(row);
       continue;
     }
@@ -4408,6 +4510,7 @@ function exportMarkdown() {
     }
     if (item.kind === 'tool') turn.blocks.push(exportToolLine(item));
     if (item.kind === 'problem') turn.blocks.push(`> ✗ ${item.text}`);
+    if (item.kind === 'alert') turn.blocks.push(`> ⚠ ${item.text}`);
   };
 
   for (const item of chat.log) {
