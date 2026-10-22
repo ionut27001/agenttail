@@ -471,6 +471,7 @@ try {
     crashed: '11111111-0000-0000-0000-00000000000e',
     ready: '11111111-0000-0000-0000-00000000000f',
     noid: '11111111-0000-0000-0000-000000000010',
+    dead: '11111111-0000-0000-0000-000000000011',
   };
   const logs = {};
   logs.open = dshSession(D.open, [...open1, callEv(4, 'k1', 30000), evt('approval/asked', 5, { id: 'ap1', toolName: 'pwsh', callId: 'k1', reason: `wants to run ${SECRET_CMD}` }, 20000)]);
@@ -479,6 +480,13 @@ try {
   logs.unavailable = dshSession(D.unavailable, [...open1, evt('approval/asked', 4, { id: 'ap1', toolName: 'pwsh', callId: 'k1', reason: 'r' }, 30000), evt('approval/decided', 5, { id: 'ap1', outcome: 'unavailable' }, 30000)]);
   const crashAgo = 40 * 60 * 1000;
   logs.crashed = dshSession(D.crashed, [
+    evt('turn/start', 1, { turn: 1 }, crashAgo + 3000), evt('step/start', 2, { turn: 1, step: 1 }, crashAgo + 2000), userMsg(3, crashAgo + 1000),
+    evt('approval/asked', 4, { id: 'ap1', toolName: 'pwsh', callId: 'k1', reason: 'r' }, crashAgo),
+    // The run went on without anyone answering, so the session is live but the ask is too old to count.
+    evt('step/start', 5, { turn: 1, step: 2 }, 60000),
+  ], 60000);
+  // A run that died on the same ask: nothing was written since, so it is not live at all.
+  logs.dead = dshSession(D.dead, [
     evt('turn/start', 1, { turn: 1 }, crashAgo + 3000), evt('step/start', 2, { turn: 1, step: 1 }, crashAgo + 2000), userMsg(3, crashAgo + 1000),
     evt('approval/asked', 4, { id: 'ap1', toolName: 'pwsh', callId: 'k1', reason: 'r' }, crashAgo),
   ], crashAgo);
@@ -647,7 +655,8 @@ try {
     check(a('closed')?.level === 'none', 'an ask that was decided does not', J(a('closed')));
     check(a('unavailable')?.level === 'none', 'an "unavailable" decision does not need the human', J(a('unavailable')));
     check(a('noid')?.level === 'none', 'an ask and a decision without ids still pair up', J(a('noid')));
-    check(d[D.crashed]?.state === 'live' && a('crashed')?.level === 'none', 'an ask left open by a crash, 40 minutes old, is ignored', J(d[D.crashed]));
+    check(d[D.crashed]?.state === 'live' && a('crashed')?.level === 'none', 'an ask left open for 40 minutes in a session that went on is ignored', J(d[D.crashed]));
+    check(d[D.dead]?.state === 'finished' && a('dead')?.level === 'none', 'an ask left open by a run that died is not live and needs nobody', J(d[D.dead]));
     check(d[D.ready]?.state === 'idle' && a('ready')?.level === 'ready' && a('ready').via === 'log', 'a turn that ended recently is ready', J(d[D.ready]));
     check(!J(Object.values(d).map((s) => s.attention)).includes('SECRET_COMMAND_TEXT'), 'no attention record carries command text');
 

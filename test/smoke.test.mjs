@@ -6,7 +6,8 @@ import http from 'node:http';
 import { spawn } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { buildFixture, frame, ev } from './fixture.mjs';
-import { LiveTracker } from '../lib/live.js';
+import { LiveTracker, stateFrom, OPEN_TURN_MS } from '../lib/live.js';
+import { analyzeEvents, restate } from '../lib/session-analysis.js';
 
 const PORT = 8899;
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -96,6 +97,26 @@ fs.writeFileSync(bgLog, frame([
   },
 ]));
 fs.utimesSync(bgLog, new Date(Date.now() - 180000), new Date(Date.now() - 180000));
+
+// Open turn and step whose newest event is `agoMs` old, for the open-turn cutoff.
+function openStepLog(sessionId, agoMs) {
+  const dir = path.join(fixture.sessionsRoot, '--tmp-fixture-workspace--', sessionId);
+  fs.mkdirSync(dir, { recursive: true });
+  const at = (seq, type, data) => ({ ...ev(type, seq, data), time: Date.now() - agoMs + seq });
+  const log = path.join(dir, 'session.v4.jsonl.zstd');
+  fs.writeFileSync(log, frame([
+    { type: 'session', version: 4, id: sessionId, createdAt: Date.now() - agoMs - 1000, cwd: fixture.workspace },
+    at(1, 'turn/start', { turn: 1 }),
+    at(2, 'step/start', { turn: 1, step: 1 }),
+    at(3, 'tool/call', { turn: 1, step: 1, callId: 'call_wait', name: 'pwsh', arguments: JSON.stringify({ command: 'npm run slow', workdir: fixture.workspace }) }),
+  ]));
+  return log;
+}
+// A run that died mid-step three hours ago, and a tool that has been quiet for twenty minutes.
+const staleSessionId = 'session-abababab-1111-2222-3333-444444444444';
+openStepLog(staleSessionId, 3 * 60 * 60 * 1000);
+const quietSessionId = 'session-cdcdcdcd-1111-2222-3333-444444444444';
+openStepLog(quietSessionId, 20 * 60 * 1000);
 
 const failures = [];
 function check(cond, msg, extra) {
@@ -278,6 +299,38 @@ try {
   const growing = sessions.body.sessions.find((s) => s.id === growSessionId);
   check(growing?.state === 'live', 'a growing log with a stale mtime is still live', JSON.stringify({ state: growing?.state, mtimeMs: growing?.mtimeMs }));
   check(growing?.size > 0, 'size-based activity is visible even when mtime is stale');
+
+  console.log('\nopen-turn cutoff');
+  const stale = sessions.body.sessions.find((s) => s.id === staleSessionId);
+  check(stale?.state === 'finished' && stale?.live === false, 'an open step whose last event is 3 hours old is not live', JSON.stringify({ state: stale?.state, detail: stale?.stateDetail }));
+  check(/stopped without ending its turn/.test(stale?.stateDetail || ''), 'its state detail says it stopped without ending its turn', stale?.stateDetail);
+  const quiet = sessions.body.sessions.find((s) => s.id === quietSessionId);
+  check(quiet?.state === 'live' && /running/.test(quiet?.stateDetail || ''), 'a tool silent for 20 minutes, under the cutoff, stays live', JSON.stringify({ state: quiet?.state, detail: quiet?.stateDetail }));
+  const listOrder = sessions.body.sessions.map((s) => s.id);
+  check(listOrder.indexOf(quietSessionId) < listOrder.indexOf(staleSessionId), 'a run that stopped sorts below one still running');
+  for (const [label, id, listed] of [['stale', staleSessionId, stale], ['quiet', quietSessionId, quiet]]) {
+    const attach = await readSse(`${BASE}/api/stream?id=${id}&lite=1`, (e) => e.event === 'status');
+    const status = attach.find((e) => e.event === 'status')?.data;
+    const metaState = attach.find((e) => e.event === 'meta')?.data.session;
+    check(status?.state === listed?.state && status?.live === (listed?.state === 'live'), `the ${label} stream status agrees with the session list`, JSON.stringify({ status: status?.state, list: listed?.state }));
+    check(metaState?.state === listed?.state && metaState?.stateDetail.replace(/\d+ \w+ ago/, '') === listed?.stateDetail.replace(/\d+ \w+ ago/, ''), `the ${label} stream meta carries the same state and detail`, JSON.stringify({ meta: metaState?.stateDetail, list: listed?.stateDetail }));
+  }
+
+  console.log('\nopen-turn cutoff, in the library');
+  const t0 = 1_800_000_000_000;
+  const open = { openStep: true, lastEventAt: t0, lastEndAt: 0 };
+  check(stateFrom({ ...open, now: t0 + OPEN_TURN_MS - 1000 }) === 'live', 'an open step just under the cutoff is live');
+  check(stateFrom({ ...open, now: t0 + OPEN_TURN_MS }) === 'finished', 'an open step at the cutoff is no longer live');
+  check(stateFrom({ openTurn: true, lastEventAt: t0, openJob: true, now: t0 + OPEN_TURN_MS }) === 'idle', 'a stale turn with an open background job is idle, as for any detached job');
+  check(stateFrom({ openStep: true, now: t0 }) === 'live', 'an open step with no timestamp stays live');
+  const openLog = [
+    { type: 'turn/start', seq: 1, time: t0, data: { turn: 1 } },
+    { type: 'step/start', seq: 2, time: t0 + 1, data: { turn: 1, step: 1 } },
+  ];
+  const fresh = analyzeEvents(openLog, t0 + 60_000);
+  check(fresh.rawState === 'live', 'an analysis a minute after the last event is live', fresh.rawState);
+  const aged = restate(fresh, t0 + OPEN_TURN_MS + 60_000);
+  check(aged.rawState === 'finished' && /stopped without ending its turn/.test(aged.stateDetail), 'a cached analysis is re-derived as time passes, so a quiet run leaves live', JSON.stringify({ state: aged.rawState, detail: aged.stateDetail }));
 
   console.log('\nnicknames');
   const nickRes = await fetch(BASE + '/api/nickname', {

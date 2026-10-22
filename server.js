@@ -29,7 +29,7 @@ const { deletionsFromCommand } = require('./lib/deletes');
 const { jobLogFromCommand } = require('./lib/jobs');
 const { PRICES, CLAUDE_PRICES } = require('./lib/pricing');
 const { version: VERSION } = require('./package.json');
-const { analyzeLog } = require('./lib/session-analysis');
+const { analyzeLog, restate } = require('./lib/session-analysis');
 const attention = require('./lib/attention');
 const { stateFrom, describe, LiveTracker } = require('./lib/live');
 const { Nicknames } = require('./lib/nicknames');
@@ -360,7 +360,7 @@ async function listSessions() {
       head = await readSessionHead(rec.logPath);
       if (head) sessionCache.set(rec.id, { ...rec, ...head });
     }
-    const analysis = await analysisFor(rec);
+    const analysis = restate(await analysisFor(rec));
     const key = `dsh:${rec.id}`;
     const state = analysis ? listTracker.update(key, analysis.rawState) : 'finished';
     const nickname = nicknames.get(key);
@@ -646,6 +646,7 @@ class SessionStream extends EventTarget {
       openJob: !!openJob,
       openStep: !!openStep,
       openTurn: !!openTurn,
+      lastEventAt: this.lastEventAt,
       lastEndAt: this.lastEndAt,
       now,
     });

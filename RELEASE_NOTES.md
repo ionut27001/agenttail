@@ -31,6 +31,10 @@
   app's own files, assembled by `scripts/build-site.mjs`.
 - Theme colours and Tail's styles moved into their own stylesheets
   (`themes.css`, `tail.css`) so the app and the site share them.
+- DeepSeek Harness: a run that crashed or was killed no longer stays live
+  forever and sorts first. An open step or turn with no event for 30 minutes
+  reads "stopped without ending its turn"; a long silent tool wait under that
+  limit is still live.
 
 ---
 
