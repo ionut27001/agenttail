@@ -421,7 +421,7 @@
         } else if (EDIT_TOOLS.has(ev.name) || ev.name === 'read') {
           next = 'editor';
         }
-      } else if (ev.t === 'result' && ev.callId && ev.callId === pane.lastShell) {
+      } else if (ev.t === 'result' && ev.callId && ev.callId === pane.lastShell && !ev.running) {
         const exit = /\[exit code:\s*(-?\d+)\]/i.exec(ev.text || '');
         const bad = ev.isError || (exit && exit[1] !== '0');
         f.dkConsole.classList.toggle('bad', !!bad);
@@ -587,7 +587,8 @@
         if (row) {
           const exit = /\[exit code:\s*(-?\d+)\]/i.exec(ev.text || '');
           const bad = ev.isError || (exit && exit[1] !== '0');
-          row.appendChild(el('span', bad ? 'bad' : 'ok', bad ? `✗${exit ? ' exit ' + exit[1] : ''}` : `✓${exit ? ' exit ' + exit[1] : ''}`));
+          if (ev.running) row.appendChild(el('span', 'ok', '… running'));
+          else row.appendChild(el('span', bad ? 'bad' : 'ok', bad ? `✗${exit ? ' exit ' + exit[1] : ''}` : `✓${exit ? ' exit ' + exit[1] : ''}`));
           if (bad) row.dataset.bad = '1';
           const group = row.closest('.wf-group');
           if (group) summarizeGroup(group);

@@ -18,12 +18,17 @@ const claudeFile = path.join(project, `${claudeId}.jsonl`);
 const subFile = path.join(project, claudeId, 'subagents', 'agent-abc.jsonl');
 const agyConv = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
 const agyFile = path.join(agyRoot, 'brain', agyConv, '.system_generated', 'logs', 'transcript.jsonl');
+const agyPairConv = 'aaaaaaaa-bbbb-cccc-dddd-000000000002';
+const agyFullConv = 'aaaaaaaa-bbbb-cccc-dddd-000000000003';
+const agyLog = (conv, name = 'transcript.jsonl') => path.join(agyRoot, 'brain', conv, '.system_generated', 'logs', name);
 const SECRET = 'sk-live-SOURCESECRET1234567890';
 
 fs.rmSync(tmp, { recursive: true, force: true });
 fs.mkdirSync(path.join(workspace, 'src'), { recursive: true });
 fs.mkdirSync(path.dirname(subFile), { recursive: true });
 fs.mkdirSync(path.dirname(agyFile), { recursive: true });
+fs.mkdirSync(path.dirname(agyLog(agyPairConv)), { recursive: true });
+fs.mkdirSync(path.dirname(agyLog(agyFullConv)), { recursive: true });
 fs.mkdirSync(dshRoot, { recursive: true });
 fs.writeFileSync(path.join(workspace, 'src', 'app.js'), 'export const answer = 42;\n');
 fs.writeFileSync(path.join(workspace, 'notes.md'), '# Notes\n');
@@ -176,7 +181,74 @@ const agyLines = [
 ];
 fs.writeFileSync(agyFile, agyLines.map((l) => JSON.stringify(l)).join('\n') + '\n');
 
+// Pairing: three parallel calls (one tool the adapter never mapped), a planner
+// response whose second call never gets a result, and failed, denied and
+// still-running commands.
+const longOutput = 'LONGBODY '.repeat(900).trim();
+const agyPairLines = [
+  { step_index: 0, source: 'USER_EXPLICIT', type: 'USER_INPUT', created_at: iso(1), content: '<USER_REQUEST>\nPair the results\n</USER_REQUEST>' },
+  {
+    step_index: 1, source: 'MODEL', type: 'PLANNER_RESPONSE', created_at: iso(2),
+    tool_calls: [
+      { name: 'frobnicate_widget', args: { Mode: JSON.stringify('fast'), Level: 3 } },
+      { name: 'run_command', args: { CommandLine: JSON.stringify('node build.js'), Cwd: JSON.stringify(workspace) } },
+      { name: 'grep_search', args: { Query: JSON.stringify('answer'), SearchPath: JSON.stringify(workspace) } },
+    ],
+  },
+  { step_index: 2, source: 'MODEL', type: 'GENERIC', status: 'DONE', created_at: iso(3), content: 'frobnicated fine' },
+  { step_index: 3, source: 'MODEL', type: 'GENERIC', status: 'DONE', created_at: iso(3), content: 'The command exited with code 0.\nOutput:\nbuilt ok' },
+  { step_index: 4, source: 'MODEL', type: 'GENERIC', status: 'DONE', created_at: iso(3), content: 'Found 1 match: src/app.js' },
+  {
+    step_index: 5, source: 'MODEL', type: 'PLANNER_RESPONSE', created_at: iso(4),
+    tool_calls: [
+      { name: 'list_dir', args: { DirectoryPath: JSON.stringify(workspace) } },
+      { name: 'read_url_content', args: { Url: JSON.stringify('https://example.test/docs') } },
+    ],
+  },
+  { step_index: 6, source: 'MODEL', type: 'GENERIC', status: 'DONE', created_at: iso(5), content: 'src\nnotes.md' },
+  {
+    step_index: 8, source: 'MODEL', type: 'PLANNER_RESPONSE', created_at: iso(6),
+    tool_calls: [{ name: 'run_command', args: { CommandLine: JSON.stringify('node fail.js'), Cwd: JSON.stringify(workspace) } }],
+  },
+  { step_index: 9, source: 'MODEL', type: 'GENERIC', status: 'ERROR', created_at: iso(7), content: 'The command exited with code 2.', error: 'command failed' },
+  {
+    step_index: 10, source: 'MODEL', type: 'PLANNER_RESPONSE', created_at: iso(8),
+    tool_calls: [{ name: 'run_command', args: { CommandLine: JSON.stringify('node denied.js'), Cwd: JSON.stringify(workspace) } }],
+  },
+  { step_index: 11, source: 'MODEL', type: 'GENERIC', status: 'ERROR', created_at: iso(9), content: '', error: 'user denied permission to run command' },
+  {
+    step_index: 12, source: 'MODEL', type: 'PLANNER_RESPONSE', created_at: iso(10),
+    tool_calls: [{ name: 'run_command', args: { CommandLine: JSON.stringify('node serve.js'), Cwd: JSON.stringify(workspace) } }],
+  },
+  { step_index: 13, source: 'MODEL', type: 'GENERIC', status: 'RUNNING', created_at: iso(11), content: 'listening on a port\nCommand ID: cmd-1234' },
+  {
+    step_index: 14, source: 'MODEL', type: 'PLANNER_RESPONSE', created_at: iso(12),
+    tool_calls: [{ name: 'command_status', args: { CommandId: JSON.stringify('cmd-1234'), WaitDurationSeconds: 5 } }],
+  },
+  { step_index: 15, source: 'MODEL', type: 'GENERIC', status: 'DONE', created_at: iso(13), content: 'still serving' },
+];
+fs.writeFileSync(agyLog(agyPairConv), agyPairLines.map((l) => JSON.stringify(l)).join('\n') + '\n');
+
+// transcript.jsonl cuts long fields and says so; transcript_full.jsonl keeps them.
+const fullEdit = { TargetFile: JSON.stringify(path.join(workspace, 'src', 'app.js')), TargetContent: JSON.stringify('export const answer = 41;'), ReplacementContent: JSON.stringify('export const answer = 42; // ' + 'long comment '.repeat(400)) };
+const cutEdit = { ...fullEdit, ReplacementContent: JSON.stringify('export const answer = 42; // long comment') };
+const agyFullLines = [
+  { step_index: 0, source: 'USER_EXPLICIT', type: 'USER_INPUT', created_at: iso(1), content: '<USER_REQUEST>\nTruncated bodies\n</USER_REQUEST>' },
+  { step_index: 1, source: 'MODEL', type: 'PLANNER_RESPONSE', created_at: iso(2), tool_calls: [{ name: 'run_command', args: { CommandLine: JSON.stringify('node big.js'), Cwd: JSON.stringify(workspace) } }, { name: 'replace_file_content', args: fullEdit }] },
+  { step_index: 2, source: 'MODEL', type: 'GENERIC', status: 'DONE', created_at: iso(3), content: 'The command exited with code 0.\nOutput:\n' + longOutput },
+  { step_index: 3, source: 'MODEL', type: 'GENERIC', status: 'DONE', created_at: iso(3), content: 'edited' },
+];
+const agyCutLines = agyFullLines.map((l) => {
+  if (l.step_index === 1) return { ...l, tool_calls: [l.tool_calls[0], { name: 'replace_file_content', args: cutEdit }], truncated_fields: ['tool_calls'] };
+  if (l.step_index === 2) return { ...l, content: l.content.slice(0, 200) + '...[truncated]', truncated_fields: ['content'] };
+  return l;
+});
+fs.writeFileSync(agyLog(agyFullConv), agyCutLines.map((l) => JSON.stringify(l)).join('\n') + '\n');
+fs.writeFileSync(agyLog(agyFullConv, 'transcript_full.jsonl'), agyFullLines.map((l) => JSON.stringify(l)).join('\n') + '\n');
+
 const old = new Date(now - 600000);
+fs.utimesSync(agyLog(agyPairConv), old, old);
+fs.utimesSync(agyLog(agyFullConv), old, old);
 fs.utimesSync(agyFile, old, old);
 
 const server = spawn(process.execPath, [path.join(import.meta.dirname, '..', 'server.js')], {
@@ -501,10 +573,53 @@ try {
   const aTree = await getJson(`/api/tree?source=antigravity&id=${encodeURIComponent(agyConv)}`);
   check(aTree.body.tree?.children?.length > 0, 'Antigravity tree is built from the derived cwd');
 
+  console.log('\nAntigravity pairing');
+  const pairEvs = eventsOf(await readSse(
+    `${BASE}/api/stream?source=antigravity&id=${encodeURIComponent(agyPairConv)}`,
+    (e) => e.event === 'historyEnd',
+  ));
+  const pairCalls = pairEvs.filter((e) => e.t === 'call');
+  const resultOf = (call) => pairEvs.find((e) => e.t === 'result' && e.callId === (call && call.callId));
+  const callWith = (pred) => pairCalls.find(pred);
+  const fro = callWith((c) => c.name === 'frobnicate_widget');
+  const build = callWith((c) => c.args.command === 'node build.js');
+  const grep = callWith((c) => c.name === 'grep');
+  check(pairCalls.length === 9, 'every tool call of a planner response becomes a call', String(pairCalls.length));
+  check(!!fro && /fast/.test(fro.args.description || '') && !JSON.stringify(fro.args).includes('Level'), 'an unmapped tool is a generic call with a short argument summary', JSON.stringify(fro && fro.args));
+  check(resultOf(fro)?.text === 'frobnicated fine', 'the unmapped call gets its own result', resultOf(fro)?.text);
+  check(resultOf(build)?.text.includes('built ok') && !resultOf(build).isError, 'the command gets its own result', resultOf(build)?.text);
+  check(!!grep && grep.args.pattern === 'answer' && resultOf(grep)?.text.includes('Found 1 match'), 'grep_search is a grep call that gets its own result', JSON.stringify(grep));
+  const listDir = callWith((c) => c.name === 'list_dir');
+  const webCall = callWith((c) => c.name === 'web_fetch');
+  check(resultOf(listDir)?.text === 'src\nnotes.md', 'a result pairs inside its own planner response', resultOf(listDir)?.text);
+  check(!!webCall && !resultOf(webCall), 'a call without a result stays open and does not take a later result');
+  const failed = callWith((c) => c.args.command === 'node fail.js');
+  check(resultOf(failed)?.isError === true && !resultOf(failed)?.denied && resultOf(failed).text.includes('command failed'), 'a step with status ERROR is a failed result with its error text', JSON.stringify(resultOf(failed)));
+  const denied = callWith((c) => c.args.command === 'node denied.js');
+  check(resultOf(denied)?.isError === true && resultOf(denied)?.denied === true && resultOf(denied).text.includes('denied permission'), 'a permission denial is labelled denied', JSON.stringify(resultOf(denied)));
+  const serve = callWith((c) => c.args.command === 'node serve.js');
+  check(resultOf(serve)?.running === true && !resultOf(serve).isError && resultOf(serve).text.includes('listening'), 'a RUNNING result is marked running and keeps the partial output', JSON.stringify(resultOf(serve)));
+  const status = callWith((c) => c.name === 'job_output');
+  check(!!status && /node serve\.js/.test(status.args.description || '') && resultOf(status)?.text === 'still serving', 'command_status is its own call and names the command it asks about', JSON.stringify(status && status.args));
+  check(!resultOf(status)?.running && !resultOf(build)?.running, 'a finished result is not marked running');
+
+  console.log('\nAntigravity full transcript');
+  const fullEvs = eventsOf(await readSse(
+    `${BASE}/api/stream?source=antigravity&id=${encodeURIComponent(agyFullConv)}`,
+    (e) => e.event === 'historyEnd',
+  ));
+  const bigCall = fullEvs.find((e) => e.t === 'call' && e.args.command === 'node big.js');
+  const bigResult = fullEvs.find((e) => e.t === 'result' && e.callId === bigCall?.callId);
+  check(!!bigResult && bigResult.text.includes('LONGBODY') && bigResult.text.length > 4000 && !bigResult.text.includes('[truncated]'), 'a truncated result body is read from transcript_full.jsonl', String(bigResult?.text.length));
+  const fullEditCall = fullEvs.find((e) => e.t === 'call' && e.name === 'edit');
+  check(!!fullEditCall && fullEditCall.args.new_string.length > 4000, 'a truncated edit body is read from transcript_full.jsonl', String(fullEditCall?.args.new_string.length));
+
   const agents = await getJson('/api/agents');
   const agyAgent = (agents.body.groups || []).flatMap((g) => g.agents).find((a) => a.source === 'antigravity' && a.id === agyConv);
   check(!!agyAgent && ['live', 'idle'].includes(agyAgent.state), 'Antigravity conversations appear in the agents overview', JSON.stringify(agyAgent));
   check(!!agyAgent && agyAgent.touched.some((t) => t.path.endsWith('notes.md')) && !!agyAgent.activity, 'Antigravity reports its last action and written files', JSON.stringify(agyAgent));
+  const pairAgent = (agents.body.groups || []).flatMap((g) => g.agents).find((a) => a.source === 'antigravity' && a.id === agyPairConv);
+  check(pairAgent?.activity?.name === 'job_output' && /node serve\.js/.test(pairAgent.activity.label), 'the agents overview names the last tool the same way', JSON.stringify(pairAgent?.activity));
 } catch (err) {
   console.error(err);
   failures.push(String(err && err.stack || err));

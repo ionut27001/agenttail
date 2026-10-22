@@ -47,6 +47,10 @@
     const color = ev.isError ? C.red : C.green;
     for (const line of shown) term.write(`${color}${esc(line)}${C.reset}\r\n`);
 
+    if (ev.running) {
+      term.write(`${C.amber}… still running, final output not recorded${C.reset}\r\n`);
+      return;
+    }
     const exitMatch = /\[exit code:\s*(-?\d+)\]/i.exec(raw);
     const exitCode = exitMatch ? Number(exitMatch[1]) : null;
     let ok = true;
