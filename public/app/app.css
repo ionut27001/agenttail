@@ -560,6 +560,8 @@
   .chat-msg.agent { align-self: stretch; max-width: 100%; padding: 2px 0; background: transparent; border: none; color: var(--text-strong); font-size: 12.5px; line-height: 1.55; }
   .chat-msg.user { align-self: flex-end; background: var(--bg-user); border: 1px solid var(--border-user); color: var(--text-bright); }
   .chat-msg .who { display: block; font-size: 8px; letter-spacing: .12em; color: var(--muted); margin-bottom: 2px; }
+  .chat-msg.user.from-other { background: transparent; border-style: dashed; }
+  .log-origin { display: block; font-size: 8px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin-bottom: 1px; }
   .chat-think { align-self: stretch; color: var(--text-think); font-style: italic; font-size: 10px; border-left: 2px solid var(--border); padding: 2px 6px; max-width: 100%; overflow: hidden; }
   .chat-think summary { cursor: pointer; color: var(--text-think-summary); font-style: normal; font-size: 9px; letter-spacing: .06em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; list-style: none; display: flex; gap: 5px; align-items: center; }
   .chat-think summary::-webkit-details-marker { display: none; }

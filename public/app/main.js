@@ -1239,11 +1239,21 @@ function termSay(text, agent) {
   }
 }
 
-function termUser(text, agent) {
+function termUser(text, agent, origin) {
   const one = clean(text).replace(/\s*\n\s*/g, ' ').trim();
   if (!one) return;
   const cut = one.length > 300 ? one.slice(0, 300) + '…' : one;
-  term.write(`\r\n${C.magenta}${agent ? '↳ ' : ''}» user: ${esc(cut)}${C.reset}\r\n`);
+  term.write(`\r\n${C.magenta}${agent ? '↳ ' : ''}» ${esc(originTag(origin) || 'user')}: ${esc(cut)}${C.reset}\r\n`);
+}
+
+/**
+ * Who wrote a prompt, when it was not simply the person. Claude Code says so
+ * for every prompt; an origin this page does not know is shown as it came.
+ */
+const ORIGIN_TAGS = { queued: 'queued', task_notification: 'task notification', peer: 'another agent', sdk: 'SDK', scheduled: 'scheduled' };
+function originTag(origin) {
+  if (!origin || origin === 'person' || origin === 'system') return null;
+  return ORIGIN_TAGS[origin] || String(origin);
 }
 
 /*
@@ -1646,10 +1656,10 @@ async function applyEvent(ev) {
 
     case 'user':
       if (ev.text) {
-        if (!ev.system) termUser(ev.text, ev.agent);
+        if (!ev.system) termUser(ev.text, ev.agent, ev.origin);
         chatPush(ev.system
-          ? { kind: 'system', label: ev.systemLabel || '⟐ system', text: ev.text, agent: ev.agent }
-          : { kind: 'user', text: ev.text, agent: ev.agent });
+          ? { kind: 'system', label: [ev.systemLabel || '⟐ system', originTag(ev.origin)].filter(Boolean).join(' · '), text: ev.text, agent: ev.agent }
+          : { kind: 'user', text: ev.text, agent: ev.agent, origin: ev.origin });
         if (!ev.system) setActivity('thinking', 'reading your message', 'chat');
       }
       break;
@@ -3953,12 +3963,15 @@ function chatAppend(item) {
     item.el = el;
   } else {
     el = document.createElement('div');
-    el.className = `chat-msg ${item.kind}`;
-    // Only label what is not obvious: your turns and sub-agents.
+    const tag = item.kind === 'user' ? originTag(item.origin) : null;
+    // A prompt someone else wrote is not styled as yours.
+    el.className = `chat-msg ${item.kind}${tag && item.origin !== 'queued' ? ' from-other' : ''}`;
+    // Only label what is not obvious: your turns, other writers and sub-agents.
     if (item.kind === 'user' || item.agent) {
       const who = document.createElement('span');
       who.className = 'who';
-      who.textContent = item.kind === 'user' ? `you${item.agent ? ' · ' + item.agent : ''}` : `↳ ${item.agent}`;
+      const you = tag ? (item.origin === 'queued' ? `you · ${tag}` : tag) : 'you';
+      who.textContent = item.kind === 'user' ? `${you}${item.agent ? ' · ' + item.agent : ''}` : `↳ ${item.agent}`;
       el.appendChild(who);
     }
     if (item.thought) el.appendChild(thoughtToggle(item.thought));
@@ -4221,6 +4234,13 @@ function renderLog() {
     const row = document.createElement('div');
     row.className = `log-row ${item.kind === 'user' ? 'log-user' : 'log-say'}`;
     renderMarkdown(row, item.text || '');
+    const tag = item.kind === 'user' ? originTag(item.origin) : null;
+    if (tag) {
+      const label = document.createElement('span');
+      label.className = 'log-origin';
+      label.textContent = tag;
+      row.insertBefore(label, row.firstChild);
+    }
     if (item.__thought) {
       row.insertBefore(thoughtToggle(item.__thought), row.firstChild);
       delete item.__thought;

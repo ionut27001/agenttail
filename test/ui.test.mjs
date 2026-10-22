@@ -151,6 +151,9 @@ const claudeLines = [
       usage: { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
     },
   },
+  // A prompt typed mid-turn, and one that came from a schedule instead of the person.
+  { type: 'attachment', cwd: fixture.workspace, sessionId: claudeId, timestamp: new Date().toISOString(), attachment: { type: 'queued_command', prompt: 'A word typed mid-turn.', commandMode: 'prompt' } },
+  { type: 'user', cwd: fixture.workspace, sessionId: claudeId, timestamp: new Date().toISOString(), turnOrigin: 'scheduled', message: { role: 'user', content: 'Run the nightly sweep.' } },
 ];
 fs.writeFileSync(path.join(claudeRoot, 'E--TEST', `${claudeId}.jsonl`), claudeLines.map((l) => JSON.stringify(l)).join('\n') + '\n');
 const edgePath = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
@@ -1160,6 +1163,13 @@ try {
   check(await evalExpr(`decodeURIComponent(location.hash).replace(/^#/, '').startsWith('claude:')`), 'hash records the source',
     await evalExpr(`location.hash`));
   check(await evalExpr(`document.querySelectorAll('.tree-row').length > 0`), 'Claude workspace tree loads');
+  const whoOf = `[...document.querySelectorAll('#chatLog .chat-msg.user')].map((e) => [e.querySelector('.who')?.textContent, e.classList.contains('from-other'), e.textContent.includes('%s')])`;
+  check(await evalExpr(`${whoOf.replace('%s', 'A word typed mid-turn.')}.some(([who, other, has]) => has && who === 'you · queued' && !other)`), 'a prompt typed mid-turn shows in chat as yours, labelled queued', await evalExpr(whoOf.replace('%s', 'x')));
+  check(await evalExpr(`${whoOf.replace('%s', 'Run the nightly sweep.')}.some(([who, other, has]) => has && who === 'scheduled' && other)`), 'a scheduled prompt shows in chat with its origin, not as yours');
+  await evalExpr(`document.getElementById('chatViewLog').click(); true`);
+  await sleep(300);
+  check(await evalExpr(`[...document.querySelectorAll('#chatLog .log-user')].some((e) => e.querySelector('.log-origin')?.textContent === 'scheduled' && e.textContent.includes('nightly sweep')) && [...document.querySelectorAll('#chatLog .log-user')].some((e) => e.querySelector('.log-origin')?.textContent === 'queued')`), 'the Log view labels queued and scheduled prompts');
+  await evalExpr(`document.getElementById('chatViewChat').click(); true`);
 
   await evalExpr(`location.hash = '${fixture.finishedId}'; true`);
   const hashSync = await waitFor(`document.getElementById('sourceSelect').value === 'dsh' && document.getElementById('sessionSelect').value === '${fixture.finishedId}'`, 20000);

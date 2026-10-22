@@ -18,6 +18,11 @@
   overview, the live header, file and tree responses and error messages go
   through the same redactor; model and provider names with an address in them
   are no longer shown as they are.
+- Claude Code: prompts you typed while a turn was running were missing from
+  the conversation; they now show once, in the turn they joined, and open no
+  turn of their own. Every prompt is labelled by who wrote it: a task
+  notification, another agent, the SDK or a schedule shows with a small label
+  in Chat, Log and the console instead of passing as your words.
 - Antigravity: conversations of the Antigravity CLI, which keeps them in
   `~/.gemini/antigravity-cli`, are listed next to the editor's.
 - Safer approvals: Approve always means "allow once" and never picks an
