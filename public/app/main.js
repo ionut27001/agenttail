@@ -970,21 +970,17 @@ function tokenTotal(usage) {
 }
 
 /**
- * What one reply cost in USD. Claude replies carry the server's own figure at
- * Anthropic's API list prices (what the tokens would cost on the API, even on
- * a subscription); DeepSeek replies are priced here by the band they fell in.
+ * What one reply cost in USD: the server's own figure, which it computed from
+ * the reply's provider and model (Claude at Anthropic's API list prices, what
+ * the tokens would cost on the API even on a subscription; DeepSeek at its
+ * list prices by the band the reply fell in). A reply with no price counts 0.
  */
 function replyCost(usage, time, cost) {
-  const p = state.prices;
-  if (!p || !usage) return 0;
-  if (p.apiEquivalent) return typeof cost === 'number' && Number.isFinite(cost) ? cost : 0;
-  const rate = isPeak(time || Date.now()) ? p.peak : p.offPeak;
-  return ((usage.input || 0) * rate.cacheMiss +
-    (usage.cacheRead || 0) * rate.cacheHit +
-    (usage.output || 0) * rate.output) / p.unit;
+  if (!state.prices || !usage) return 0;
+  return typeof cost === 'number' && Number.isFinite(cost) ? cost : 0;
 }
 
-function addUsage(usage, time, cost) {
+function addUsage(usage, time, cost, provider) {
   if (!usage) return;
   state.stats.input += usage.input || 0;
   state.stats.output += usage.output || 0;
@@ -1000,10 +996,14 @@ function addUsage(usage, time, cost) {
   const p = state.prices;
   if (!p) { renderStats(); return; }
   state.stats.cost += replyCost(usage, time, cost);
-  if (p.apiEquivalent) {
-    if (typeof cost !== 'number' && tokenTotal(usage) > 0) state.stats.unpriced = (state.stats.unpriced || 0) + 1;
-  } else {
-    state.stats.peak = isPeak(time || Date.now());
+  if (typeof cost === 'number') {
+    state.stats.pricedTokens = (state.stats.pricedTokens || 0) + tokenTotal(usage);
+    if (p.listEstimate) state.stats.peak = isPeak(time || Date.now());
+  } else if (tokenTotal(usage) > 0) {
+    state.stats.unpriced = (state.stats.unpriced || 0) + 1;
+    const by = state.stats.unpricedBy || (state.stats.unpricedBy = {});
+    const name = provider || 'unknown provider';
+    by[name] = (by[name] || 0) + 1;
   }
   renderStats();
 }
@@ -1049,8 +1049,18 @@ function renderStats() {
     const unpriced = s.unpriced ? `\n${s.unpriced} ${s.unpriced === 1 ? 'reply' : 'replies'} from a model with no list price ${s.unpriced === 1 ? 'is' : 'are'} not counted.` : '';
     $('mCost').title = `API equivalent: what these tokens would cost at ${state.prices.model}, $${s.cost.toFixed(4)}. Each reply is priced by its own model, with cache reads, 5-minute and 1-hour cache writes, fast mode and web searches at their own rates. A subscription is not billed per token, so this is a yardstick, not your bill.${unpriced}${approx ? '\n' + approx : ''}`;
   } else {
-    $('mCost').innerHTML = `$${fmtUsd(s.cost)}<span class="period" id="mPeriod">${s.peak ? 'peak' : 'low'}</span>`;
-    $('mCost').title = `${state.prices.model} · $${s.cost.toFixed(4)} estimated · cache hit $${state.prices.offPeak.cacheHit}/M, cache miss $${state.prices.offPeak.cacheMiss}/M, output $${state.prices.offPeak.output}/M off-peak. DeepSeek charges 2× during peak hours; this estimate uses the band of each reply ("low" = off-peak).${approx ? '\n' + approx : ''}`;
+    // DeepSeek: a list-price estimate, priced reply by reply on the server.
+    const names = Object.keys(s.unpricedBy || {});
+    const tokensOnly = names.length > 0 && !s.pricedTokens;
+    const rest = names.length ? `Tokens only for ${names.join(', ')}: ${s.unpriced} ${s.unpriced === 1 ? 'reply has' : 'replies have'} no public per-token price and ${s.unpriced === 1 ? 'is' : 'are'} not in the cost.` : '';
+    const basis = `List-price estimate, not a bill: ${state.prices.model} of ${state.prices.date}. Each reply is priced for its own provider and model; DeepSeek charges 2× during peak hours and the band of each reply is used ("low" = off-peak).`;
+    if (tokensOnly) {
+      $('mCost').innerHTML = '—<span class="period" id="mPeriod">TOKENS ONLY</span>';
+      $('mCost').title = `${rest}\n${basis}`;
+    } else {
+      $('mCost').innerHTML = `$${fmtUsd(s.cost)}<span class="period" id="mPeriod">${names.length ? 'part' : (s.peak ? 'peak' : 'low')}</span>`;
+      $('mCost').title = `$${s.cost.toFixed(4)} · ${basis}${rest ? '\n' + rest : ''}${approx ? '\n' + approx : ''}`;
+    }
   }
   updateStatsChip();
 }
@@ -1100,7 +1110,10 @@ function updateStatsChip() {
   const chip = $('statsChip');
   if (!chip) return;
   const s = state.stats;
-  const cost = !state.prices ? 'no cost estimate' : state.prices.apiEquivalent ? `$${s.cost.toFixed(4)} at API prices` : `$${s.cost.toFixed(4)} estimated`;
+  const noPrice = state.prices?.listEstimate && !s.pricedTokens && s.unpriced > 0;
+  const cost = !state.prices || noPrice ? 'no cost estimate'
+    : state.prices.apiEquivalent ? `$${s.cost.toFixed(4)} at API prices`
+      : `$${s.cost.toFixed(4)} list-price estimate${s.unpriced ? ' (part of the session has no price)' : ''}`;
   const approx = state.prices ? approxCostLine(s.cost) : '';
   const base = [`${s.steps} steps`, `${(s.input + s.output + s.cacheRead + s.cacheWrite).toLocaleString('en-US')} tokens`, cost].join(' · ');
   chip.title = approx ? `${base}\n${approx}` : base;
@@ -1587,7 +1600,7 @@ async function applyEvent(ev) {
 
     case 'say': {
       if (ev.usage) {
-        addUsage(ev.usage, ev.time, ev.cost);
+        addUsage(ev.usage, ev.time, ev.cost, ev.provider);
         if (state.currentTurnItem && state.currentTurnItem.turn === ev.turn) {
           const u = state.currentTurnItem.usage;
           u.input += ev.usage.input || 0;
@@ -1610,8 +1623,16 @@ async function applyEvent(ev) {
     }
 
     case 'usage':
-      if (ev.usage) addUsage(ev.usage, ev.time, ev.cost);
+      if (ev.usage) addUsage(ev.usage, ev.time, ev.cost, ev.provider);
       break;
+
+    case 'problem': {
+      // A provider failure: out of credit, rate limited, timed out, signed out.
+      const text = problemText(ev);
+      chatPush({ kind: 'problem', text, problem: ev.kind });
+      termNote(`✗ ${text}`, C.red);
+      break;
+    }
 
     case 'deleted': {
       if (ev.key) state.deletedKeys.add(ev.key);
@@ -1906,6 +1927,7 @@ function resetView() {
   state.state = 'finished';
   state.stateDetail = '';
   state.attention = null;
+  state.problem = null;
   state.showEmpty = false;
   state.historyTotal = 0;
   state.historySeen = 0;
@@ -1978,6 +2000,7 @@ async function openSession(id) {
     state.state = data.session.state || (data.session.live ? 'live' : null);
     state.stateDetail = data.session.stateDetail || '';
     state.attention = data.session.attention || null;
+    state.problem = data.session.problem || null;
     state.historyTotal = Number(data.historyCount) || 0;
     state.historySeen = 0;
     document.body.classList.add('loading-session');
@@ -2050,6 +2073,10 @@ async function openSession(id) {
     if (data.state) state.state = data.state;
     if (data.stateDetail) state.stateDetail = data.stateDetail;
     if (data.attention !== undefined) state.attention = data.attention;
+    if (data.problem !== undefined && JSON.stringify(data.problem) !== JSON.stringify(state.problem)) {
+      state.problem = data.problem;
+      updateActivityBar();
+    }
     if (data.state === 'finished') {
       activity.kind = 'done';
       activity.pane = null;
@@ -2179,6 +2206,16 @@ const ATTENTION_VIA = {
   transcript: 'the transcript',
 };
 
+// Reasons that read better as a phrase than as the word the server sends.
+const ATTENTION_REASON = { quota: 'out of credit', auth: 'sign-in needed' };
+
+/* A provider problem (out of credit, rate limit...) as the server's fixed words, never the provider's text. */
+const PROBLEM_LABEL = { quota: 'out of credit', 'rate-limit': 'rate limited', timeout: 'timed out', auth: 'sign-in needed', 'provider-error': 'provider error' };
+function problemText(p) {
+  if (!p) return '';
+  return [PROBLEM_LABEL[p.kind] || 'provider error', p.status ? `HTTP ${p.status}` : '', p.provider || '', p.attempts ? `attempt ${p.attempts}` : ''].filter(Boolean).join(' · ');
+}
+
 function attnNeeds(att) {
   return !!att && att.level === 'needs-you';
 }
@@ -2189,7 +2226,7 @@ function attnLabel(att) {
   if (att.level === 'ready') return 'READY';
   if (att.level !== 'needs-you') return '';
   const bits = ['NEEDS YOU'];
-  if (att.reason && att.reason !== 'unknown') bits.push(att.reason);
+  if (att.reason && att.reason !== 'unknown') bits.push(ATTENTION_REASON[att.reason] || att.reason);
   if (att.tool) bits.push(att.tool);
   return bits.join(' · ');
 }
@@ -2257,6 +2294,7 @@ function sessionOption(s) {
   const ws = s.cwd ? s.cwd.replace(/[\\/]+$/, '').split(/[\\/]/).filter(Boolean).pop() : '';
   const bits = [`${dotChar(s.state)} ${title}${s.owned ? ' ◈' : ''}`];
   if (attnNeeds(s.attention)) bits.push(attnLabel(s.attention));
+  else if (s.problem) bits.push(`✗ ${problemText(s.problem)}`);
   if (ws) bits.push(ws);
   bits.push(shortId(s.id));
   bits.push(fmtRelative(s.lastEventAt || s.mtimeMs));
@@ -2276,6 +2314,7 @@ function sessionOption(s) {
     s.owned ? 'owned by agenttail (◈)' : (s.source === 'dsh' ? 'started outside agenttail, view only' : ''),
     `state: ${s.state}${s.stateDetail ? ' — ' + s.stateDetail : ''}`,
     attnTitle(s.attention),
+    s.problem ? `provider problem: ${problemText(s.problem)}` : '',
     s.source === 'antigravity' && !s.promptsVisible ? 'approval prompts are not visible in the Antigravity editor' : '',
     s.model ? `model: ${s.provider ? s.provider + '/' : ''}${s.model}` : '',
     s.preset ? `permission: ${s.preset}` : '',
@@ -2283,7 +2322,8 @@ function sessionOption(s) {
     s.firstUser ? `first prompt: ${String(s.firstUser).replace(/\s+/g, ' ').slice(0, 300)}` : '',
     s.steps !== null && s.steps !== undefined ? `${s.steps} steps` : '',
     s.tokens !== null && s.tokens !== undefined ? `${s.tokens.toLocaleString('en-US')} tokens` : '',
-    s.cost !== null && s.cost !== undefined ? `$${s.cost.toFixed(4)}` : '',
+    s.cost !== null && s.cost !== undefined ? `$${s.cost.toFixed(4)}${s.source === 'dsh' ? ' list-price estimate' : ''}` : '',
+    s.unpriced?.length ? `tokens only for ${s.unpriced.join(', ')} (no list price)` : '',
     s.nickname ? `nickname: ${s.nickname}` : '',
   ].filter(Boolean).join('\n');
   return opt;
@@ -2297,6 +2337,7 @@ function sessionFullTitle(s) {
     s.owned ? 'owned by agenttail (◈)' : (s.source === 'dsh' ? 'started outside agenttail, view only' : ''),
     `state: ${s.state}${s.stateDetail ? ' — ' + s.stateDetail : ''}`,
     attnTitle(s.attention),
+    s.problem ? `provider problem: ${problemText(s.problem)}` : '',
     s.source === 'antigravity' && !s.promptsVisible ? 'approval prompts are not visible in the Antigravity editor' : '',
     s.model ? `model: ${s.provider ? s.provider + '/' : ''}${s.model}` : '',
     s.preset ? `permission: ${s.preset}` : '',
@@ -2304,7 +2345,8 @@ function sessionFullTitle(s) {
     s.firstUser ? `first prompt: ${String(s.firstUser).replace(/\s+/g, ' ').slice(0, 300)}` : '',
     s.steps !== null && s.steps !== undefined ? `${s.steps} steps` : '',
     s.tokens !== null && s.tokens !== undefined ? `${s.tokens.toLocaleString('en-US')} tokens` : '',
-    s.cost !== null && s.cost !== undefined ? `$${s.cost.toFixed(4)}` : '',
+    s.cost !== null && s.cost !== undefined ? `$${s.cost.toFixed(4)}${s.source === 'dsh' ? ' list-price estimate' : ''}` : '',
+    s.unpriced?.length ? `tokens only for ${s.unpriced.join(', ')} (no list price)` : '',
     s.nickname ? `nickname: ${s.nickname}` : '',
   ].filter(Boolean).join('\n');
 }
@@ -2504,7 +2546,7 @@ async function loadSessions(initial) {
     : all.filter((s) => !s.empty));
   state.sessions = list;
   const key = state.source + '::' + (state.showEmpty ? '1' : '0') + '::' + list
-    .map((s) => [s.id, s.state, s.title, s.steps, s.tokens, s.cost, s.lastEventAt, s.subagents, attnLabel(s.attention)].join('~'))
+    .map((s) => [s.id, s.state, s.title, s.steps, s.tokens, s.cost, s.lastEventAt, s.subagents, attnLabel(s.attention), s.problem && s.problem.kind].join('~'))
     .join('|');
   if (!initial && key === sessionKey) return;
   sessionKey = key;
@@ -3298,6 +3340,9 @@ function updateActivityBar() {
     } else if (attnNeeds(state.attention)) {
       // Blocked on a person: say so, whatever the last action was.
       icon = '⚠'; text = `${attnLabel(state.attention)}${state.attention.since ? ` · ${fmtAgo(Date.now() - state.attention.since)}` : ''}`; bar.classList.add('needs-you');
+    } else if (state.problem && !state.live) {
+      // The run stopped on a provider failure: a red line instead of a calm DONE.
+      icon = '✗'; text = `FAILED · ${problemText(state.problem)}`; bar.classList.add('error');
     } else if (activity.kind === 'running') {
       icon = '⚙'; text = `RUNNING  ${activity.label} · ${fmtActivityTime(Date.now() - activity.startedAt)}`; bar.classList.add('running', 'working');
     } else if (activity.kind === 'editing') {
@@ -3899,6 +3944,11 @@ function chatAppend(item) {
     el.textContent = item.label || '⟐ system';
     el.title = mdToText(item.text || '').slice(0, 800);
     item.el = el;
+  } else if (item.kind === 'problem') {
+    el = document.createElement('div');
+    el.className = 'chat-problem';
+    el.textContent = `✗ ${item.text}`;
+    item.el = el;
   } else {
     el = document.createElement('div');
     el.className = `chat-msg ${item.kind}`;
@@ -3998,7 +4048,7 @@ function chatPush(item) {
     chat.items.splice(0, chat.items.length - 400);
     if (!layout.chatCollapsed) {
       const log = $('chatLog');
-      const first = log.querySelector('.chat-msg, .chat-think, .chat-tools, .chat-sys');
+      const first = log.querySelector('.chat-msg, .chat-think, .chat-tools, .chat-sys, .chat-problem');
       if (first) first.remove();
     }
   }
@@ -4159,6 +4209,13 @@ function renderLog() {
       log.appendChild(row);
       continue;
     }
+    if (item.kind === 'problem') {
+      const row = document.createElement('div');
+      row.className = 'log-row log-problem';
+      row.textContent = `✗ ${item.text}`;
+      log.appendChild(row);
+      continue;
+    }
     const row = document.createElement('div');
     row.className = `log-row ${item.kind === 'user' ? 'log-user' : 'log-say'}`;
     renderMarkdown(row, item.text || '');
@@ -4288,6 +4345,7 @@ function exportMarkdown() {
       return;
     }
     if (item.kind === 'tool') turn.blocks.push(exportToolLine(item));
+    if (item.kind === 'problem') turn.blocks.push(`> ✗ ${item.text}`);
   };
 
   for (const item of chat.log) {

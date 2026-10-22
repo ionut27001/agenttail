@@ -37,6 +37,29 @@
   app's own files, assembled by `scripts/build-site.mjs`.
 - Theme colours and Tail's styles moved into their own stylesheets
   (`themes.css`, `tail.css`) so the app and the site share them.
+- DeepSeek Harness: a run that crashed or was killed no longer stays live
+  forever and sorts first. An open step or turn with no event for 30 minutes
+  reads "stopped without ending its turn"; a long silent tool wait under that
+  limit is still live. A turn that ended, cleanly or with an error, also ends
+  its steps, and a new turn ends what an earlier one left open, so a failed run
+  no longer reads as running; the list and the open session agree on it.
+- DeepSeek Harness cost is now priced reply by reply from the provider and
+  model that served it: `deepseek-flash` (and its old name `deepseek-v4-flash`)
+  and `deepseek-v4-pro` at DeepSeek's published list prices; the signed-in
+  `deepseek-account` route, Ollama and every other model show tokens only,
+  where Ollama and MiniMax traffic used to be priced as DeepSeek. Compaction
+  calls now count in tokens and cost. The figure is labelled a list-price
+  estimate with the date of the price table, says "tokens only for ..." when
+  part of a session had no price, and the session list shows the same number
+  as the open session.
+- DeepSeek Harness provider errors are no longer invisible: out of credit
+  (HTTP 402), rate limits, timeouts, server errors and a missing sign-in show
+  as a red chip in Chat and Log, a red line in the console and a `FAILED`
+  activity bar, with a fixed wording and the HTTP status (never the provider's
+  own message). The failure stays on the session until a later successful
+  reply or a new turn clears it. Out of credit and a missing sign-in also
+  count as "needs you" (`NEEDS YOU · out of credit`, `NEEDS YOU · sign-in
+  needed`) for six hours.
 
 ---
 

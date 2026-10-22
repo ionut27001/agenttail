@@ -27,11 +27,12 @@ const claude = require('./lib/claude');
 const antigravity = require('./lib/antigravity');
 const { deletionsFromCommand } = require('./lib/deletes');
 const { jobLogFromCommand } = require('./lib/jobs');
-const { PRICES, CLAUDE_PRICES } = require('./lib/pricing');
+const { DSH_PRICES, CLAUDE_PRICES, dshCost } = require('./lib/pricing');
 const { version: VERSION } = require('./package.json');
-const { analyzeLog } = require('./lib/session-analysis');
+const { analyzeLog, restate } = require('./lib/session-analysis');
 const attention = require('./lib/attention');
-const { stateFrom, describe, LiveTracker } = require('./lib/live');
+const problems = require('./lib/problems');
+const { stateFrom, describe, LiveTracker, closeTurn, startTurn } = require('./lib/live');
 const { Nicknames } = require('./lib/nicknames');
 const { SysMonitor } = require('./lib/sys');
 
@@ -360,24 +361,28 @@ async function listSessions() {
       head = await readSessionHead(rec.logPath);
       if (head) sessionCache.set(rec.id, { ...rec, ...head });
     }
-    const analysis = await analysisFor(rec);
+    const analysis = restate(await analysisFor(rec));
     const key = `dsh:${rec.id}`;
     const state = analysis ? listTracker.update(key, analysis.rawState) : 'finished';
     const nickname = nicknames.get(key);
     // Computed here, not in the cached analysis, so a prompt left open by a crash ages out.
     const waiting = analysis
-      ? attention.dshAttention({
-          open: new Map((analysis.openApprovals || []).map((a) => [a.id, a])),
-          rawState: state,
-          now: Date.now(),
-          hasOpenJob: (analysis.openJobs || []).length > 0,
-        })
+      ? attention.merge(
+          attention.dshAttention({
+            open: new Map((analysis.openApprovals || []).map((a) => [a.id, a])),
+            rawState: state,
+            now: Date.now(),
+            hasOpenJob: (analysis.openJobs || []).length > 0,
+          }),
+          attention.problemAttention({ problem: analysis.problem, now: Date.now() }),
+        )
       : attention.none();
     return {
       ...rec,
       ...(head || {}),
       state,
       attention: waiting,
+      problem: analysis ? analysis.problem : null,
       stateDetail: analysis ? analysis.stateDetail : '',
       lastEventAt: analysis ? analysis.lastEventAt : rec.mtimeMs,
       title: analysis ? analysis.title : null,
@@ -388,6 +393,7 @@ async function listSessions() {
       steps: analysis ? analysis.steps : null,
       tokens: analysis ? analysis.tokens : null,
       cost: analysis ? analysis.cost : null,
+      unpriced: analysis ? analysis.unpriced : [],
       model: analysis ? analysis.model : null,
       provider: analysis ? analysis.provider : null,
       preset: analysis ? analysis.preset : null,
@@ -451,6 +457,9 @@ class SessionStream extends EventTarget {
     this.openApprovals = new Map(); // approval id -> { id, at, tool }: asked, not yet decided
     this.lastEndAt = 0;
     this.lastEventAt = 0;
+    this.route = null; // { provider, model } of the latest request/context
+    this.problem = null; // the latest provider problem nothing has resolved yet
+    this.lastProblem = null; // the last problem event shown, to fold repeats
     this.stateTracker = new LiveTracker();
     this.statusKey = '';
     this.rootsCfg = null;
@@ -508,6 +517,9 @@ class SessionStream extends EventTarget {
   }
 
   reset() {
+    this.route = null;
+    this.problem = null;
+    this.lastProblem = null;
     this.openApprovals.clear();
     this.offset = 0;
     this.pending = Buffer.alloc(0);
@@ -646,6 +658,7 @@ class SessionStream extends EventTarget {
       openJob: !!openJob,
       openStep: !!openStep,
       openTurn: !!openTurn,
+      lastEventAt: this.lastEventAt,
       lastEndAt: this.lastEndAt,
       now,
     });
@@ -664,22 +677,41 @@ class SessionStream extends EventTarget {
 
   /** Open permission prompts of this log, for the "needs you" state. */
   attentionNow(s = this.computeState()) {
-    return attention.dshAttention({
-      open: this.openApprovals,
-      rawState: s.state,
-      now: Date.now(),
-      hasOpenJob: this.openJobs.size > 0,
-    });
+    const now = Date.now();
+    return attention.merge(
+      attention.dshAttention({
+        open: this.openApprovals,
+        rawState: s.state,
+        now,
+        hasOpenJob: this.openJobs.size > 0,
+      }),
+      attention.problemAttention({ problem: this.problem, now }),
+    );
   }
 
   emitStatus() {
     const s = this.computeState();
     this.live = s.state === 'live';
     const waiting = this.attentionNow(s);
-    const key = `${s.state}|${s.stateDetail}|${attention.key(waiting)}`;
+    const problem = problems.forPage(this.problem);
+    const key = `${s.state}|${s.stateDetail}|${attention.key(waiting)}|${JSON.stringify(problem)}`;
     if (key === this.statusKey) return;
     this.statusKey = key;
-    this.emit('status', { ...statusFor(this), state: s.state, stateDetail: redactor.text(s.stateDetail), attention: waiting });
+    this.emit('status', { ...statusFor(this), state: s.state, stateDetail: redactor.text(s.stateDetail), attention: waiting, problem });
+  }
+
+  /** A provider problem in the log, shown once; see lib/problems.js. */
+  pushProblem(ev) {
+    const found = problems.fromEvent(ev, this.route, this.problem);
+    this.problem = problems.next(this.problem, ev, this.route);
+    if (!found) return;
+    const ui = { t: 'problem', time: ev.time, turn: ev.data && Number.isInteger(ev.data.turn) ? ev.data.turn : null, ...found };
+    if (problems.repeats(this.lastProblem, ui)) return;
+    this.lastProblem = ui;
+    const safe = this.safeEvent(ui);
+    this.events.push(safe);
+    if (this.events.length > MAX_EVENTS) this.events.splice(0, this.events.length - MAX_EVENTS);
+    this.emit('event', safe);
   }
 
   setLive(value) {
@@ -747,23 +779,27 @@ class SessionStream extends EventTarget {
       } catch {
         continue;
       }
-      const ui = projectEvent(ev);
+      // Every logged event counts as activity, as in analyzeEvents, even those with no page-side form
+      // (a provider attempt or retry): otherwise the list and the stream disagree on what is live.
+      if (typeof ev.time === 'number') this.lastEventAt = Math.max(this.lastEventAt, ev.time);
+      this.pushProblem(ev);
+      const ui = projectEvent(ev, this.route);
       if (!ui) continue;
+      if (ui.t === 'route') this.route = { provider: ui.provider, model: ui.model };
       this.mapPaths(ui);
       if (typeof ui.seq === 'number') {
         if (ui.seq <= this.lastSeq) continue;
         this.lastSeq = ui.seq;
       }
-      this.lastEventAt = Math.max(this.lastEventAt, ui.time || 0);
       if (ui.t === 'step' && ui.step !== undefined) {
         this.openSteps.set(`${ui.turn}:${ui.step}`, { turn: ui.turn, step: ui.step });
       } else if (ui.t === 'stepEnd') {
         this.openSteps.delete(`${ui.turn}:${ui.step}`);
         this.lastEndAt = Math.max(this.lastEndAt, ui.time || 0);
       } else if (ui.t === 'turn') {
-        this.openTurns.add(ui.turn);
+        startTurn(this.openSteps, this.openTurns, ui.turn);
       } else if (ui.t === 'turnEnd') {
-        this.openTurns.delete(ui.turn);
+        closeTurn(this.openSteps, this.openTurns, ui.turn);
         this.lastEndAt = Math.max(this.lastEndAt, ui.time || 0);
       } else if (ui.t === 'approval' || ui.t === 'approvalDone') {
         attention.trackApproval(this.openApprovals, ui);
@@ -892,7 +928,18 @@ function labelForSystem(kind, text) {
   return '⟐ system';
 }
 
-function projectEvent(ev) {
+function usageOf(u) {
+  if (!u) return null;
+  return {
+    input: u.inputTokens || 0,
+    output: u.outputTokens || 0,
+    cacheRead: u.cacheReadTokens || 0,
+    cacheWrite: u.cacheWriteTokens || 0,
+  };
+}
+
+/** `route` is the provider and model the request last announced, for a reply that names none. */
+function projectEvent(ev, route = null) {
   const t = ev && ev.type;
   if (!t) return null;
   const d = ev.data || {};
@@ -948,7 +995,10 @@ function projectEvent(ev) {
       const thinking = Array.isArray(msg.content)
         ? msg.content.filter((b) => b && b.type === 'reasoning' && typeof b.text === 'string' && b.text.trim()).map((b) => b.text).join('\n\n')
         : '';
-      const usage = d.usage || null;
+      // A reply is priced for the provider and model that served it, not the session's last route.
+      const provider = msg.source?.provider || route?.provider || null;
+      const model = msg.source?.model || route?.model || null;
+      const usage = usageOf(d.usage);
       return {
         ...base,
         t: 'say',
@@ -956,15 +1006,20 @@ function projectEvent(ev) {
         thinking: thinking ? clip(thinking, 20000) : undefined,
         turn: d.turn,
         step: d.step,
-        usage: usage
-          ? {
-              input: usage.inputTokens || 0,
-              output: usage.outputTokens || 0,
-              cacheRead: usage.cacheReadTokens || 0,
-              cacheWrite: usage.cacheWriteTokens || 0,
-            }
-          : null,
+        usage,
+        provider,
+        model,
+        cost: usage ? dshCost(usage, ev.time, provider, model) : null,
       };
+    }
+
+    case 'compaction/summary': {
+      // The summary is a model call of its own: its tokens and cost count.
+      const provider = d.provider ?? d.source?.provider ?? route?.provider ?? null;
+      const model = d.model ?? d.source?.model ?? route?.model ?? null;
+      const usage = usageOf(d.usage);
+      if (!usage) return null;
+      return { ...base, t: 'usage', kind: 'compaction', turn: d.turn, usage, provider, model, cost: dshCost(usage, ev.time, provider, model) };
     }
 
     case 'user/message': {
@@ -1280,9 +1335,10 @@ async function serveStream(req, res, record, options = {}) {
       sandbox: record.sandbox || null,
       owned: record.owned === true,
       attention: pageAttention(attention.merge(record.attention, ownedAttentionFor(record.source, record.id))),
+      problem: stream.problem ? problems.forPage(stream.problem) : null,
     },
     streamSafe: redactor.enabled,
-    prices: record.source === 'dsh' ? PRICES : record.source === 'claude' ? CLAUDE_PRICES : null,
+    prices: record.source === 'dsh' ? DSH_PRICES : record.source === 'claude' ? CLAUDE_PRICES : null,
     pollMs: POLL_MS,
     historyCount: stream.events.length,
     control: controlDescriptor(record),
@@ -1314,6 +1370,7 @@ async function serveStream(req, res, record, options = {}) {
     state: initialState.state,
     stateDetail: redactor.text(initialState.stateDetail),
     attention: typeof stream.attentionNow === 'function' ? stream.attentionNow(initialState) : attention.none(),
+    problem: stream.problem ? problems.forPage(stream.problem) : null,
   };
   sseWrite(res, 'status', withOwned(lastStatus));
   const pushOwned = () => sseWrite(res, 'status', withOwned(lastStatus));
@@ -1847,10 +1904,12 @@ const server = http.createServer(async (req, res) => {
             state: s.state || (s.live ? 'live' : 'finished'),
             stateDetail: s.stateDetail,
             attention: pageAttention(s.attention),
+            ...(s.problem ? { problem: problems.forPage(s.problem) } : {}),
             lastEventAt: s.lastEventAt || s.mtimeMs,
             steps: s.steps ?? null,
             tokens: s.tokens ?? null,
             cost: s.cost ?? null,
+            ...(s.unpriced && s.unpriced.length ? { unpriced: s.unpriced.map((name) => redactor.text(name)) } : {}),
             model: s.model ?? null,
             provider: s.provider ?? null,
             preset: s.preset ?? null,

@@ -543,6 +543,7 @@ try {
   console.log('\nvisual effects');
   await sleep(500);
   check(await waitFor(`document.body.classList.contains('boot-done')`, 6000), 'boot sequence completes');
+  check(await evalExpr(`/List-price estimate, not a bill: DeepSeek list prices of \\d{4}-\\d{2}-\\d{2}/.test(document.getElementById('mCost').title)`), 'the dsh cost is labelled a list-price estimate with the date of the price table', await evalExpr(`document.getElementById('mCost').title`));
   check(await evalExpr(`document.getElementById('mCost').textContent.startsWith('$') && !/≈/.test(document.getElementById('mCost').title)`), 'cost is shown in dollars with no conversion by default', await evalExpr(`document.getElementById('mCost').title`));
   check(await evalExpr(`!!document.getElementById('spark')`), 'tokens/sec sparkline canvas exists');
   check(await evalExpr(`window.__fx.state.matrix === false && window.__fx.matrixRunning() === false`), 'matrix rain is off by default in stream mode');
@@ -1031,6 +1032,15 @@ try {
   const thinkIndicator = await waitFor(`document.getElementById('activityBar').classList.contains('thinking') && document.querySelectorAll('#activityText .tdots i').length === 3 && /\\d+ s/.test(document.getElementById('activityText').textContent)`, 4000);
   check(thinkIndicator, 'THINKING shows three dots and elapsed seconds', await evalExpr(`JSON.stringify({ cls: document.getElementById('activityBar').className, dots: document.querySelectorAll('#activityText .tdots i').length, text: document.getElementById('activityText').textContent })`));
   check(await evalExpr(`document.getElementById('chatPane').classList.contains('active')`), 'chat pane is marked active');
+  // A provider failure is a red chip in Chat and Log and a red line in the console, in the server's words.
+  fs.appendFileSync(fixture.liveLog, frame([
+    ev('assistant/attempt', 72, { turn: 1, step: 3, stream: [{ chunk: { reason: { failure: { code: 'RATE_LIMIT', status: 429, message: 'slow down, SECRET_PROVIDER_TEXT' } } } }] }),
+  ]));
+  check(await waitFor(`!!document.querySelector('#chatLog .chat-problem') && /rate limited · HTTP 429/.test(document.querySelector('#chatLog .chat-problem').textContent) && getComputedStyle(document.querySelector('#chatLog .chat-problem')).color !== getComputedStyle(document.getElementById('chatLog')).color`, 12000), 'chat shows a provider failure as a red chip', await evalExpr(`document.getElementById('chatLog').textContent.slice(-200)`));
+  check(await evalExpr(`(() => { const b = window.__agenttailTerm.buffer.active; let s = ''; for (let i = 0; i < b.length; i++) s += b.getLine(i).translateToString(true) + '\\n'; return /✗ rate limited · HTTP 429/.test(s) && !s.includes('SECRET_PROVIDER_TEXT'); })()`), 'the console prints a red line for it, without the provider text');
+  await evalExpr(`document.getElementById('chatViewLog').click(); true`);
+  check(await waitFor(`!!document.querySelector('#chatLog .log-problem') && /rate limited · HTTP 429/.test(document.querySelector('#chatLog .log-problem').textContent) && !document.getElementById('chatLog').textContent.includes('SECRET_PROVIDER_TEXT')`, 5000), 'the log view shows it too');
+  await evalExpr(`document.getElementById('chatViewChat').click(); true`);
   check(await waitFor(`document.getElementById('thinkCard').classList.contains('show') && /Live reasoning stream/.test(document.querySelector('#thinkCard .tc-line').textContent)`, 4000), 'stage: thinking opens the mascot window with the latest thought', JSON.stringify(await evalExpr(`window.__stage.state()`)));
   const glyph1 = await evalExpr(`window.__stage.state().glyph`);
   check(await waitFor(`window.__stage.state().glyph !== ${JSON.stringify(glyph1)}`, 3000), 'stage: the mascot thinks in changing code glyphs');
