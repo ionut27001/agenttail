@@ -113,9 +113,9 @@ Anything less is **partial**. A harness that offers no interface for an item is
 | W11 | ✓ | ◐ | ◐ | ◐ |
 | W12 | ◐ | ◐ | ◐ | ◐ |
 | W13 | ◐ | ◐ | ◐ | ✗ |
-| W14 | ◐ | ✗ | ✗ | ✗ |
-| W15 | ◐ | ◐ | ◐ | ◐ |
-| W16 | ◐ | ◐ | ◐ | ◐ |
+| W14 | ✓ | ✓ | ◐ | ◐ |
+| W15 | ✓ | ◐ | ◐ | ◐ |
+| W16 | ✓ | ✓ | ✓ | ✓ |
 | D1 | ✓ | ✗ | ✗ | – |
 | D2 | ◐ | ✗ | ✗ | – |
 | D3 | ✓ | ✗ | ✗ | – |
@@ -150,7 +150,7 @@ The roadmap's release 0.5 budgets about 11 days for Claude Code and
 Antigravity driving together; by this inventory that is about 11 for Claude
 Code alone. The roadmap is updated when this plan is accepted.
 
-## Phase 0: wrong results and safety
+## Phase 0: wrong results and safety (done 2026-10-22)
 
 These show the user something false or leak something. Each comes with a
 fixture test that fails before the fix.
@@ -162,14 +162,15 @@ fixture test that fails before the fix.
 | 0.3 | all | One invalid pattern in `redact.json`, or a file caught mid-save, dropped every custom literal and pattern | Fixed: a bad pattern is skipped alone, a broken file keeps what was loaded | done |
 | 0.4 | Antigravity | Opening a session pane reset its "needs you" badge | Fixed in 165c9a6 | done |
 | 0.5 | all | Redaction is an explicit list of fields, so any new field is shown unredacted, and the session list, agents overview, file view, tree and live meta are redacted by hand in `server.js` | Fixed: every string in an event or response is redacted unless its key is a short protocol key (ids, kinds), through one `redactor.value()` on every JSON body and SSE frame; a test walks every endpoint for Claude Code and Antigravity fixtures with a token, a user name, an email and an IP in each field | done |
-| 0.6 | DeepSeek Harness | A crashed or killed run stays "live" forever and sorts first: the open-turn timeout is never applied to dsh state | Apply the open-turn cutoff; "failed" when the turn ended with an error. Negative test: a long background job keeps the session live | S |
-| 0.7 | DeepSeek Harness | Cost uses one deepseek-flash price table for every provider and model: Ollama/MiniMax traffic is priced as DeepSeek, a pricier model would be underpriced several times, and the `deepseek-account` route's billing basis is undocumented | Price each reply from its own provider and model; show dollars only for pairs with a known public price (not the account route), tokens otherwise; count compaction usage; label "list-price estimate" with the table's date | M |
-| 0.8 | DeepSeek Harness | Provider errors are invisible: an out-of-credit (402), rate-limited (429) or timed-out agent looks like it simply stopped | Project attempt failures, retries and turn errors into a problem event; red chip; out-of-credit and missing credentials as needs-attention | S |
-| 0.9 | Claude Code | Prompts a person typed while a turn was running (queued commands) are missing from the conversation; prompts from task notifications, peers, the SDK or schedules look as if the person wrote them | Show queued prompts; label each prompt by its origin | M |
-| 0.10 | Claude Code | A compaction summary shows as a user prompt and opens a fake turn; a reply cut by max_tokens keeps the turn open for 30 minutes | Skip compact summaries as turns, show a "compacted" marker; treat max_tokens as a closing reason | S |
-| 0.11 | Antigravity | Tool results attach to the wrong call when the agent uses a tool the adapter does not map, or parallel calls; failed and denied tools look successful; a command result still RUNNING is shown as final (it is never rewritten); bodies are cut at about 4 KB | Every call gets a pending entry; pair by order within a step; error from the step status; "running, final output unknown" marker; read `transcript_full.jsonl` when fields are truncated | M |
+| 0.6 | DeepSeek Harness | A crashed or killed run stays "live" forever and sorts first: the open-turn timeout is never applied to dsh state | Done (313f294): the cutoff, turn ends close their steps, the list and the stream agree | done |
+| 0.7 | DeepSeek Harness | Cost uses one deepseek-flash price table for every provider and model: Ollama/MiniMax traffic is priced as DeepSeek, a pricier model would be underpriced several times, and the `deepseek-account` route's billing basis is undocumented | Done (313f294): priced per provider and model, tokens only where no public price, compaction counted, labelled an estimate | done |
+| 0.8 | DeepSeek Harness | Provider errors are invisible: an out-of-credit (402), rate-limited (429) or timed-out agent looks like it simply stopped | Done (313f294): problem events, red chips, out of credit and sign-in as needs-you | done |
+| 0.9 | Claude Code | Prompts a person typed while a turn was running (queued commands) are missing from the conversation; prompts from task notifications, peers, the SDK or schedules look as if the person wrote them | Done (f68f9e7): queued prompts shown once, every prompt labelled by origin in Chat, Log and the console | done |
+| 0.10 | Claude Code | A compaction summary shows as a user prompt and opens a fake turn; a reply cut by max_tokens keeps the turn open for 30 minutes | Done (f68f9e7): a "compacted" marker, max_tokens closes the turn | done |
+| 0.11 | Antigravity | Tool results attach to the wrong call when the agent uses a tool the adapter does not map, or parallel calls; failed and denied tools look successful; a command result still RUNNING is shown as final (it is never rewritten); bodies are cut at about 4 KB | Done (be422ec, 570743d): pairing within a response, failed/denied/running marks, full bodies even when the full file appears late | done |
 | 0.12 | all | No permission mode is shown for Claude Code or Antigravity, and no harness has a BYPASS badge; bypass modes are common in practice | Fixed: the tier table below, a reader per source (dsh events, Claude Code `permissionMode`, the Antigravity CLI log, the editor settings file), a loud BYPASS badge in the picker, header, overview and wall, and an alert when a dsh session switches into bypass | done |
-| 0.13 | all | The README overstates coverage | Replace its source table with this checklist's matrix | S |
+| 0.13 | all | The README overstates coverage | Done: the README source table shows this checklist's counts and links here | done |
+| 0.14 | all | Found while testing Phase 0: an aborted page connection was counted out twice (Node fires both `error` and `close`), so with a second client on the same session the stream stopped polling 30 seconds later and the page froze on its last state | Done: each client is counted out once, with a test that fails without it | done |
 
 ### Risk tiers (W14)
 

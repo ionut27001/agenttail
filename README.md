@@ -45,13 +45,14 @@ A zero-runtime-dependency Node 24 server plus a single-page UI. It reads local l
 
 ## Supported sources
 
-| Source | | Logs read from | Shown | Needs you |
+| Source | Logs read from | Watched | Driven from agenttail | Needs you |
 | --- | --- | --- | --- | --- |
-| DeepSeek Harness | ✓ | `~/.dsh/sessions/**/session.v4.jsonl.zstd` | edits, commands, background jobs, thinking, tool calls, tokens/cost | permission prompts, from the log |
-| Claude Code | ✓ | `~/.claude/projects/**/*.jsonl`, plus the status fields of `~/.claude/sessions/*.json` | messages, thinking, tool calls, subagents, custom titles, turns, tokens/API-equivalent cost | permission and input prompts (status file), questions and plans (transcript) |
-| Antigravity | ◐ | `~/.gemini/antigravity-cli/**` (CLI) and `~/.gemini/antigravity/**` (editor) | normalized messages, thinking, tool calls and file edits | CLI permission prompts, from the CLI log; none for the editor |
+| DeepSeek Harness | `~/.dsh/sessions/**/session.v4.jsonl.zstd` | 6 of 16 items complete, 10 partial | yes, over ACP: 4 of 7 items | permission prompts (log); out of credit and missing sign-in |
+| Claude Code | `~/.claude/projects/**/*.jsonl`, plus the status fields of `~/.claude/sessions/*.json` | 3 of 16 complete, 13 partial | not yet (planned for 0.5) | permission and input prompts (status file), questions and plans (transcript) |
+| Antigravity CLI | `~/.gemini/antigravity-cli/**` | 1 of 16 complete, 12 partial | not yet | permission prompts, from the CLI log |
+| Antigravity editor | `~/.gemini/antigravity/**` | 1 of 16 complete, 11 partial | no interface to drive it | none: it writes no signal agenttail can read |
 
-✓ full adapter · ◐ normalized/partial. Only sessions whose logs exist locally are listed; empty sessions are hidden behind a picker toggle. **Needs you** is described [below](#needs-you).
+Each source is held to one checklist of 16 watch items and 7 drive items: [docs/dev/harness-coverage.md](docs/dev/harness-coverage.md) has the item-by-item matrix, the evidence and what is missing. "Complete" means implemented and covered by tests; live checks on real installs are recorded in [docs/dev/verification-log.md](docs/dev/verification-log.md). Only sessions whose logs exist locally are listed; empty sessions are hidden behind a picker toggle. **Needs you** is described [below](#needs-you).
 
 <details>
 <summary><b>Source adapter details</b></summary>
