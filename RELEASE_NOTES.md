@@ -34,7 +34,9 @@
 - DeepSeek Harness: a run that crashed or was killed no longer stays live
   forever and sorts first. An open step or turn with no event for 30 minutes
   reads "stopped without ending its turn"; a long silent tool wait under that
-  limit is still live.
+  limit is still live. A turn that ended, cleanly or with an error, also ends
+  its steps, and a new turn ends what an earlier one left open, so a failed run
+  no longer reads as running; the list and the open session agree on it.
 - DeepSeek Harness cost is now priced reply by reply from the provider and
   model that served it: `deepseek-flash` (and its old name `deepseek-v4-flash`)
   and `deepseek-v4-pro` at DeepSeek's published list prices; the signed-in

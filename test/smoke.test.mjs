@@ -120,6 +120,43 @@ openStepLog(staleSessionId, 3 * 60 * 60 * 1000);
 const quietSessionId = 'session-cdcdcdcd-1111-2222-3333-444444444444';
 openStepLog(quietSessionId, 20 * 60 * 1000);
 
+// A step left open by an earlier turn, a later turn that ends cleanly, and a turn that gave up with an
+// error without writing step/end: none of them is still running once its turn has ended.
+function turnsLog(sessionId, build) {
+  const dir = path.join(fixture.sessionsRoot, '--tmp-fixture-workspace--', sessionId);
+  fs.mkdirSync(dir, { recursive: true });
+  let seq = 1;
+  const at = (agoMs, type, data) => ({ type, seq: seq++, time: Date.now() - agoMs, data });
+  fs.writeFileSync(path.join(dir, 'session.v4.jsonl.zstd'), frame([
+    { type: 'session', version: 4, id: sessionId, createdAt: Date.now() - 3 * 60 * 60 * 1000, cwd: fixture.workspace },
+    ...build(at),
+  ]));
+}
+const orphanSessionId = 'session-b1b1b1b1-1111-2222-3333-444444444444';
+turnsLog(orphanSessionId, (at) => [
+  at(50 * 60 * 1000, 'turn/start', { turn: 1 }),
+  at(50 * 60 * 1000 - 1, 'step/start', { turn: 1, step: 1 }),
+  at(3 * 60 * 1000, 'turn/start', { turn: 2 }),
+  at(3 * 60 * 1000 - 1, 'step/start', { turn: 2, step: 1 }),
+  at(2 * 60 * 1000, 'step/end', { turn: 2, step: 1 }),
+  at(2 * 60 * 1000 - 1, 'turn/end', { turn: 2 }),
+]);
+const erroredSessionId = 'session-b2b2b2b2-1111-2222-3333-444444444444';
+turnsLog(erroredSessionId, (at) => [
+  at(25 * 60 * 1000, 'turn/start', { turn: 1 }),
+  at(25 * 60 * 1000 - 1, 'step/start', { turn: 1, step: 1 }),
+  at(20 * 60 * 1000, 'turn/end', { turn: 1, reason: { kind: 'error', error: { code: 'QUOTA', status: 402 } } }),
+]);
+// An old open step, but the provider was still answering (and failing) five minutes ago: the list sees
+// the attempt, so the stream, which does not project it, has to see it too.
+const attemptingSessionId = 'session-b3b3b3b3-1111-2222-3333-444444444444';
+turnsLog(attemptingSessionId, (at) => [
+  at(40 * 60 * 1000, 'turn/start', { turn: 1 }),
+  at(40 * 60 * 1000 - 1, 'step/start', { turn: 1, step: 1 }),
+  at(5 * 60 * 1000, 'assistant/attempt', { turn: 1, step: 1, stream: [{ chunk: { reason: { failure: { code: 'RATE_LIMIT', status: 429 } } } }] }),
+  at(4 * 60 * 1000, 'llm/retry', { attempt: 1, max: 5, delayMs: 2000 }),
+]);
+
 // Cost per provider and model, at a fixed off-peak time (a Saturday): each million-token reply on a
 // different route, a compaction call, and a last reply that names no route and takes the request's.
 const costAt = Date.UTC(2026, 9, 17, 12, 0, 0);
@@ -445,6 +482,32 @@ try {
   check(fresh.rawState === 'live', 'an analysis a minute after the last event is live', fresh.rawState);
   const aged = restate(fresh, t0 + OPEN_TURN_MS + 60_000);
   check(aged.rawState === 'finished' && /stopped without ending its turn/.test(aged.stateDetail), 'a cached analysis is re-derived as time passes, so a quiet run leaves live', JSON.stringify({ state: aged.rawState, detail: aged.stateDetail }));
+
+  console.log('\nturns that never closed their steps');
+  const orphan = sessions.body.sessions.find((s) => s.id === orphanSessionId);
+  check(orphan?.state === 'idle' && orphan?.live === false, 'a step an earlier turn left open does not keep a later, cleanly ended turn live', JSON.stringify({ state: orphan?.state, detail: orphan?.stateDetail }));
+  check(!/stopped without ending/.test(orphan?.stateDetail || ''), 'and its state detail does not claim the latest turn stopped', orphan?.stateDetail);
+  const errored = sessions.body.sessions.find((s) => s.id === erroredSessionId);
+  check(errored?.state === 'finished' && errored?.live === false, 'a turn that ended with an error and no step/end is not live', JSON.stringify({ state: errored?.state, detail: errored?.stateDetail }));
+  const attempting = sessions.body.sessions.find((s) => s.id === attemptingSessionId);
+  check(attempting?.state === 'live', 'an old open step with a provider attempt five minutes ago is live in the list', JSON.stringify({ state: attempting?.state, detail: attempting?.stateDetail }));
+  for (const [label, id, listed] of [['orphan', orphanSessionId, orphan], ['errored', erroredSessionId, errored], ['attempting', attemptingSessionId, attempting]]) {
+    const attach = await readSse(`${BASE}/api/stream?id=${id}&lite=1`, (e) => e.event === 'status');
+    const status = attach.find((e) => e.event === 'status')?.data;
+    const metaState = attach.find((e) => e.event === 'meta')?.data.session;
+    check(status?.state === listed?.state && metaState?.state === listed?.state, `the ${label} stream agrees with the session list`, JSON.stringify({ status: status?.state, meta: metaState?.state, list: listed?.state }));
+  }
+  const t1 = 1_800_000_000_000;
+  const turnEvents = (...evs) => evs.map(([type, offset, data], i) => ({ type, seq: i + 1, time: t1 + offset, data }));
+  const clean = (turn, offset) => [['turn/start', offset, { turn }], ['step/start', offset + 1, { turn, step: 1 }], ['step/end', offset + 2, { turn, step: 1 }], ['turn/end', offset + 3, { turn }]];
+  const lateOrphan = analyzeEvents(turnEvents(['turn/start', 0, { turn: 1 }], ['step/start', 1, { turn: 1, step: 1 }], ...clean(2, 600_000)), t1 + 600_000 + 4 * 60_000);
+  check(lateOrphan.rawState === 'idle' && lateOrphan.openStep === null && lateOrphan.openTurn === null, 'a later turn starting closes what the earlier turn left open', JSON.stringify({ state: lateOrphan.rawState, step: lateOrphan.openStep, turn: lateOrphan.openTurn }));
+  const midRun = analyzeEvents(turnEvents(['turn/start', 0, { turn: 1 }], ['step/start', 1, { turn: 1, step: 1 }], ['turn/start', 600_000, { turn: 2 }], ['step/start', 600_001, { turn: 2, step: 1 }]), t1 + 610_000);
+  check(midRun.rawState === 'live' && midRun.openStep?.turn === 2, 'the newer turn is what is running, not the one it replaced', JSON.stringify({ state: midRun.rawState, step: midRun.openStep }));
+  const abortedTurn = analyzeEvents(turnEvents(['turn/start', 0, { turn: 1 }], ['step/start', 1, { turn: 1, step: 1 }], ['turn/end', 2, { turn: 1, reason: { kind: 'aborted' } }]), t1 + 60_000);
+  check(abortedTurn.rawState === 'idle' && abortedTurn.openStep === null, 'an aborted turn that never wrote step/end is not running', JSON.stringify({ state: abortedTurn.rawState, step: abortedTurn.openStep }));
+  const orphanStep = analyzeEvents(turnEvents(['step/start', 0, { turn: 1, step: 1 }]), t1 + OPEN_TURN_MS + 60_000);
+  check(orphanStep.rawState === 'finished' && !/stopped without ending its turn/.test(orphanStep.stateDetail), 'a stale step with no open turn does not say its turn was left open', orphanStep.stateDetail);
 
   console.log('\ncost per provider and model');
   const near = (a, b) => Math.abs(a - b) < 1e-9;

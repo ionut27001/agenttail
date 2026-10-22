@@ -32,7 +32,7 @@ const { version: VERSION } = require('./package.json');
 const { analyzeLog, restate } = require('./lib/session-analysis');
 const attention = require('./lib/attention');
 const problems = require('./lib/problems');
-const { stateFrom, describe, LiveTracker } = require('./lib/live');
+const { stateFrom, describe, LiveTracker, closeTurn, startTurn } = require('./lib/live');
 const { Nicknames } = require('./lib/nicknames');
 const { SysMonitor } = require('./lib/sys');
 
@@ -779,6 +779,9 @@ class SessionStream extends EventTarget {
       } catch {
         continue;
       }
+      // Every logged event counts as activity, as in analyzeEvents, even those with no page-side form
+      // (a provider attempt or retry): otherwise the list and the stream disagree on what is live.
+      if (typeof ev.time === 'number') this.lastEventAt = Math.max(this.lastEventAt, ev.time);
       this.pushProblem(ev);
       const ui = projectEvent(ev, this.route);
       if (!ui) continue;
@@ -788,16 +791,15 @@ class SessionStream extends EventTarget {
         if (ui.seq <= this.lastSeq) continue;
         this.lastSeq = ui.seq;
       }
-      this.lastEventAt = Math.max(this.lastEventAt, ui.time || 0);
       if (ui.t === 'step' && ui.step !== undefined) {
         this.openSteps.set(`${ui.turn}:${ui.step}`, { turn: ui.turn, step: ui.step });
       } else if (ui.t === 'stepEnd') {
         this.openSteps.delete(`${ui.turn}:${ui.step}`);
         this.lastEndAt = Math.max(this.lastEndAt, ui.time || 0);
       } else if (ui.t === 'turn') {
-        this.openTurns.add(ui.turn);
+        startTurn(this.openSteps, this.openTurns, ui.turn);
       } else if (ui.t === 'turnEnd') {
-        this.openTurns.delete(ui.turn);
+        closeTurn(this.openSteps, this.openTurns, ui.turn);
         this.lastEndAt = Math.max(this.lastEndAt, ui.time || 0);
       } else if (ui.t === 'approval' || ui.t === 'approvalDone') {
         attention.trackApproval(this.openApprovals, ui);
