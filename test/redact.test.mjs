@@ -309,6 +309,19 @@ try {
   }
   const ran = r.event({ t: 'result', text: 'ok', meta: { path: null, operation: null, cwd: `C:\\Users\\${uname}\\project` } });
   check(!ran.meta.cwd.toLowerCase().includes(uname.toLowerCase()), 'a command result does not carry its working directory unredacted', ran.meta.cwd);
+  const posix = r.event({ t: 'result', text: 'cd /home/alice-dev/work && ls', meta: { path: null, operation: null, cwd: '/home/alice-dev/work' } });
+  check(!JSON.stringify(posix).includes('alice-dev'), 'Linux home folders are redacted in text and working directories too', JSON.stringify(posix));
+  check(r.text('see /homework and src/home/notes.js').includes('/homework') && r.text('src/home/notes.js').includes('home/notes.js'), 'only a real /home/<name> is touched');
+
+  // redact.json: one bad pattern must not cost the others, and a broken file keeps what was loaded.
+  const cfg = path.join(tmp, 'redact-broken.json');
+  fs.writeFileSync(cfg, JSON.stringify({ literals: ['AcmeSecretClient'], patterns: ['acme-[0-9]+', '(unclosed'] }));
+  const rb = new Redactor({ configPath: cfg, enabled: true });
+  check(!rb.text('AcmeSecretClient acme-42').includes('AcmeSecretClient') && !rb.text('acme-42').includes('acme-42'), 'an invalid pattern is skipped and the rest still apply');
+  fs.writeFileSync(cfg, '{ "literals": [ broken');
+  fs.utimesSync(cfg, new Date(), new Date(Date.now() + 10000));
+  rb.refresh(true);
+  check(!rb.text('AcmeSecretClient acme-42').includes('AcmeSecretClient'), 'a redact.json that stops parsing keeps the literals and patterns already loaded');
   const inside = r.event({ t: 'call', name: 'edit', args: { file_path: 'src/app.js', old_string: 'a', new_string: 'b' } });
   check(inside.args.file_path === 'src/app.js', 'workspace-relative file paths stay as they are');
   check(!r.text('S-1-5-21-1-2-3-1001').includes('S-1-5-21'), 'SID redacted');
