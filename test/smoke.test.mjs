@@ -9,6 +9,7 @@ import { buildFixture, frame, ev } from './fixture.mjs';
 import { LiveTracker, stateFrom, OPEN_TURN_MS } from '../lib/live.js';
 import { analyzeEvents, restate } from '../lib/session-analysis.js';
 import { dshCost } from '../lib/pricing.js';
+import { kindOf, fromEvent, next as nextProblem } from '../lib/problems.js';
 
 const PORT = 8899;
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -151,6 +152,85 @@ costLog(costSessionId, [
 ]);
 const ollamaSessionId = 'session-fafafafa-1111-2222-3333-444444444444';
 costLog(ollamaSessionId, [costReply(2, { provider: 'ollama', model: 'minimax-m3.1-flash:cloud' })]);
+
+// Provider problems. dsh logs them only in assistant/attempt failures, llm/retry and the error of turn/end.
+const PROBLEM_SECRET = 'sk-live-PROBLEMSECRET1234567890';
+function problemLog(sessionId, agoMs, build) {
+  const dir = path.join(fixture.sessionsRoot, '--tmp-fixture-workspace--', sessionId);
+  fs.mkdirSync(dir, { recursive: true });
+  let seq = 1;
+  const at = (offset, type, data) => ({ type, seq: seq++, time: Date.now() - agoMs + offset, data });
+  fs.writeFileSync(path.join(dir, 'session.v4.jsonl.zstd'), frame([
+    { type: 'session', version: 4, id: sessionId, createdAt: Date.now() - agoMs - 5000, cwd: fixture.workspace },
+    at(0, 'request/context', { provider: 'deepseek-official', model: 'deepseek-flash', contextWindow: 1_000_000 }),
+    at(1, 'turn/start', { turn: 1 }),
+    at(2, 'step/start', { turn: 1, step: 1 }),
+    ...build(at),
+  ]));
+}
+const failure = (code, status) => ({ code, ...(status ? { status } : {}), message: `${code} for key ${PROBLEM_SECRET}` });
+const attemptOf = (at, offset, f) => at(offset, 'assistant/attempt', { turn: 1, step: 1, stream: [{ chunk: { reason: { failure: f } } }] });
+const turnError = (at, offset, f) => at(offset, 'turn/end', { turn: 1, reason: { kind: 'error', error: f } });
+const okReply = (at, offset, turn = 1) => at(offset, 'assistant/message', {
+  turn, step: 1,
+  message: { role: 'assistant', source: { provider: 'deepseek-official', model: 'deepseek-flash' }, content: [{ type: 'text', text: 'done' }] },
+  usage: { inputTokens: 100, outputTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 0 },
+});
+const MIN = 60 * 1000;
+const problemIds = {
+  quota: 'session-a1a1a1a1-1111-2222-3333-444444444444',
+  retried: 'session-a2a2a2a2-1111-2222-3333-444444444444',
+  credential: 'session-a3a3a3a3-1111-2222-3333-444444444444',
+  recovered: 'session-a4a4a4a4-1111-2222-3333-444444444444',
+  newTurn: 'session-a5a5a5a5-1111-2222-3333-444444444444',
+  old: 'session-a6a6a6a6-1111-2222-3333-444444444444',
+  timeout: 'session-a7a7a7a7-1111-2222-3333-444444444444',
+};
+// Out of credit: the attempt fails with 402 and the turn gives up with the same error.
+problemLog(problemIds.quota, 5 * MIN, (at) => [
+  attemptOf(at, 3, failure('QUOTA', 402)),
+  at(4, 'step/end', { turn: 1, step: 1 }),
+  turnError(at, 5, failure('QUOTA', 402)),
+]);
+// Rate limited twice, retried, then it works: nothing is left to resolve.
+problemLog(problemIds.retried, 5 * MIN, (at) => [
+  attemptOf(at, 3, failure('RATE_LIMIT', 429)),
+  at(4, 'llm/retry', { attempt: 1, max: 5, delayMs: 2000 }),
+  okReply(at, 8),
+  at(9, 'step/end', { turn: 1, step: 1 }),
+  at(10, 'turn/end', { turn: 1, reason: { kind: 'completed' } }),
+]);
+problemLog(problemIds.credential, 5 * MIN, (at) => [
+  attemptOf(at, 3, failure('MISSING_CREDENTIAL')),
+  at(4, 'step/end', { turn: 1, step: 1 }),
+  turnError(at, 5, failure('MISSING_CREDENTIAL')),
+]);
+// Out of credit, then the person topped up and the next step worked.
+problemLog(problemIds.recovered, 5 * MIN, (at) => [
+  attemptOf(at, 3, failure('QUOTA', 402)),
+  at(4, 'step/end', { turn: 1, step: 1 }),
+  turnError(at, 5, failure('QUOTA', 402)),
+  at(6, 'turn/start', { turn: 2 }),
+  at(7, 'step/start', { turn: 2, step: 1 }),
+  okReply(at, 8, 2),
+  at(9, 'step/end', { turn: 2, step: 1 }),
+  at(10, 'turn/end', { turn: 2, reason: { kind: 'completed' } }),
+]);
+// Out of credit, then only a new turn started: the old failure no longer describes the session.
+problemLog(problemIds.newTurn, 5 * MIN, (at) => [
+  attemptOf(at, 3, failure('QUOTA', 402)),
+  turnError(at, 4, failure('QUOTA', 402)),
+  at(5, 'turn/start', { turn: 2 }),
+]);
+// A failure from the day before: still the latest thing, but no longer a request for the person.
+problemLog(problemIds.old, 8 * 60 * MIN, (at) => [
+  attemptOf(at, 3, failure('QUOTA', 402)),
+  turnError(at, 4, failure('QUOTA', 402)),
+]);
+problemLog(problemIds.timeout, 5 * MIN, (at) => [
+  attemptOf(at, 3, failure('TIMEOUT')),
+  turnError(at, 4, failure('TIMEOUT')),
+]);
 
 const failures = [];
 function check(cond, msg, extra) {
@@ -398,6 +478,56 @@ try {
   check(near(costEvents.find((e) => e.provider === 'deepseek-official' && e.model === 'deepseek-v4-pro' && e.t === 'say' && e.step === 8)?.cost, proCost), 'a reply that names no route is priced for the route its request announced');
   const costMeta = costSse.find((e) => e.event === 'meta')?.data.prices;
   check(costMeta?.listEstimate === true && /^\d{4}-\d{2}-\d{2}$/.test(costMeta?.date) && !('offPeak' in costMeta), 'the page gets a labelled list-price estimate with the table date, not a rate table to apply itself', JSON.stringify(costMeta));
+
+  console.log('\nprovider problems');
+  const rows = Object.fromEntries((await getJson('/api/sessions')).body.sessions.map((s) => [s.id, s]));
+  const problemsOf = async (id) => {
+    const sse = await readSse(`${BASE}/api/stream?id=${id}&lite=1`, (e) => e.event === 'status');
+    return {
+      events: sse.filter((e) => e.event === 'ev' && e.data.t === 'problem').map((e) => e.data),
+      meta: sse.find((e) => e.event === 'meta')?.data.session,
+      status: sse.find((e) => e.event === 'status')?.data,
+      raw: JSON.stringify(sse),
+    };
+  };
+  const quotaRow = rows[problemIds.quota];
+  check(quotaRow?.problem?.kind === 'quota' && quotaRow.problem.status === 402 && quotaRow.problem.provider === 'deepseek-official', 'a 402 failure is the session problem: quota, status 402, its provider', JSON.stringify(quotaRow?.problem));
+  const quota = await problemsOf(problemIds.quota);
+  check(quota.events.length === 1 && quota.events[0].kind === 'quota' && quota.events[0].status === 402 && quota.events[0].provider === 'deepseek-official', 'the failed attempt and the turn that gave up are one problem event', JSON.stringify(quota.events));
+  check(!quota.raw.includes(PROBLEM_SECRET) && !quota.raw.includes('for key'), 'the provider message text never reaches the page');
+  check(quota.meta?.problem?.kind === 'quota' && quota.status?.problem?.kind === 'quota', 'stream meta and status carry the session problem', JSON.stringify({ meta: quota.meta?.problem, status: quota.status?.problem }));
+  check(quotaRow?.attention?.level === 'needs-you' && quotaRow.attention.reason === 'quota' && quotaRow.attention.certainty === 'sure' && quotaRow.attention.detail === 'out of credit', 'out of credit needs you, reason quota, sure', JSON.stringify(quotaRow?.attention));
+  check(quota.status?.attention?.reason === 'quota' && quota.meta?.attention?.reason === 'quota', 'the stream says so too', JSON.stringify({ status: quota.status?.attention, meta: quota.meta?.attention }));
+
+  const retried = await problemsOf(problemIds.retried);
+  check(retried.events.length === 2 && retried.events[0].kind === 'rate-limit' && retried.events[0].status === 429 && retried.events[1].kind === 'rate-limit' && retried.events[1].attempts === 1, 'a 429 and its retry are shown, the retry with its attempt count', JSON.stringify(retried.events));
+  check(rows[problemIds.retried]?.problem === undefined && retried.meta?.problem === null && retried.status?.problem === null, 'a retry that later succeeded leaves no session problem', JSON.stringify(rows[problemIds.retried]?.problem));
+  check(rows[problemIds.retried]?.attention?.level !== 'needs-you', 'and nothing needs you', JSON.stringify(rows[problemIds.retried]?.attention));
+
+  const credential = await problemsOf(problemIds.credential);
+  check(credential.events.length === 1 && credential.events[0].kind === 'auth' && credential.events[0].status === null, 'a missing credential is an auth problem without a status', JSON.stringify(credential.events));
+  const credRow = rows[problemIds.credential];
+  check(credRow?.attention?.level === 'needs-you' && credRow.attention.reason === 'auth' && credRow.attention.certainty === 'sure' && credRow.attention.detail === 'sign-in needed', 'a missing credential needs you, reason auth', JSON.stringify(credRow?.attention));
+
+  check(rows[problemIds.recovered]?.problem === undefined && rows[problemIds.recovered]?.attention?.level !== 'needs-you', 'a later successful step clears the problem and the need', JSON.stringify({ problem: rows[problemIds.recovered]?.problem, attention: rows[problemIds.recovered]?.attention }));
+  check(rows[problemIds.newTurn]?.problem === undefined && rows[problemIds.newTurn]?.attention?.level !== 'needs-you', 'a new turn clears it as well');
+  check(rows[problemIds.old]?.problem?.kind === 'quota' && rows[problemIds.old]?.attention?.level !== 'needs-you', 'a failure from long ago stays visible as a problem but no longer asks for you', JSON.stringify({ problem: rows[problemIds.old]?.problem, attention: rows[problemIds.old]?.attention }));
+  const timeout = await problemsOf(problemIds.timeout);
+  check(timeout.events[0]?.kind === 'timeout' && rows[problemIds.timeout]?.problem?.kind === 'timeout' && rows[problemIds.timeout]?.attention?.level !== 'needs-you', 'a timeout is a problem, not a request for you', JSON.stringify(timeout.events));
+
+  console.log('\nprovider problems, in the library');
+  check(kindOf({ code: 'QUOTA' }) === 'quota' && kindOf({ status: 402 }) === 'quota' && kindOf({ message: 'Insufficient Balance' }) === 'quota', 'quota: its code, HTTP 402 or the balance message');
+  check(kindOf({ code: 'RATE_LIMIT' }) === 'rate-limit' && kindOf({ status: 429 }) === 'rate-limit', 'rate limit: its code or HTTP 429');
+  check(kindOf({ code: 'TIMEOUT' }) === 'timeout' && kindOf({ status: 504 }) === 'timeout', 'timeout: its code or HTTP 504');
+  check(kindOf({ code: 'MISSING_CREDENTIAL' }) === 'auth' && kindOf({ status: 401 }) === 'auth', 'auth: a missing credential or HTTP 401');
+  check(kindOf({ code: 'SERVER', status: 503 }) === 'provider-error' && kindOf({ code: 'NO_ADAPTER' }) === 'provider-error' && kindOf({}) === 'provider-error', 'anything else is a provider error');
+  const noText = fromEvent({ type: 'turn/end', time: 1, data: { turn: 1, reason: { kind: 'error', error: { code: 'QUOTA', status: 402, message: `Insufficient Balance ${PROBLEM_SECRET}` } } } }, { provider: 'deepseek official, with spaces' });
+  check(JSON.stringify(Object.keys(noText).sort()) === '["attempts","kind","provider","status"]' && noText.provider === null && !JSON.stringify(noText).includes(PROBLEM_SECRET), 'a problem has the fixed fields only, and a route name that is not a plain token is dropped', JSON.stringify(noText));
+  check(fromEvent({ type: 'turn/end', time: 1, data: { turn: 1, reason: { kind: 'aborted' } } }) === null && fromEvent({ type: 'turn/end', time: 1, data: { turn: 1, reason: { kind: 'completed' } } }) === null, 'an aborted or completed turn is not a problem');
+  let cur = nextProblem(null, { type: 'assistant/attempt', time: 5, data: { turn: 1, stream: [{ chunk: { reason: { failure: { code: 'QUOTA', status: 402 } } } }] } });
+  check(cur?.kind === 'quota' && cur.since === 5, 'a failure becomes the session problem, since its time');
+  check(nextProblem(cur, { type: 'assistant/message', time: 6, data: { turn: 1, usage: null } }) === cur, 'a reply that cost no tokens does not resolve it');
+  check(nextProblem(cur, { type: 'assistant/message', time: 6, data: { turn: 1, usage: { inputTokens: 1 } } }) === null && nextProblem(cur, { type: 'turn/start', time: 6, data: { turn: 2 } }) === null, 'a reply that cost tokens, or a new turn, resolves it');
 
   console.log('\nnicknames');
   const nickRes = await fetch(BASE + '/api/nickname', {

@@ -131,6 +131,14 @@ try {
   attention.trackApproval(open, { t: 'approvalDone' });
   check(open.size === 1, 'a decision that names nothing closes the oldest ask');
   check(attention.dshAttention({ open: new Map(), rawState: 'idle', now }).level === 'ready' && attention.dshAttention({ open: new Map(), rawState: 'idle', hasOpenJob: true, now }).level === 'none', 'an idle session is ready, unless a background job keeps it busy');
+  const quotaAtt = attention.problemAttention({ problem: { kind: 'quota', since: now - 60000 }, now });
+  check(quotaAtt.level === 'needs-you' && quotaAtt.reason === 'quota' && quotaAtt.via === 'log' && quotaAtt.certainty === 'sure' && quotaAtt.detail === 'out of credit' && quotaAtt.since === now - 60000, 'out of credit is a sure quota need from the log, with a fixed detail', J(quotaAtt));
+  const authAtt = attention.problemAttention({ problem: { kind: 'auth', since: now - 60000 }, now });
+  check(authAtt.level === 'needs-you' && authAtt.reason === 'auth' && authAtt.certainty === 'sure' && authAtt.detail === 'sign-in needed', 'a missing sign-in is a sure auth need', J(authAtt));
+  check(['rate-limit', 'timeout', 'provider-error'].every((kind) => attention.problemAttention({ problem: { kind, since: now }, now }).level === 'none') && attention.problemAttention({ problem: null, now }).level === 'none', 'rate limits, timeouts and server errors pass by themselves, so they need nobody');
+  check(attention.problemAttention({ problem: { kind: 'quota', since: now - 7 * 3600 * 1000 }, now }).level === 'none', 'a failure from many hours ago stops asking for you');
+  check(attention.make({ level: 'needs-you', reason: 'quota', detail: 'Insufficient Balance for sk-test' }).detail === undefined && attention.make({ level: 'needs-you', reason: 'quota', detail: 'out of credit' }).reason === 'quota', 'the quota reason is known and the provider text is not accepted as a detail');
+  check(attention.merge(attention.dshAttention({ open: new Map(), rawState: 'idle', now }), quotaAtt).reason === 'quota', 'out of credit outranks a session that merely looks ready');
   check(attention.approvalRef({ data: { id: 'x' } }) === 'x' && attention.approvalRef({ data: { approvalId: 7 } }) === '7' && attention.approvalRef({ data: {} }) === null, 'the approval id is read wherever the log keeps it');
 
   console.log('\nlog analysis');

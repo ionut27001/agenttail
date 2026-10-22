@@ -31,6 +31,7 @@ const { DSH_PRICES, CLAUDE_PRICES, dshCost } = require('./lib/pricing');
 const { version: VERSION } = require('./package.json');
 const { analyzeLog, restate } = require('./lib/session-analysis');
 const attention = require('./lib/attention');
+const problems = require('./lib/problems');
 const { stateFrom, describe, LiveTracker } = require('./lib/live');
 const { Nicknames } = require('./lib/nicknames');
 const { SysMonitor } = require('./lib/sys');
@@ -366,18 +367,22 @@ async function listSessions() {
     const nickname = nicknames.get(key);
     // Computed here, not in the cached analysis, so a prompt left open by a crash ages out.
     const waiting = analysis
-      ? attention.dshAttention({
-          open: new Map((analysis.openApprovals || []).map((a) => [a.id, a])),
-          rawState: state,
-          now: Date.now(),
-          hasOpenJob: (analysis.openJobs || []).length > 0,
-        })
+      ? attention.merge(
+          attention.dshAttention({
+            open: new Map((analysis.openApprovals || []).map((a) => [a.id, a])),
+            rawState: state,
+            now: Date.now(),
+            hasOpenJob: (analysis.openJobs || []).length > 0,
+          }),
+          attention.problemAttention({ problem: analysis.problem, now: Date.now() }),
+        )
       : attention.none();
     return {
       ...rec,
       ...(head || {}),
       state,
       attention: waiting,
+      problem: analysis ? analysis.problem : null,
       stateDetail: analysis ? analysis.stateDetail : '',
       lastEventAt: analysis ? analysis.lastEventAt : rec.mtimeMs,
       title: analysis ? analysis.title : null,
@@ -453,6 +458,8 @@ class SessionStream extends EventTarget {
     this.lastEndAt = 0;
     this.lastEventAt = 0;
     this.route = null; // { provider, model } of the latest request/context
+    this.problem = null; // the latest provider problem nothing has resolved yet
+    this.lastProblem = null; // the last problem event shown, to fold repeats
     this.stateTracker = new LiveTracker();
     this.statusKey = '';
     this.rootsCfg = null;
@@ -511,6 +518,8 @@ class SessionStream extends EventTarget {
 
   reset() {
     this.route = null;
+    this.problem = null;
+    this.lastProblem = null;
     this.openApprovals.clear();
     this.offset = 0;
     this.pending = Buffer.alloc(0);
@@ -668,22 +677,41 @@ class SessionStream extends EventTarget {
 
   /** Open permission prompts of this log, for the "needs you" state. */
   attentionNow(s = this.computeState()) {
-    return attention.dshAttention({
-      open: this.openApprovals,
-      rawState: s.state,
-      now: Date.now(),
-      hasOpenJob: this.openJobs.size > 0,
-    });
+    const now = Date.now();
+    return attention.merge(
+      attention.dshAttention({
+        open: this.openApprovals,
+        rawState: s.state,
+        now,
+        hasOpenJob: this.openJobs.size > 0,
+      }),
+      attention.problemAttention({ problem: this.problem, now }),
+    );
   }
 
   emitStatus() {
     const s = this.computeState();
     this.live = s.state === 'live';
     const waiting = this.attentionNow(s);
-    const key = `${s.state}|${s.stateDetail}|${attention.key(waiting)}`;
+    const problem = problems.forPage(this.problem);
+    const key = `${s.state}|${s.stateDetail}|${attention.key(waiting)}|${JSON.stringify(problem)}`;
     if (key === this.statusKey) return;
     this.statusKey = key;
-    this.emit('status', { ...statusFor(this), state: s.state, stateDetail: redactor.text(s.stateDetail), attention: waiting });
+    this.emit('status', { ...statusFor(this), state: s.state, stateDetail: redactor.text(s.stateDetail), attention: waiting, problem });
+  }
+
+  /** A provider problem in the log, shown once; see lib/problems.js. */
+  pushProblem(ev) {
+    const found = problems.fromEvent(ev, this.route, this.problem);
+    this.problem = problems.next(this.problem, ev, this.route);
+    if (!found) return;
+    const ui = { t: 'problem', time: ev.time, turn: ev.data && Number.isInteger(ev.data.turn) ? ev.data.turn : null, ...found };
+    if (problems.repeats(this.lastProblem, ui)) return;
+    this.lastProblem = ui;
+    const safe = this.safeEvent(ui);
+    this.events.push(safe);
+    if (this.events.length > MAX_EVENTS) this.events.splice(0, this.events.length - MAX_EVENTS);
+    this.emit('event', safe);
   }
 
   setLive(value) {
@@ -751,6 +779,7 @@ class SessionStream extends EventTarget {
       } catch {
         continue;
       }
+      this.pushProblem(ev);
       const ui = projectEvent(ev, this.route);
       if (!ui) continue;
       if (ui.t === 'route') this.route = { provider: ui.provider, model: ui.model };
@@ -1297,6 +1326,7 @@ async function serveStream(req, res, record, options = {}) {
       sandbox: record.sandbox || null,
       owned: record.owned === true,
       attention: pageAttention(attention.merge(record.attention, ownedAttentionFor(record.source, record.id))),
+      problem: stream.problem ? problems.forPage(stream.problem) : null,
     },
     streamSafe: redactor.enabled,
     prices: record.source === 'dsh' ? DSH_PRICES : record.source === 'claude' ? CLAUDE_PRICES : null,
@@ -1331,6 +1361,7 @@ async function serveStream(req, res, record, options = {}) {
     state: initialState.state,
     stateDetail: redactor.text(initialState.stateDetail),
     attention: typeof stream.attentionNow === 'function' ? stream.attentionNow(initialState) : attention.none(),
+    problem: stream.problem ? problems.forPage(stream.problem) : null,
   };
   sseWrite(res, 'status', withOwned(lastStatus));
   const pushOwned = () => sseWrite(res, 'status', withOwned(lastStatus));
@@ -1855,6 +1886,7 @@ const server = http.createServer(async (req, res) => {
             state: s.state || (s.live ? 'live' : 'finished'),
             stateDetail: redactor.text(s.stateDetail),
             attention: pageAttention(s.attention),
+            ...(s.problem ? { problem: problems.forPage(s.problem) } : {}),
             lastEventAt: s.lastEventAt || s.mtimeMs,
             steps: s.steps ?? null,
             tokens: s.tokens ?? null,

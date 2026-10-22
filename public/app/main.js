@@ -1626,6 +1626,14 @@ async function applyEvent(ev) {
       if (ev.usage) addUsage(ev.usage, ev.time, ev.cost, ev.provider);
       break;
 
+    case 'problem': {
+      // A provider failure: out of credit, rate limited, timed out, signed out.
+      const text = problemText(ev);
+      chatPush({ kind: 'problem', text, problem: ev.kind });
+      termNote(`✗ ${text}`, C.red);
+      break;
+    }
+
     case 'deleted': {
       if (ev.key) state.deletedKeys.add(ev.key);
       if (ev.path) state.deletedPaths.add(ev.path);
@@ -1919,6 +1927,7 @@ function resetView() {
   state.state = 'finished';
   state.stateDetail = '';
   state.attention = null;
+  state.problem = null;
   state.showEmpty = false;
   state.historyTotal = 0;
   state.historySeen = 0;
@@ -1991,6 +2000,7 @@ async function openSession(id) {
     state.state = data.session.state || (data.session.live ? 'live' : null);
     state.stateDetail = data.session.stateDetail || '';
     state.attention = data.session.attention || null;
+    state.problem = data.session.problem || null;
     state.historyTotal = Number(data.historyCount) || 0;
     state.historySeen = 0;
     document.body.classList.add('loading-session');
@@ -2063,6 +2073,10 @@ async function openSession(id) {
     if (data.state) state.state = data.state;
     if (data.stateDetail) state.stateDetail = data.stateDetail;
     if (data.attention !== undefined) state.attention = data.attention;
+    if (data.problem !== undefined && JSON.stringify(data.problem) !== JSON.stringify(state.problem)) {
+      state.problem = data.problem;
+      updateActivityBar();
+    }
     if (data.state === 'finished') {
       activity.kind = 'done';
       activity.pane = null;
@@ -2192,6 +2206,16 @@ const ATTENTION_VIA = {
   transcript: 'the transcript',
 };
 
+// Reasons that read better as a phrase than as the word the server sends.
+const ATTENTION_REASON = { quota: 'out of credit', auth: 'sign-in needed' };
+
+/* A provider problem (out of credit, rate limit...) as the server's fixed words, never the provider's text. */
+const PROBLEM_LABEL = { quota: 'out of credit', 'rate-limit': 'rate limited', timeout: 'timed out', auth: 'sign-in needed', 'provider-error': 'provider error' };
+function problemText(p) {
+  if (!p) return '';
+  return [PROBLEM_LABEL[p.kind] || 'provider error', p.status ? `HTTP ${p.status}` : '', p.provider || '', p.attempts ? `attempt ${p.attempts}` : ''].filter(Boolean).join(' · ');
+}
+
 function attnNeeds(att) {
   return !!att && att.level === 'needs-you';
 }
@@ -2202,7 +2226,7 @@ function attnLabel(att) {
   if (att.level === 'ready') return 'READY';
   if (att.level !== 'needs-you') return '';
   const bits = ['NEEDS YOU'];
-  if (att.reason && att.reason !== 'unknown') bits.push(att.reason);
+  if (att.reason && att.reason !== 'unknown') bits.push(ATTENTION_REASON[att.reason] || att.reason);
   if (att.tool) bits.push(att.tool);
   return bits.join(' · ');
 }
@@ -2270,6 +2294,7 @@ function sessionOption(s) {
   const ws = s.cwd ? s.cwd.replace(/[\\/]+$/, '').split(/[\\/]/).filter(Boolean).pop() : '';
   const bits = [`${dotChar(s.state)} ${title}${s.owned ? ' ◈' : ''}`];
   if (attnNeeds(s.attention)) bits.push(attnLabel(s.attention));
+  else if (s.problem) bits.push(`✗ ${problemText(s.problem)}`);
   if (ws) bits.push(ws);
   bits.push(shortId(s.id));
   bits.push(fmtRelative(s.lastEventAt || s.mtimeMs));
@@ -2289,6 +2314,7 @@ function sessionOption(s) {
     s.owned ? 'owned by agenttail (◈)' : (s.source === 'dsh' ? 'started outside agenttail, view only' : ''),
     `state: ${s.state}${s.stateDetail ? ' — ' + s.stateDetail : ''}`,
     attnTitle(s.attention),
+    s.problem ? `provider problem: ${problemText(s.problem)}` : '',
     s.source === 'antigravity' && !s.promptsVisible ? 'approval prompts are not visible in the Antigravity editor' : '',
     s.model ? `model: ${s.provider ? s.provider + '/' : ''}${s.model}` : '',
     s.preset ? `permission: ${s.preset}` : '',
@@ -2311,6 +2337,7 @@ function sessionFullTitle(s) {
     s.owned ? 'owned by agenttail (◈)' : (s.source === 'dsh' ? 'started outside agenttail, view only' : ''),
     `state: ${s.state}${s.stateDetail ? ' — ' + s.stateDetail : ''}`,
     attnTitle(s.attention),
+    s.problem ? `provider problem: ${problemText(s.problem)}` : '',
     s.source === 'antigravity' && !s.promptsVisible ? 'approval prompts are not visible in the Antigravity editor' : '',
     s.model ? `model: ${s.provider ? s.provider + '/' : ''}${s.model}` : '',
     s.preset ? `permission: ${s.preset}` : '',
@@ -2519,7 +2546,7 @@ async function loadSessions(initial) {
     : all.filter((s) => !s.empty));
   state.sessions = list;
   const key = state.source + '::' + (state.showEmpty ? '1' : '0') + '::' + list
-    .map((s) => [s.id, s.state, s.title, s.steps, s.tokens, s.cost, s.lastEventAt, s.subagents, attnLabel(s.attention)].join('~'))
+    .map((s) => [s.id, s.state, s.title, s.steps, s.tokens, s.cost, s.lastEventAt, s.subagents, attnLabel(s.attention), s.problem && s.problem.kind].join('~'))
     .join('|');
   if (!initial && key === sessionKey) return;
   sessionKey = key;
@@ -3313,6 +3340,9 @@ function updateActivityBar() {
     } else if (attnNeeds(state.attention)) {
       // Blocked on a person: say so, whatever the last action was.
       icon = '⚠'; text = `${attnLabel(state.attention)}${state.attention.since ? ` · ${fmtAgo(Date.now() - state.attention.since)}` : ''}`; bar.classList.add('needs-you');
+    } else if (state.problem && !state.live) {
+      // The run stopped on a provider failure: a red line instead of a calm DONE.
+      icon = '✗'; text = `FAILED · ${problemText(state.problem)}`; bar.classList.add('error');
     } else if (activity.kind === 'running') {
       icon = '⚙'; text = `RUNNING  ${activity.label} · ${fmtActivityTime(Date.now() - activity.startedAt)}`; bar.classList.add('running', 'working');
     } else if (activity.kind === 'editing') {
@@ -3914,6 +3944,11 @@ function chatAppend(item) {
     el.textContent = item.label || '⟐ system';
     el.title = mdToText(item.text || '').slice(0, 800);
     item.el = el;
+  } else if (item.kind === 'problem') {
+    el = document.createElement('div');
+    el.className = 'chat-problem';
+    el.textContent = `✗ ${item.text}`;
+    item.el = el;
   } else {
     el = document.createElement('div');
     el.className = `chat-msg ${item.kind}`;
@@ -4013,7 +4048,7 @@ function chatPush(item) {
     chat.items.splice(0, chat.items.length - 400);
     if (!layout.chatCollapsed) {
       const log = $('chatLog');
-      const first = log.querySelector('.chat-msg, .chat-think, .chat-tools, .chat-sys');
+      const first = log.querySelector('.chat-msg, .chat-think, .chat-tools, .chat-sys, .chat-problem');
       if (first) first.remove();
     }
   }
@@ -4174,6 +4209,13 @@ function renderLog() {
       log.appendChild(row);
       continue;
     }
+    if (item.kind === 'problem') {
+      const row = document.createElement('div');
+      row.className = 'log-row log-problem';
+      row.textContent = `✗ ${item.text}`;
+      log.appendChild(row);
+      continue;
+    }
     const row = document.createElement('div');
     row.className = `log-row ${item.kind === 'user' ? 'log-user' : 'log-say'}`;
     renderMarkdown(row, item.text || '');
@@ -4303,6 +4345,7 @@ function exportMarkdown() {
       return;
     }
     if (item.kind === 'tool') turn.blocks.push(exportToolLine(item));
+    if (item.kind === 'problem') turn.blocks.push(`> ✗ ${item.text}`);
   };
 
   for (const item of chat.log) {

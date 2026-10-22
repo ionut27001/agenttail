@@ -44,6 +44,14 @@
   estimate with the date of the price table, says "tokens only for ..." when
   part of a session had no price, and the session list shows the same number
   as the open session.
+- DeepSeek Harness provider errors are no longer invisible: out of credit
+  (HTTP 402), rate limits, timeouts, server errors and a missing sign-in show
+  as a red chip in Chat and Log, a red line in the console and a `FAILED`
+  activity bar, with a fixed wording and the HTTP status (never the provider's
+  own message). The failure stays on the session until a later successful
+  reply or a new turn clears it. Out of credit and a missing sign-in also
+  count as "needs you" (`NEEDS YOU · out of credit`, `NEEDS YOU · sign-in
+  needed`) for six hours.
 
 ---
 

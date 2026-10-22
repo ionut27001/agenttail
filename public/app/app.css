@@ -871,6 +871,7 @@
   .log-tool .res { color: var(--muted); font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .log-tool.err { border-color: var(--border-danger); } .log-tool.err .res { color: var(--red); }
   .log-sys { color: var(--text-sys); font-size: 9px; }
+  .chat-problem, .log-problem { align-self: flex-start; color: var(--red); border: 1px solid color-mix(in srgb, var(--red) 55%, transparent); background: color-mix(in srgb, var(--red) 9%, transparent); border-radius: 4px; padding: 2px 7px; font-size: 10px; letter-spacing: .04em; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #chatUnread { background: var(--green); color: var(--bg-bar); border-radius: 8px; padding: 0 4px; font-size: 8px; }
   #chatUnread.hidden, .typing.hidden { display: none; }
   .typing { display: inline-flex; gap: 3px; align-items: center; }
