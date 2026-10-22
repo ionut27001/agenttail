@@ -19,7 +19,7 @@ const zlib = require('node:zlib');
 const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
 const { Roots } = require('./lib/roots');
-const { Redactor, safeRedact } = require('./lib/redact');
+const { Redactor, safeRedact, RECORD_KEYS, PATH_KEYS } = require('./lib/redact');
 const { keyFor, relativeInside, isInside } = require('./lib/util');
 const { ControlManager, PRESETS, DEFAULT_PRESET, MAX_MESSAGE } = require('./lib/control');
 const { buildAgents } = require('./lib/agents');
@@ -101,8 +101,8 @@ async function agentsPayload() {
       }
     } catch { /* a source that cannot be read is skipped */ }
   }
+  // Redacted as a whole by sendJson, not field by field.
   const data = await buildAgents(all, {
-    text: (value) => redactor.text(String(value ?? '')),
     labelFor: (key) => SOURCE_DEFS.find((d) => d.key === key)?.label || key,
   });
   // Owned sessions can be blocked on the user: say how many approvals wait.
@@ -1141,10 +1141,17 @@ async function findSession(source, id) {
   return sessions.find((s) => s.id === id) || null;
 }
 
-function sseWrite(res, event, data) {
+/**
+ * Everything the page receives over SSE passes the redactor here, so a field
+ * nobody listed is hidden rather than shown. Events ('ev') were redacted once
+ * when their adapter created them, not again per client. `done` names fields
+ * the caller already redacted.
+ */
+function sseWrite(res, event, data, done) {
   if (res.destroyed || res.writableEnded) return;
   try {
-    res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    const safe = event === 'ev' ? data : redactor.value(data, { keep: RECORD_KEYS, paths: PATH_KEYS, done });
+    res.write(`event: ${event}\ndata: ${JSON.stringify(safe)}\n\n`);
   } catch {
     /* client vanished */
   }
@@ -1258,14 +1265,14 @@ async function serveStream(req, res, record, options = {}) {
     session: {
       id: record.id,
       source: record.source,
-      title: redactor.text(record.title),
-      cwd: redactor.text(record.cwd, { path: record.cwd }),
+      title: record.title,
+      cwd: record.cwd,
       createdAt: record.createdAt,
       version: record.version,
       size: record.size,
       mtimeMs: record.mtimeMs,
       state: initialState.state,
-      stateDetail: redactor.text(initialState.stateDetail),
+      stateDetail: initialState.stateDetail,
       model: record.model || null,
       provider: record.provider || null,
       preset: record.preset || null,
@@ -1288,7 +1295,7 @@ async function serveStream(req, res, record, options = {}) {
   }
 
   // The watch wall subscribes in "lite" mode: no tree, no system meters.
-  if (!options.lite) sseWrite(res, 'tree', await treePayload(record, stream, { showHidden: options.showHidden === true }));
+  if (!options.lite) sseWrite(res, 'tree', await treePayload(record, stream, { showHidden: options.showHidden === true }), TREE_DONE);
 
   // History (everything already decoded). An optional delay is used only by
   // the demo capture to make the loading skeleton visible.
@@ -1378,6 +1385,9 @@ async function serveStream(req, res, record, options = {}) {
 // Workspace file tree + read-only file access (allowlisted roots)
 // ---------------------------------------------------------------------------
 
+/** Tree fields sanitizeTree redacts itself (private nodes become "[private]"). */
+const TREE_DONE = ['root', 'name', 'path'];
+
 /** Redact display names and paths in a built tree (keys stay functional). */
 function sanitizeTree(node) {
   if (!node) return node;
@@ -1446,7 +1456,13 @@ function readJsonBody(req, limit) {
   });
 }
 
-function sendJson(res, status, payload) {  const body = JSON.stringify(payload);
+/**
+ * Every JSON body leaves through here and, in stream mode, through the
+ * redactor: a field nobody listed is hidden rather than shown. `done` names
+ * fields the caller already redacted (file contents, tree names).
+ */
+function sendJson(res, status, payload, done) {
+  const body = JSON.stringify(redactor.value(payload, { keep: RECORD_KEYS, paths: PATH_KEYS, done }));
   res.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
     'Cache-Control': 'no-store',
@@ -1821,15 +1837,15 @@ const server = http.createServer(async (req, res) => {
           return {
             id: s.id,
             source: s.source,
-            cwd: redactor.text(s.cwd, { path: s.cwd }),
-            title: redactor.text(nick || s.title),
-            nickname: redactor.text(nick),
-            sessionTitle: redactor.text(s.sessionTitle),
-            firstUser: redactor.text(s.firstUser),
-            lastUser: redactor.text(s.lastUser),
+            cwd: s.cwd,
+            title: nick || s.title,
+            nickname: nick,
+            sessionTitle: s.sessionTitle,
+            firstUser: s.firstUser,
+            lastUser: s.lastUser,
             empty: s.empty === true,
             state: s.state || (s.live ? 'live' : 'finished'),
-            stateDetail: redactor.text(s.stateDetail),
+            stateDetail: s.stateDetail,
             attention: pageAttention(s.attention),
             lastEventAt: s.lastEventAt || s.mtimeMs,
             steps: s.steps ?? null,
@@ -1880,7 +1896,7 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       const stream = await getStream(record);
-      sendJson(res, 200, await treePayload(record, stream, { showHidden: url.searchParams.get('hidden') === '1' }));
+      sendJson(res, 200, await treePayload(record, stream, { showHidden: url.searchParams.get('hidden') === '1' }), TREE_DONE);
       return;
     }
 
@@ -1912,7 +1928,7 @@ const server = http.createServer(async (req, res) => {
       }
       const file = await roots.readFile(record.cwd, display, { hideSensitive: redactor.enabled });
       if (!file.hidden) file.content = redactor.fileContent(display, file.content);
-      sendJson(res, 200, file);
+      sendJson(res, 200, file, ['content']);
       return;
     }
 

@@ -12,6 +12,12 @@
   tab title and favicon, and desktop notifications. An inbox (`Alt+I`) lists
   everything that needs you, with Approve and Reject in place for owned
   sessions. Idle sessions now read "ready".
+- Stream mode redacts by default: every text field of an event or response
+  is redacted unless it is an id or a protocol word the page matches on, so a
+  field added later cannot reach the page raw. Session lists, the agents
+  overview, the live header, file and tree responses and error messages go
+  through the same redactor; model and provider names with an address in them
+  are no longer shown as they are.
 - Antigravity: conversations of the Antigravity CLI, which keeps them in
   `~/.gemini/antigravity-cli`, are listed next to the editor's.
 - Safer approvals: Approve always means "allow once" and never picks an
