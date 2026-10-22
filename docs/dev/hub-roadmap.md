@@ -21,7 +21,9 @@ This roadmap merges three documents written on 2026-10-21:
   coordination, the human approval gate, safety, UI, images and the API.
 
 Read them for the evidence and sources; this file is the order of work and the
-decisions.
+decisions. [harness-coverage.md](harness-coverage.md) (2026-10-22) holds every
+harness to one watch-and-drive checklist and supersedes the effort estimates
+below where they differ.
 
 ## What stays true
 
