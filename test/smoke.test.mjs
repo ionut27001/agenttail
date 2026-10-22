@@ -582,6 +582,7 @@ try {
   check(kindOf({ code: 'QUOTA' }) === 'quota' && kindOf({ status: 402 }) === 'quota' && kindOf({ message: 'Insufficient Balance' }) === 'quota', 'quota: its code, HTTP 402 or the balance message');
   check(kindOf({ code: 'RATE_LIMIT' }) === 'rate-limit' && kindOf({ status: 429 }) === 'rate-limit', 'rate limit: its code or HTTP 429');
   check(kindOf({ code: 'TIMEOUT' }) === 'timeout' && kindOf({ status: 504 }) === 'timeout', 'timeout: its code or HTTP 504');
+  check(['ETIMEDOUT', 'ESOCKETTIMEDOUT', 'DEADLINE_EXCEEDED'].every((code) => kindOf({ code }) === 'timeout'), 'timeout: Node and gRPC-style codes too');
   check(kindOf({ code: 'MISSING_CREDENTIAL' }) === 'auth' && kindOf({ status: 401 }) === 'auth', 'auth: a missing credential or HTTP 401');
   check(kindOf({ code: 'SERVER', status: 503 }) === 'provider-error' && kindOf({ code: 'NO_ADAPTER' }) === 'provider-error' && kindOf({}) === 'provider-error', 'anything else is a provider error');
   const noText = fromEvent({ type: 'turn/end', time: 1, data: { turn: 1, reason: { kind: 'error', error: { code: 'QUOTA', status: 402, message: `Insufficient Balance ${PROBLEM_SECRET}` } } } }, { provider: 'deepseek official, with spaces' });

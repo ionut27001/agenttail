@@ -2234,8 +2234,10 @@ function attnLabel(att) {
 /** Tooltip: what, how it was seen and how sure we are. */
 function attnTitle(att) {
   if (!att || att.level === 'none') return '';
-  const bits = [attnLabel(att)];
-  if (att.detail) bits.push(att.detail);
+  const label = attnLabel(att);
+  const bits = [label];
+  // The label already names the reason; a detail that only repeats it adds nothing.
+  if (att.detail && !label.toLowerCase().includes(att.detail.toLowerCase())) bits.push(att.detail);
   if (att.via) bits.push(`seen via ${ATTENTION_VIA[att.via] || att.via}`);
   if (att.certainty) bits.push(att.certainty);
   if (att.since) bits.push(`began ${fmtRelative(att.since)}`);

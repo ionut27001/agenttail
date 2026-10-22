@@ -48,10 +48,10 @@
   and `deepseek-v4-pro` at DeepSeek's published list prices; the signed-in
   `deepseek-account` route, Ollama and every other model show tokens only,
   where Ollama and MiniMax traffic used to be priced as DeepSeek. Compaction
-  calls now count in tokens and cost. The figure is labelled a list-price
-  estimate with the date of the price table, says "tokens only for ..." when
-  part of a session had no price, and the session list shows the same number
-  as the open session.
+  calls now count in tokens and cost. The cost's tooltip calls it a
+  list-price estimate and gives the date of the price table, and says "tokens
+  only for ..." when part of a session had no price; the session list shows
+  the same number as the open session.
 - DeepSeek Harness provider errors are no longer invisible: out of credit
   (HTTP 402), rate limits, timeouts, server errors and a missing sign-in show
   as a red chip in Chat and Log, a red line in the console and a `FAILED`
