@@ -20,6 +20,13 @@
   are no longer shown as they are.
 - Antigravity: conversations of the Antigravity CLI, which keeps them in
   `~/.gemini/antigravity-cli`, are listed next to the editor's.
+- Antigravity: every tool result now lands on its own call, also when the
+  agent calls several tools at once or one the viewer has no special view for
+  (searches, directory listings, web fetches, subagents and tasks show with a
+  short summary). Failed and denied tools are marked as such, a command still
+  running shows "final output not recorded" instead of finishing, and long
+  edits and outputs are no longer cut at about 4 KB when
+  `transcript_full.jsonl` is there.
 - Safer approvals: Approve always means "allow once" and never picks an
   agent's "always allow" option; cards show the command, paths and diff
   before the agent's own title; a card whose details change after you saw it

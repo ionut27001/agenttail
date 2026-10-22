@@ -1742,6 +1742,8 @@ async function applyEvent(ev) {
         callId: ev.callId,
         text: ev.text || '',
         isError: !!ev.isError,
+        running: !!ev.running,
+        denied: !!ev.denied,
         exitCode: exitMatch ? Number(exitMatch[1]) : null,
       });
       if (state.currentTurnItem && (ev.isError || (exitMatch && Number(exitMatch[1]) !== 0))) state.currentTurnItem.errors += 1;
@@ -1753,15 +1755,17 @@ async function applyEvent(ev) {
         setTransient('error', 'COMMAND FAILED', 3000);
       }
       if (name === 'pwsh') {
-        state.lastCommandOk = !(ev.isError || (exitMatch && Number(exitMatch[1]) !== 0));
+        // A running result is the partial output of a command whose end was never written.
+        state.lastCommandOk = ev.running ? null : !(ev.isError || (exitMatch && Number(exitMatch[1]) !== 0));
         if (ev.agent) termNote(`↳ ${ev.agent}`, C.grey);
         termOutput(ev.text || '', ev.isError);
-        if (!ev.isError) {
+        if (ev.running) termNote('… still running, final output not recorded', C.amber);
+        else if (!ev.isError) {
           const m = /\[exit code:\s*(-?\d+)\]/i.exec(ev.text || '');
           if (m) termStatus(m[1] === '0', `exit ${m[1]}`);
         }
       }
-      if (name === 'pwsh' && state.runningJobs.size === 0) {
+      if (name === 'pwsh' && !ev.running && state.runningJobs.size === 0) {
         state.commandProgress = null;
         setActivity('thinking', 'command finished', 'chat');
       }
@@ -4122,14 +4126,17 @@ function logResultLine(result, name) {
   const plain = raw.replace(/<\/?[a-z_][\w-]*>/gi, ' ');
   const lines = plain.split('\n').filter((l) => l.trim() && !/^\[exit code:/i.test(l.trim()));
   const first = (lines[0] || '').replace(/\s+/g, ' ').trim();
-  const status = result.exitCode !== undefined && result.exitCode !== null
-    ? `exit ${result.exitCode}`
-    : (result.isError ? 'error' : 'done');
+  const status = result.running ? 'running'
+    : result.denied ? 'denied'
+      : result.exitCode !== undefined && result.exitCode !== null
+        ? `exit ${result.exitCode}`
+        : (result.isError ? 'error' : 'done');
   const tool = String(name || '').toLowerCase();
   let detail;
-  if (result.isError) detail = first;
+  if (result.running) detail = 'final output not recorded';
+  else if (result.isError) detail = first;
   else if (tool === 'read' || tool === 'view_file') detail = `${lines.length} line${lines.length === 1 ? '' : 's'}`;
-  else if (['grep', 'glob', 'search', 'find'].includes(tool)) {
+  else if (['grep', 'glob', 'search', 'find', 'list_dir'].includes(tool)) {
     const found = /found\s+(\d+)\s+(match|file|result)/i.exec(plain);
     detail = found ? `${found[1]} ${found[2]}${found[1] === '1' ? '' : (found[2].endsWith('h') ? 'es' : 's')}` : `${lines.length} hit${lines.length === 1 ? '' : 's'}`;
   } else if (EDIT_TOOLS.has(tool)) detail = 'applied';
@@ -4182,7 +4189,7 @@ function renderLog() {
       const glyph = item.name === 'pwsh' ? '$'
         : EDIT_TOOLS.has(item.name) ? '✎'
           : item.name === 'read' ? '👁'
-            : ['grep', 'glob', 'search', 'find'].includes(String(item.name).toLowerCase()) ? '⌕' : '⚙';
+            : ['grep', 'glob', 'search', 'find', 'list_dir'].includes(String(item.name).toLowerCase()) ? '⌕' : '⚙';
       cmd.textContent = `${glyph} ${item.full || item.text}`;
       row.appendChild(cmd);
       const res = document.createElement('div');
@@ -4276,7 +4283,9 @@ function exportToolLine(tool) {
   const result = tool.result;
   let status = 'running';
   if (result) {
-    if (result.exitCode !== null && result.exitCode !== undefined) status = `exit ${result.exitCode}${result.isError ? ' (error)' : ''}`;
+    if (result.running) status = 'running, final output not recorded';
+    else if (result.denied) status = 'denied';
+    else if (result.exitCode !== null && result.exitCode !== undefined) status = `exit ${result.exitCode}${result.isError ? ' (error)' : ''}`;
     else if (result.isError) {
       const detail = String(result.text || '').replace(/\s+/g, ' ').trim().slice(0, 200);
       status = detail ? `error: ${detail}` : 'error';
