@@ -1,5 +1,9 @@
 # Unreleased
 
+- A session open in more than one place (the page and a wall pane, or after
+  a reconnect) no longer freezes: when one of those connections dropped, the
+  server counted it out twice and stopped following the session 30 seconds
+  later, while the page still showed its last state.
 - Permission mode: every session now shows how much its agent may do without
   asking, in the harness's own words plus a risk tier (`ASKS`, `EDITS`,
   `REVIEWER`, `PLAN`, `REFUSES`, `BYPASS`). BYPASS is red and in capitals, the

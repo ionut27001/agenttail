@@ -65,6 +65,8 @@ async function readPublic(rel) {
   return fsp.readFile(path.join(PUBLIC_DIR, rel));
 }
 const POLL_MS = Number(envValue('POLL_MS') || 700);
+// How long a session stream keeps polling after its last client left (tests shorten it).
+const STREAM_IDLE_MS = Number(envValue('STREAM_IDLE_MS') || 30000);
 const HISTORY_DELAY_MS = Number(envValue('HISTORY_DELAY_MS') || 0);
 const MAX_TEXT = 120 * 1024; // per tool result / message kept for the page
 const MAX_EVENTS = 40000; // per session, in memory
@@ -1464,7 +1466,12 @@ async function serveStream(req, res, record, options = {}) {
     if (!res.destroyed) res.write(`: ping ${Date.now()}\n\n`);
   }, 20000);
 
+  // An aborted client fires 'aborted', 'error' and then 'close' on its request:
+  // count it out once, or a second client still attached would lose the stream.
+  let cleaned = false;
   const cleanup = () => {
+    if (cleaned) return;
+    cleaned = true;
     clearInterval(heartbeat);
     if (!options.lite) sysMonitor.stop(onSys);
     stream.removeEventListener('event', onEvent);
@@ -1485,7 +1492,7 @@ async function serveStream(req, res, record, options = {}) {
           stream.stop();
           streams.delete(stream.__key || stream.id);
         }
-      }, 30000);
+      }, STREAM_IDLE_MS);
     }
   };
   stream.refs++;

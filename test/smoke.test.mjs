@@ -352,6 +352,8 @@ const server = spawn(process.execPath, [path.join(import.meta.dirname, '..', 'se
     ANTIGRAVITY_ROOT: path.join(tmp, 'no-antigravity', 'brain'),
     DSH_NICKNAMES_FILE: path.join(tmp, 'nicknames.json'),
     DSH_POLL_MS: '150',
+    // Short, so a stream wrongly stopped for a client still attached shows within the test.
+    DSH_STREAM_IDLE_MS: '600',
   },
   stdio: ['ignore', 'pipe', 'pipe'],
   windowsHide: true,
@@ -733,6 +735,24 @@ try {
     }
   }
   if (chunk.length) fs.appendFileSync(fixture.liveLog, frame(chunk));
+
+  // Several clients on one session: one that drops abruptly (its request fires both
+  // 'error' and 'close') must not take the stream away from one still attached.
+  const stayPromise = readSse(
+    `${BASE}/api/stream?id=${fixture.liveId}`,
+    (ev) => ev.event === 'ev' && ev.data.t === 'say' && /STILL_POLLING/.test(ev.data.text || ''),
+    15000,
+  );
+  await sleep(500);
+  await readSse(`${BASE}/api/stream?id=${fixture.liveId}&lite=1`, () => true, 4000);
+  await sleep(1800); // three times the idle delay this server runs with
+  fs.appendFileSync(fixture.liveLog, frame([{
+    type: 'assistant/message', seq: 950, time: Date.now(), surfaceOp: 'append',
+    data: { turn: 9, step: 1, message: { role: 'assistant', content: [{ type: 'text', text: 'STILL_POLLING after another client dropped' }] } },
+  }]));
+  const stayed = await stayPromise;
+  check(stayed.some((e) => e.event === 'ev' && e.data.t === 'say' && /STILL_POLLING/.test(e.data.text || '')),
+    'a client that drops abruptly does not stop the stream for another still attached', String(stayed.length));
 
   const tail = await tailPromise;
   const tailEvents = tail.filter((e) => e.event === 'ev').map((e) => e.data);
