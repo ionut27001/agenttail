@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { buildFixture, frame, ev } from './fixture.mjs';
+import { buildFixture, frame, ev, FLASH_SOURCE } from './fixture.mjs';
 
 const PORT = 8899;
 const CDP = 9334;
@@ -161,6 +161,51 @@ const claudeLines = [
   { type: 'assistant', cwd: fixture.workspace, sessionId: claudeId, timestamp: new Date().toISOString(), message: { id: 'msg_cut', model: 'claude-sonnet-5-5', role: 'assistant', stop_reason: 'max_tokens', content: [{ type: 'text', text: 'An essay that stops mid-sen' }] } },
 ];
 fs.writeFileSync(path.join(claudeRoot, 'E--TEST', `${claudeId}.jsonl`), claudeLines.map((l) => JSON.stringify(l)).join('\n') + '\n');
+
+// Permission modes: a dsh session that switches into danger-full-access mid-run, and three Claude
+// transcripts whose latest prompt names a mode (bypass, a name nobody knows, one carrying an address).
+const permSwitchId = 'session-77777777-0000-0000-0000-000000000001';
+const permSwitchDir = path.join(fixture.sessionsRoot, '--tmp-fixture-workspace--', permSwitchId);
+fs.mkdirSync(permSwitchDir, { recursive: true });
+// Finished four minutes ago, so it sorts after the live fixtures and the older checks keep their picks.
+const permEv = (type, seq, data) => ({ type, seq, time: Date.now() - 240000 + seq * 1000, data });
+fs.writeFileSync(path.join(permSwitchDir, 'session.v4.jsonl.zstd'), frame([
+  { type: 'session', version: 4, id: permSwitchId, createdAt: Date.now() - 300000, cwd: fixture.workspace },
+  permEv('permission/preset', 0, { preset: 'workspace-write' }),
+  permEv('sandbox/mode', 1, { mode: 'workspace-write' }),
+  permEv('approval/policy', 2, { policy: 'ask' }),
+  permEv('turn/start', 3, { turn: 1 }),
+  permEv('step/start', 4, { turn: 1, step: 1 }),
+  { type: 'assistant/message', seq: 5, time: Date.now() - 235000, data: { turn: 1, step: 1, message: { role: 'assistant', source: FLASH_SOURCE, content: [{ type: 'text', text: 'Working with approvals on.' }] }, usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0 } } },
+  permEv('step/end', 6, { turn: 1, step: 1 }),
+  permEv('turn/end', 7, { turn: 1 }),
+  permEv('permission/preset', 8, { preset: 'danger-full-access' }),
+  permEv('sandbox/mode', 9, { mode: 'danger-full-access' }),
+  permEv('approval/policy', 10, { policy: 'never' }),
+  permEv('turn/start', 11, { turn: 2 }),
+  permEv('step/start', 12, { turn: 2, step: 1 }),
+  permEv('step/end', 13, { turn: 2, step: 1 }),
+  permEv('turn/end', 14, { turn: 2 }),
+]));
+fs.utimesSync(path.join(permSwitchDir, 'session.v4.jsonl.zstd'), new Date(Date.now() - 200000), new Date(Date.now() - 200000));
+const claudePermIds = { bypass: '44444444-0000-0000-0000-000000000001', odd: '44444444-0000-0000-0000-000000000002', leak: '44444444-0000-0000-0000-000000000003' };
+const LEAK_MODE = 'ada.lovelace@example.com';
+const claudePermSession = (id, title, mode, older) => {
+  const line = (extra) => ({ cwd: fixture.workspace, sessionId: id, timestamp: new Date(Date.now() - 3600000).toISOString(), ...extra });
+  const entries = [
+    line({ type: 'custom-title', customTitle: title }),
+    ...(older ? [line({ type: 'user', permissionMode: older, message: { role: 'user', content: 'An earlier prompt.' } })] : []),
+    line({ type: 'user', permissionMode: mode, message: { role: 'user', content: 'A later prompt.' } }),
+    line({ type: 'assistant', message: { id: `msg_${id.slice(-1)}`, model: 'claude-sonnet-5-5', role: 'assistant', content: [{ type: 'text', text: 'Replying.' }], usage: { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } } }),
+  ];
+  const file = path.join(claudeRoot, 'E--TEST', `${id}.jsonl`);
+  fs.writeFileSync(file, entries.map((l) => JSON.stringify(l)).join('\n') + '\n');
+  // An old file sorts after the first Claude fixture, whose cost the older checks read.
+  fs.utimesSync(file, new Date(Date.now() - 3600000), new Date(Date.now() - 3600000));
+};
+claudePermSession(claudePermIds.bypass, 'Claude bypass fixture', 'bypassPermissions', 'default');
+claudePermSession(claudePermIds.odd, 'Claude unknown mode fixture', 'futureMode');
+claudePermSession(claudePermIds.leak, 'Claude leaky mode fixture', LEAK_MODE);
 const edgePath = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
 const failures = [];
 const check = (cond, msg, extra) => {
@@ -1184,6 +1229,80 @@ try {
   await evalExpr(`location.hash = '${fixture.finishedId}'; true`);
   const hashSync = await waitFor(`document.getElementById('sourceSelect').value === 'dsh' && document.getElementById('sessionSelect').value === '${fixture.finishedId}'`, 20000);
   check(hashSync, 'URL hash drives both pickers');
+
+  console.log('\npermission modes');
+  const badgeOf = (selector) => `(() => { const b = document.querySelector(${JSON.stringify(selector)}); if (!b) return null; const cs = getComputedStyle(b); return { text: b.textContent, title: b.title, tier: b.dataset.tier, bg: cs.backgroundColor, weight: Number(cs.fontWeight), upper: b.textContent === b.textContent.toUpperCase() }; })()`;
+  const transparent = (c) => !c || /^rgba\(0, 0, 0, 0\)$|^transparent$/.test(c);
+  // The finished fixture runs workspace-write with approvals that ask: a quiet ASKS.
+  const quiet = await evalExpr(badgeOf('#permBadge .perm-badge'));
+  check(quiet && quiet.text === 'ASKS' && quiet.tier === 'asks' && transparent(quiet.bg), 'the header badge of a session that asks is a quiet ASKS', JSON.stringify(quiet));
+  check(/permission mode: workspace-write \+ ask/.test(quiet.title) && /risk tier: ASKS/.test(quiet.title) && /exact/.test(quiet.title), 'its tooltip gives the harness words, the tier and how current it is', quiet && quiet.title);
+  // A dsh session that switched into danger-full-access while it ran.
+  await evalExpr(`location.hash = '${permSwitchId}'; true`);
+  check(await waitFor(`document.getElementById('sessionSelect').value === '${permSwitchId}' && document.body.classList.contains('loading-session') === false && !!document.querySelector('#permBadge .perm-badge')`, 20000), 'the switched session opens');
+  await waitFor(`document.querySelector('#permBadge .perm-badge')?.dataset.tier === 'bypass'`, 8000);
+  const loud = await evalExpr(badgeOf('#permBadge .perm-badge'));
+  check(loud && loud.text === 'BYPASS' && loud.tier === 'bypass' && loud.upper && !transparent(loud.bg) && loud.weight >= 700, 'the header badge says BYPASS in capitals, filled and bold', JSON.stringify(loud));
+  check(loud && /permission mode: danger-full-access \+ never/.test(loud.title) && /skips the permission prompts/.test(loud.title) && /exact/.test(loud.title) && /full access/.test(loud.title), 'its tooltip gives the harness words, the tier, the full-access sandbox and "exact"', loud && loud.title);
+  check(await evalExpr(`document.querySelector('#permBadge .perm-badge').getBoundingClientRect().width > 30 && getComputedStyle(document.getElementById('permBadge')).display !== 'none'`), 'and it is visible at this window width');
+  check(await waitFor(`[...document.querySelectorAll('#chatLog .perm-alert')].some((e) => /^⚠ BYPASS: this session switched/.test(e.textContent) && /danger-full-access \\+ never/.test(e.textContent) && /was ASKS/.test(e.textContent))`, 8000), 'the switch is an alert line in the chat', await evalExpr(`[...document.querySelectorAll('#chatLog .perm-alert')].map((e) => e.textContent).join('|')`));
+  await evalExpr(`document.getElementById('chatViewLog').click(); true`);
+  await sleep(300);
+  check(await evalExpr(`document.querySelectorAll('#chatLog .log-row.perm-alert').length === 1`), 'and in the Log view');
+  await evalExpr(`document.getElementById('chatViewChat').click(); true`);
+  check(await evalExpr(`(() => { const b = window.__agenttailTerm.buffer.active; let s = ''; for (let i = 0; i < b.length; i++) s += b.getLine(i).translateToString(true) + '\\n'; return /BYPASS: this session switched/.test(s); })()`), 'and in the console');
+  // The picker.
+  await evalExpr(`document.getElementById('sessionButton').click(); true`);
+  await sleep(250);
+  const rowBadge = (id) => badgeOf(`#sessionMenu .session-item[data-session-id="${id}"] .perm-badge`);
+  const loudRow = await evalExpr(rowBadge(permSwitchId));
+  const quietRow = await evalExpr(rowBadge(fixture.finishedId));
+  check(loudRow && loudRow.text === 'BYPASS' && !transparent(loudRow.bg), 'the picker row of the switched session carries a loud BYPASS', JSON.stringify(loudRow));
+  check(quietRow && quietRow.text === 'ASKS' && transparent(quietRow.bg), 'and the finished fixture a quiet ASKS', JSON.stringify(quietRow));
+  check(/BYPASS/.test(await evalExpr(`[...document.getElementById('sessionSelect').options].find((o) => o.value === '${permSwitchId}').textContent`)), 'the native picker text names it too');
+  await evalExpr(`document.getElementById('sessionButton').click(); true`);
+  // The agents overview and the watch wall.
+  await evalExpr(`document.getElementById('coAgents').click(); true`);
+  check(await waitFor(`!!document.querySelector('.ag-card[data-key="dsh:${permSwitchId}"] .perm-badge')`, 8000), 'the agents overview shows the badge on the card');
+  const card = await evalExpr(badgeOf(`.ag-card[data-key="dsh:${permSwitchId}"] .perm-badge`));
+  check(card && card.text === 'BYPASS' && !transparent(card.bg) && /exact/.test(card.title), 'and it is the loud one', JSON.stringify(card));
+  await evalExpr(`document.getElementById('agentsClose').click(); true`);
+  await evalExpr(`window.__wall.open(window.__agents.data.groups.flatMap((g) => g.agents).filter((a) => a.id === '${permSwitchId}')); true`);
+  check(await waitFor(`window.__wall.open_ && !!document.querySelector('#wallGrid .wall-pane .wp-head .perm-badge')`, 8000), 'the watch wall pane header shows the badge');
+  const pane = await evalExpr(badgeOf('#wallGrid .wall-pane .wp-head .perm-badge'));
+  check(pane && pane.text === 'BYPASS' && !transparent(pane.bg), 'and it is BYPASS there too', JSON.stringify(pane));
+  await evalExpr(`window.__wall.close(); true`);
+  check(await waitFor(`!window.__wall.open_`, 3000), 'the wall closes again');
+
+  // Claude Code: the latest prompt decides; a name outside the table is shown as it is; stream mode redacts raw names.
+  await evalExpr(`(() => { const s = document.getElementById('sourceSelect'); s.value = 'claude'; s.dispatchEvent(new Event('change')); return true; })()`);
+  check(await waitFor(`!!document.querySelector('#permBadge') && document.getElementById('sourceSelect').value === 'claude' && document.getElementById('sessionSelect').options.length >= 4`, 20000), 'the Claude Code source lists the permission fixtures');
+  await evalExpr(`location.hash = 'claude:${claudePermIds.bypass}'; true`);
+  check(await waitFor(`document.querySelector('#permBadge .perm-badge')?.dataset.tier === 'bypass'`, 15000), 'a Claude session whose latest prompt is bypassPermissions (an older one default) is BYPASS');
+  const claudeLoud = await evalExpr(badgeOf('#permBadge .perm-badge'));
+  check(claudeLoud && claudeLoud.text === 'BYPASS' && !transparent(claudeLoud.bg) && /permission mode: bypassPermissions \(as of the last prompt\)/.test(claudeLoud.title), 'and its tooltip says "as of the last prompt"', claudeLoud && claudeLoud.title);
+  await evalExpr(`location.hash = 'claude:${claudePermIds.odd}'; true`);
+  check(await waitFor(`document.querySelector('#permBadge .perm-badge')?.textContent === 'futureMode'`, 15000), 'a mode name outside the table is shown as it is');
+  const neutral = await evalExpr(badgeOf('#permBadge .perm-badge'));
+  check(neutral && neutral.tier === 'neutral' && transparent(neutral.bg) && /not in the table/.test(neutral.title), 'in a neutral badge that says it is not in the table', JSON.stringify(neutral));
+  await evalExpr(`location.hash = 'claude:${claudePermIds.leak}'; true`);
+  check(await waitFor(`document.getElementById('sessionSelect').value === '${claudePermIds.leak}' && !document.body.classList.contains('loading-session')`, 15000), 'the session whose raw mode name holds an address opens');
+  await evalExpr(`document.getElementById('sessionButton').click(); true`);
+  await sleep(250);
+  const permSurface = await evalExpr(`(() => [
+    document.getElementById('permBadge').textContent, document.getElementById('permBadge').innerHTML,
+    ...[...document.querySelectorAll('#sessionMenu .session-item')].map((e) => e.textContent + '|' + e.title + '|' + e.innerHTML),
+    ...[...document.getElementById('sessionSelect').options].map((o) => o.textContent + '|' + o.title),
+    document.getElementById('sessionButton').title,
+  ].join('\\n'))()`);
+  check(typeof permSurface === 'string' && permSurface.length > 100 && !permSurface.includes('lovelace') && !permSurface.includes('example.com'), 'in stream mode the raw name carries no personal data in the header, picker rows or tooltips', String(permSurface).slice(0, 200));
+  check(await evalExpr(`!!document.querySelector('#permBadge .perm-badge')`), 'and the badge is still there');
+  await evalExpr(`document.getElementById('sessionButton').click(); true`);
+  const served = await (await fetch(`${BASE}/api/sessions?source=claude`)).text();
+  check(!served.includes('lovelace') && served.includes('futureMode'), 'the session list sends the redacted name, and the plain ones untouched');
+  await evalExpr(`(() => { const s = document.getElementById('sourceSelect'); s.value = 'dsh'; s.dispatchEvent(new Event('change')); return true; })()`);
+  await evalExpr(`location.hash = '${fixture.finishedId}'; true`);
+  check(await waitFor(`document.getElementById('sourceSelect').value === 'dsh' && document.getElementById('sessionSelect').value === '${fixture.finishedId}'`, 20000), 'back on the dsh fixture');
 
   console.log('\nchat overflow fixture');
   await evalExpr(`location.hash = '${chatSessionId}'; true`);

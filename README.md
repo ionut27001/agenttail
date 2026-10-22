@@ -94,6 +94,7 @@ Requirements: Node 24+, Windows, macOS or Linux. Windows is the tested platform;
 - ⌨️ **Console and job progress** — running spinner, elapsed time, collapsible multi-line commands, `(+N lines)` outputs, a live job bar and a `[n/N]` mini progress bar. Failed commands flash red and show `✗ COMMAND FAILED` for three seconds.
 - 💬 **Chat and Log** — Chat groups tool calls and thinking for reading; Log is the full trajectory for auditing (the **MD** button exports it as Markdown), with a summary per turn (model, tools by kind, files changed, failures, tokens, cost, duration). Agent replies render as markdown: headings, lists, tables, quotes, code and links.
 - 🔔 **Needs you** — every source says when an agent is blocked on you: an amber dot and `NEEDS YOU · permission · Bash` in the picker, a chip in the overview, an amber frame on the wall (that pane never shrinks), a count in the tab title and favicon, an optional desktop notification and one inbox for everything waiting. See [Needs you](#needs-you).
+- 🛡️ **Permission mode** — every session shows how much its agent may do without asking, in the harness's own words plus a risk tier: a quiet `ASKS`, `EDITS`, `REVIEWER`, `PLAN` or `REFUSES`, and a loud red `BYPASS`. It sits in the session picker, the session header, the agents overview and every watch wall pane, and a DeepSeek Harness session that switches into bypass mid-run gets an alert line in the chat, the log and the console. See [Permission modes](#permission-modes).
 - 👥 **Several agents at once** — an overview of every agent active in the last 30 minutes (dsh, Claude Code, Antigravity), grouped by git repository (worktrees count as the same repo), each with its own colour, branch, model and current action. The activity bar names the other agents on the repo you are viewing, and the tree marks the files they edited. `Alt+W` opens the [watch wall](#watching-several-agents).
 - 🎭 **Console on stage** — while the agent runs a command the console comes up over the editor; when it edits, the console goes back to its dock; when it has nothing to show it shrinks to a slim rail and the agent pane gets the room. Switch to a plain docked console from the console header.
 - 🐾 **Tail, the mascot** — the logo come to life: it reacts to what the agent does, thinks out loud while the model thinks and plays games on a long think. See [Meet Tail](#meet-tail).
@@ -221,6 +222,28 @@ Each signal says how it was seen (`acp`, status file, log, transcript) and how s
 | owned by agenttail (`--allow-control`) | a pending ACP permission request, known exactly | sure |
 
 One session is counted once however many signals saw it (an owned session shows up in the log and over ACP). Where it shows: the session picker (needs-you rows first), the agents overview, the watch wall, the tab title (`(2) ⚠ agenttail`) and favicon, an opt-in desktop notification (Settings, only while the tab is in the background) and the inbox button in the activity bar (`Alt+I`), which lists everything that needs you with **Open session**; for owned sessions it also has **Approve** and **Reject** in place. Tail perks up when something starts needing you. In stream mode every one of these shows the kind of wait and the tool name only, never a command or a path, and the inbox has no Approve or Reject buttons (control is locked).
+
+## Permission modes
+
+A badge says how much an agent may do without asking you. It shows the harness's own mode name in its tooltip and puts it in one of a few tiers, so `bypassPermissions`, `always-proceed` and `danger-full-access` + `never` all read `BYPASS`. The tier is always text, never colour alone. A mode name that is not in the table is shown as the harness wrote it, in a neutral badge, and is never guessed. A session whose settings span tiers takes the riskiest one.
+
+| Tier | DeepSeek Harness | Claude Code | Antigravity CLI | Antigravity editor |
+| --- | --- | --- | --- | --- |
+| `ASKS` | `workspace-write` + approval `ask` | `default`, `manual` | `toolPermission` `request-review`, `strict` | preset `REQUEST_REVIEW`; auto-execution `OFF`; non-workspace access `ASK` or `DENY` |
+| `EDITS` (edits on its own) | | `acceptEdits` | `proceed-in-sandbox`; `--mode accept-edits` | preset `AUTO`; auto-execution `AUTO` |
+| `REVIEWER` (a reviewer decides) | the `auto` review integration, with a full-access flag | `auto` | `--mode auto` | |
+| `PLAN` | preset `plan` | `plan` | `--mode plan` | |
+| `REFUSES` (refuses instead of asking) | | `dontAsk` | | |
+| `BYPASS` | `danger-full-access` + approval `never` | `bypassPermissions` | `always-proceed`, `--dangerously-skip-permissions` | preset `TURBO`; auto-execution `EAGER`; non-workspace access `ALLOW` |
+
+Every badge also says how current its reading is, because the sources differ:
+
+- **DeepSeek Harness: exact.** The log records the preset, the sandbox and the approval policy, including a switch in the middle of a session. Going from `workspace-write` to `danger-full-access` + `never` while the session runs adds one alert line, in the chat, the Log view and the console. A session that starts in bypass was not switched, so it has no alert. Each subagent session is its own log and keeps its own reading.
+- **Claude Code: as of the last prompt.** `permissionMode` is written on your prompts, so a switch (Shift+Tab) shows from the next prompt. A transcript with no mode has no badge.
+- **Antigravity CLI: as of process start.** The CLI's log names its `toolPermission` setting once, when the process starts, and agenttail reads only that value (plus a `--mode` value or `--dangerously-skip-permissions` when a startup line names one). A mode you cycle to inside the session is not logged, so the badge says it is the reading at process start. Only conversations whose process log is still on disk have a badge.
+- **Antigravity editor: configured.** The editor's settings file (`~/.gemini/config/config.json`, read-only, only the `permissionPreset`, `autoExecutionPolicy` and `nonWorkspaceFileAccessPolicy` keys of `userSettings`) says what is configured, not what a conversation did, so the tooltip reads "configured as".
+
+In stream mode the raw mode names go through the same redactor as everything else.
 
 ## Stream mode
 
@@ -351,7 +374,8 @@ Each entry takes `label`, `kind` (`dsh` or `acp`), `command` and `args` (absolut
 | `CLAUDE_PROJECTS_ROOT` | `~/.claude/projects` | Claude Code transcripts |
 | `AGENTTAIL_CLAUDE_SESSIONS_DIR` | `~/.claude/sessions` | Claude Code status files (status fields only) |
 | `ANTIGRAVITY_ROOT` | `~/.gemini/antigravity/brain` and `~/.gemini/antigravity-cli/brain` | One Antigravity brain folder to read instead of both |
-| `ANTIGRAVITY_CLI_DIR` | `~/.gemini/antigravity-cli` (the parent of `ANTIGRAVITY_ROOT` when that is set) | Antigravity CLI folder whose `log/` is read for needs-you |
+| `ANTIGRAVITY_CLI_DIR` | `~/.gemini/antigravity-cli` (the parent of `ANTIGRAVITY_ROOT` when that is set) | Antigravity CLI folder whose `log/` is read for needs-you and for the permission mode |
+| `ANTIGRAVITY_CONFIG_FILE` | `config/config.json` beside the CLI folder (`~/.gemini/config/config.json`) | The Antigravity editor's settings file, read for the permission mode of editor conversations |
 | `AGENTTAIL_NO_OPEN` | unset | Set `1` to skip opening the browser |
 
 `--allow-control`, `--no-open` and `--no-stream-mode` are accepted on the command line.
@@ -408,11 +432,11 @@ The control design and the dsh ACP evidence are recorded in [docs/dev/input-desi
 - `smoke` — dsh API/SSE, live/idle/finished states, stale-mtime growth, hysteresis, system user classification, nicknames, job output, sorting, source counts, sys samples, Host/Origin/Content-Type checks.
 - `roots` — allowlisted roots, junction follow/deny, opaque keys, traversal, touched deep paths, ignore list/show-hidden.
 - `redact` — every redaction category, IP:port/UUID/opaque-id rules, network boundaries, live `redact.json`, fail-closed and off mode, and a Claude Code and an Antigravity fixture whose every text field carries a token, a user name in a home path, an email and an IP, checked across every endpoint the page reads.
-- `sources` — Claude custom titles/subagents/thinking/pending live, replies counted once, turns and API-equivalent prices, Antigravity normalization, tokens, deletes and live tail.
+- `sources` — Claude custom titles/subagents/thinking/pending live, replies counted once, turns and API-equivalent prices, Antigravity normalization, tokens, deletes and live tail, and the permission mode of Claude Code, Antigravity CLI and dsh sessions (a bypass switch mid-run raises an alert).
 - `control` — opt-in gate (404), token (401), stream-mode lockout (403), foreign Origin (403), ACP start/message/approve/stop/close, queueing, audit-without-bodies.
 - `agents` — the agents overview API, repository and worktree grouping, colours, `/app/` asset security, stream tail and lite mode.
-- `attention` — the needs-you model and merge, dsh open asks (closed, `unavailable`, crashed), Claude Code status files (busy, each waiting reason, dead pid, unknown shape, a `.key` file left unread) and transcript rules, the Antigravity CLI log (open, answered, denied, a new message, an exited or reused process, a stale log, New Year), an owned session counted once, and the inbox endpoint.
-- `ui` — headless Edge: header, compact picker, meters, activity states, follow, tree legend/tooltips/show-hidden, skeleton/loading bar, chat Chat|Log and grouped tools, replay, splitter persistence, themes, the console stage, Tail and its ten games, the watch wall (panes, focus stage, chat modes, team tree, timeline, quiet agents, a Tail per pane), needs-you (header, tab title and favicon count, notification, picker, overview, wall, inbox, no command text), vendored assets, reduced motion and 900/720 px layouts.
+- `attention` — the needs-you model and merge, dsh open asks (closed, `unavailable`, crashed), Claude Code status files (busy, each waiting reason, dead pid, unknown shape, a `.key` file left unread) and transcript rules, the Antigravity CLI log (open, answered, denied, a new message, an exited or reused process, a stale log, New Year), an owned session counted once, the inbox endpoint, and the permission tier tables, the CLI log's `toolPermission` and flags, the editor settings file and a dsh log that switches into bypass.
+- `ui` — headless Edge: header, compact picker, meters, activity states, follow, tree legend/tooltips/show-hidden, skeleton/loading bar, chat Chat|Log and grouped tools, replay, splitter persistence, themes, the console stage, Tail and its ten games, the watch wall (panes, focus stage, chat modes, team tree, timeline, quiet agents, a Tail per pane), needs-you (header, tab title and favicon count, notification, picker, overview, wall, inbox, no command text), the permission badge (picker, header, overview, wall, loud BYPASS, no personal data), vendored assets, reduced motion and 900/720 px layouts.
 
 Build a standalone Windows exe and the package/portable archives with `node scripts/build-sea.mjs`. Artifacts go to `dist/` (git-ignored).
 
@@ -422,6 +446,7 @@ Build a standalone Windows exe and the package/portable archives with `node scri
 - Antigravity writes a command that is still running once and does not rewrite it when it ends, so agenttail can only show it as running with its partial output; the final output and exit code are not in the transcript.
 - Control starts one `dsh --profile acp` process per owned session, because the permission preset is process-level in dsh. ACP is automation-only: no plans, commands, terminals or client filesystem operations.
 - Sessions started outside agenttail are view-only; dsh rejects a second controller for an active session.
+- The permission mode of the Antigravity CLI comes from its log, which is not a documented interface: the `toolPermission` line is read as it has been seen, and a `--mode` or `--dangerously-skip-permissions` flag only counts when a startup line names it. The editor's settings file is shared and describes what is configured, not what one conversation did. DeepSeek Harness plan mode has not been seen in a log yet, so only a preset named `plan` is read as plan.
 - Needs-you for Claude Code relies on a status file Claude Code writes for itself; its layout is not a documented contract, so an unexpected shape means no signal and the transcript rules take over. A permission prompt is invisible in the transcript alone. Needs-you for the Antigravity CLI reads its log, which is not a documented interface either; it has been seen closing a prompt in print mode, so it stays probable until an interactive approval has been checked. The Antigravity editor has no signal. Browser notifications work only while the agenttail tab is open.
 - The tree is a snapshot (2,500 nodes, 12 levels); files created later appear when touched if their parent is known.
 - Peak/off-peak pricing ignores public holidays, and the DeepSeek cost is a list-price estimate, not a bill (the pro peak rate is taken as the flash 2x band); the Claude API-equivalent cost uses list prices (no batch, regional or long-context surcharges) and skips models without a list price; GPU metering needs `nvidia-smi`.

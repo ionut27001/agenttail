@@ -1,5 +1,20 @@
 # Unreleased
 
+- Permission mode: every session now shows how much its agent may do without
+  asking, in the harness's own words plus a risk tier (`ASKS`, `EDITS`,
+  `REVIEWER`, `PLAN`, `REFUSES`, `BYPASS`). BYPASS is red and in capitals, the
+  others are quiet, a mode name outside the table is shown as it is, and the
+  tooltip says how current the reading is. It appears in the session picker,
+  the session header, the agents overview and on every watch wall pane, for
+  DeepSeek Harness (exact, from the log's preset, sandbox and approval policy;
+  the `auto` review integration reads as a reviewer with a full-access flag),
+  Claude Code (as of the last prompt), the Antigravity CLI (as of process
+  start, from the `toolPermission` line of its own log) and the Antigravity
+  editor (as configured, from its settings file; `ANTIGRAVITY_CONFIG_FILE`
+  names it). A DeepSeek Harness session that switches into
+  `danger-full-access` with approvals off while it runs raises an alert line
+  in the chat, the Log view and the console.
+
 - Needs you: every session shows when its agent is waiting on you, not just
   working or idle, with no flags. DeepSeek Harness sessions from their open
   approval prompts in the log; Claude Code from its own status files (status

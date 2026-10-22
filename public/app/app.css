@@ -890,6 +890,15 @@
   #newSessionBtn.hidden { display: none; }
   .stat.model .v, .stat.perm .v { font-size: 10px; max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
   .stat.perm .v { color: var(--amber); max-width: 108px; }
+  /* Permission mode: a quiet tier badge, a loud one for BYPASS. The tier is always text, never colour alone. */
+  .perm-slot { display: inline-flex; align-items: center; flex: none; }
+  .perm-slot .perm-badge { margin: 0; }
+  .perm-badge { display: inline-block; flex: none; max-width: 170px; margin-right: 6px; padding: 0 5px; border: 1px solid var(--border); border-radius: 3px; color: var(--muted); font-size: 9px; font-weight: 600; letter-spacing: .06em; line-height: 14px; vertical-align: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: help; }
+  .perm-badge.tier-bypass { border-color: var(--red); background: var(--red); color: var(--bg); font-weight: 800; letter-spacing: .12em; }
+  .ag-meta .perm-badge, .wp-head .perm-badge { margin-right: 0; }
+  .perm-alert { font-weight: 700; letter-spacing: .04em; }
+  .wp-perm { display: inline-flex; flex: none; }
+  .wp-perm:empty { display: none; }
   #turnSparkWrap { display: inline-flex; align-items: center; gap: 5px; cursor: help; }
   #turnSparkWrap.hidden { display: none; }
   #turnSparkLabel { color: var(--muted); font-size: 9px; letter-spacing: .1em; }
