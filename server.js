@@ -32,6 +32,7 @@ const { version: VERSION } = require('./package.json');
 const { analyzeLog, restate } = require('./lib/session-analysis');
 const attention = require('./lib/attention');
 const problems = require('./lib/problems');
+const tiers = require('./lib/tiers');
 const { stateFrom, describe, LiveTracker, closeTurn, startTurn } = require('./lib/live');
 const { Nicknames } = require('./lib/nicknames');
 const { SysMonitor } = require('./lib/sys');
@@ -399,6 +400,7 @@ async function listSessions() {
       preset: analysis ? analysis.preset : null,
       policy: analysis ? analysis.policy : null,
       sandbox: analysis ? analysis.sandbox : null,
+      permission: analysis ? analysis.permission : tiers.unknown(),
       contextWindow: analysis ? analysis.contextWindow : null,
       lastTool: analysis ? analysis.lastTool : null,
       touched: analysis ? analysis.touched : [],
@@ -455,6 +457,9 @@ class SessionStream extends EventTarget {
     this.openSteps = new Map();
     this.openTurns = new Set();
     this.openApprovals = new Map(); // approval id -> { id, at, tool }: asked, not yet decided
+    this.alertPending = null; // a switch into the bypass tier not yet announced: { time, from }
+    this.perm = {}; // latest preset, sandbox and policy the log has set
+    this.permission = null; // lib/tiers.js reading of those, once the log has set one
     this.lastEndAt = 0;
     this.lastEventAt = 0;
     this.route = null; // { provider, model } of the latest request/context
@@ -521,11 +526,57 @@ class SessionStream extends EventTarget {
     this.problem = null;
     this.lastProblem = null;
     this.openApprovals.clear();
+    this.perm = {};
+    this.permission = null;
+    this.alertPending = null;
     this.offset = 0;
     this.pending = Buffer.alloc(0);
     this.carry = '';
     this.lastSeq = -1;
     this.failStreak = 0;
+  }
+
+  /** The reading from the stream's own events; the list's until the log has set one. */
+  permissionNow() {
+    return this.permission || this.record.permission || tiers.unknown();
+  }
+
+  /**
+   * Follow the preset, sandbox and approval-policy events. A switch into the
+   * bypass tier after the session had another reading is an alert of its own,
+   * so the page can say so where it is read (chat, log, console).
+   */
+  notePermission(ui) {
+    if (ui.t === 'preset') this.perm.preset = ui.preset;
+    else if (ui.t === 'sandbox') this.perm.sandbox = ui.mode;
+    else if (ui.t === 'policy') this.perm.policy = ui.policy;
+    else return;
+    const before = this.permission;
+    this.permission = tiers.fromDsh(this.perm);
+    // A switch writes the preset, the sandbox and the policy one after another: the
+    // alert waits for the whole burst so it names where the session ended up.
+    if (tiers.enteredBypass(before, this.permission) && !this.alertPending) this.alertPending = { time: ui.time, from: before.tier };
+  }
+
+  /** Say that the session switched into the bypass tier, once the events that set it have all been read. */
+  flushPermissionAlert() {
+    const pending = this.alertPending;
+    if (!pending) return;
+    this.alertPending = null;
+    const now = this.permission;
+    if (!now || now.tier !== 'bypass') return;
+    const alert = this.safeEvent({
+      t: 'permissionAlert',
+      time: pending.time,
+      tier: 'bypass',
+      from: pending.from,
+      names: now.names,
+      currency: 'exact',
+      fullAccess: now.fullAccess,
+    });
+    this.events.push(alert);
+    if (this.events.length > MAX_EVENTS) this.events.splice(0, this.events.length - MAX_EVENTS);
+    this.emit('event', alert);
   }
 
   async poll() {
@@ -694,7 +745,7 @@ class SessionStream extends EventTarget {
     this.live = s.state === 'live';
     const waiting = this.attentionNow(s);
     const problem = problems.forPage(this.problem);
-    const key = `${s.state}|${s.stateDetail}|${attention.key(waiting)}|${JSON.stringify(problem)}`;
+    const key = `${s.state}|${s.stateDetail}|${attention.key(waiting)}|${JSON.stringify(problem)}|${tiers.key(this.permissionNow())}`;
     if (key === this.statusKey) return;
     this.statusKey = key;
     this.emit('status', { ...statusFor(this), state: s.state, stateDetail: redactor.text(s.stateDetail), attention: waiting, problem });
@@ -785,6 +836,7 @@ class SessionStream extends EventTarget {
       this.pushProblem(ev);
       const ui = projectEvent(ev, this.route);
       if (!ui) continue;
+      if (this.alertPending && ui.t !== 'preset' && ui.t !== 'sandbox' && ui.t !== 'policy') this.flushPermissionAlert();
       if (ui.t === 'route') this.route = { provider: ui.provider, model: ui.model };
       this.mapPaths(ui);
       if (typeof ui.seq === 'number') {
@@ -844,6 +896,7 @@ class SessionStream extends EventTarget {
         this.jobTails.delete(ui.jobId);
       }
       if (ui.t === 'job' || ui.t === 'jobEnd') this.emitStatus();
+      if (ui.t === 'preset' || ui.t === 'sandbox' || ui.t === 'policy') this.notePermission(ui);
 
       if (ui.t === 'result' && !ui.isError) {
         const info = this.lastCommand;
@@ -863,6 +916,7 @@ class SessionStream extends EventTarget {
         }
       }
     }
+    this.flushPermissionAlert();
   }
 
   /** Fail closed: a redaction failure drops the event, never passes it raw. */
@@ -1105,6 +1159,7 @@ const streamKey = (record) => `${record.source || 'dsh'}:${record.id}`;
 function statusFor(stream) {
   return {
     live: !!stream.live,
+    permission: tiers.forPage(typeof stream.permissionNow === 'function' ? stream.permissionNow() : null),
     lastWriteAt: stream.lastWriteAt,
     size: stream.record?.size ?? stream.session?.size,
     jobs: stream.openJobs
@@ -1333,6 +1388,7 @@ async function serveStream(req, res, record, options = {}) {
       preset: record.preset || null,
       policy: record.policy || null,
       sandbox: record.sandbox || null,
+      permission: tiers.forPage(typeof stream.permissionNow === 'function' ? stream.permissionNow() : record.permission),
       owned: record.owned === true,
       attention: pageAttention(attention.merge(record.attention, ownedAttentionFor(record.source, record.id))),
       problem: stream.problem ? problems.forPage(stream.problem) : null,
@@ -1915,6 +1971,7 @@ const server = http.createServer(async (req, res) => {
             preset: s.preset ?? null,
             policy: s.policy ?? null,
             sandbox: s.sandbox ?? null,
+            permission: tiers.forPage(s.permission),
             owned: s.owned === true,
             ...(s.source === 'antigravity' ? { promptsVisible: s.promptsVisible === true } : {}),
             subagents: s.subagents ?? null,

@@ -184,7 +184,8 @@ const claudeResult = (n, id, content) => claudeEntry({
 fs.writeFileSync(claudeFile, [
   { type: 'custom-title', customTitle: marked('title'), sessionId: claudeId },
   { type: 'agent-name', agentName: marked('agent'), sessionId: claudeId },
-  claudeEntry({ type: 'user', timestamp: iso(1), uuid: 'u1', message: { role: 'user', content: marked('prompt') } }),
+  // The permission mode is a raw name from the log; the server redacts it like any other string.
+  claudeEntry({ type: 'user', timestamp: iso(1), uuid: 'u1', permissionMode: `${MARK.token}-${MARK.email}-${MARK.ip}`, message: { role: 'user', content: marked('prompt') } }),
   claudeEntry({ type: 'user', timestamp: iso(1.5), uuid: 'u2', message: { role: 'user', content: [{ type: 'text', text: marked('block prompt') }] } }),
   claudeReply(2, [
     { type: 'thinking', thinking: marked('thinking') },
@@ -473,6 +474,9 @@ try {
   leaks('GET /api/agents', agentsRes.text);
   check(agentsRes.text.includes(`claude:${claudeId}`) && agentsRes.text.includes(`antigravity:${agyId}`), 'the agents overview lists both fixtures (ids intact)');
   leaks('GET /api/sources', (await getText(BASE, '/api/sources')).text);
+  const modeRow = JSON.parse((await getText(BASE, '/api/sessions?source=claude')).text).sessions.find((x) => x.id === claudeId);
+  check(modeRow?.permission?.tier === 'neutral' && modeRow.permission.currency === 'last-prompt' && modeRow.permission.names.length === 1 && modeRow.permission.names[0].length > 0 && !MARKERS.some((m) => modeRow.permission.names[0].includes(m)),
+    'a raw permission mode name is still shown, with the markers masked', JSON.stringify(modeRow && modeRow.permission));
 
   for (const [source, id] of [['claude', claudeId], ['antigravity', agyId]]) {
     const q = `source=${source}&id=${id}`;

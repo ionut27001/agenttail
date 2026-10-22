@@ -15,6 +15,7 @@ const attention = require('../lib/attention.js');
 const claudeStatus = require('../lib/claude-status.js');
 const { analyzeEvents } = require('../lib/session-analysis.js');
 const agyStatus = require('../lib/antigravity-status.js');
+const tiers = require('../lib/tiers.js');
 
 // Antigravity CLI logs: glog lines in local time, one file per process named after its start.
 const pad = (n, w = 2) => String(n).padStart(w, '0');
@@ -268,6 +269,150 @@ try {
   check(guessAtt.certainty === 'guess' && !attention.notifiable(guessAtt) && attention.notifiable(waitAtt), 'with an unchecked process it is a quiet guess that never notifies', J(guessAtt));
   check(attention.antigravityAttention({ prompt: { tool: 'RunCommand', step: 2, since: now, startCheck: 'match' }, maxStep: 2 }).level === 'none', 'once its step is in the transcript it has been answered');
   check(attention.antigravityAttention({ prompt: null, maxStep: 3 }).level === 'none' && attention.antigravityAttention({ prompt: { tool: 'a b c', step: 1, since: now, startCheck: 'match' }, maxStep: 0 }).tool === undefined, 'no prompt is no signal, and an odd tool name is dropped');
+
+  /* --------------------------------------------------- permission modes --- */
+  console.log('\npermission modes');
+  const shape = (r) => `${r.tier}${r.fullAccess ? '+full' : ''}/${r.currency}/${r.names.join('+')}`;
+  const tcheck = (got, want, msg) => check(shape(got) === want, msg, shape(got));
+  tcheck(tiers.fromDsh({ preset: 'workspace-write', sandbox: 'workspace-write', policy: 'ask' }), 'asks/exact/workspace-write+ask', 'dsh: workspace-write with approvals that ask is asks');
+  tcheck(tiers.fromDsh({ preset: 'danger-full-access', sandbox: 'danger-full-access', policy: 'never' }), 'bypass+full/exact/danger-full-access+never', 'dsh: danger-full-access with approval never is BYPASS, with the full-access flag');
+  tcheck(tiers.fromDsh({ preset: 'auto', sandbox: 'danger-full-access', policy: 'ask' }), 'reviewer+full/exact/auto+danger-full-access+ask', 'dsh: the auto review integration is a reviewer, flagged full access');
+  tcheck(tiers.fromDsh({ preset: 'plan', sandbox: 'workspace-write', policy: 'ask' }), 'asks/exact/plan+workspace-write+ask', 'dsh: a session whose settings span tiers takes the riskiest (plan preset, asking pair)');
+  tcheck(tiers.fromDsh({ preset: 'plan' }), 'plan/exact/plan', 'dsh: plan mode is plan');
+  tcheck(tiers.fromDsh({ preset: 'custom', sandbox: 'workspace-write', policy: 'never' }), 'neutral/exact/custom+workspace-write+never', 'dsh: an unmatched pair (custom) is neutral and keeps its words');
+  tcheck(tiers.fromDsh({ preset: 'workspace-write', sandbox: 'danger-full-access', policy: 'never' }), 'bypass+full/exact/workspace-write+danger-full-access+never', 'dsh: a preset that lags behind a switch never reads safer than the sandbox and policy');
+  tcheck(tiers.fromDsh({}), 'neutral/unknown/', 'dsh: no event is no reading');
+  tcheck(tiers.fromClaude('default'), 'asks/last-prompt/default', 'Claude Code: default asks');
+  tcheck(tiers.fromClaude('manual'), 'asks/last-prompt/manual', 'Claude Code: manual asks');
+  tcheck(tiers.fromClaude('acceptEdits'), 'edits/last-prompt/acceptEdits', 'Claude Code: acceptEdits edits on its own');
+  tcheck(tiers.fromClaude('auto'), 'reviewer/last-prompt/auto', 'Claude Code: auto is a reviewer');
+  tcheck(tiers.fromClaude('plan'), 'plan/last-prompt/plan', 'Claude Code: plan is plan');
+  tcheck(tiers.fromClaude('dontAsk'), 'refuses/last-prompt/dontAsk', 'Claude Code: dontAsk refuses instead of asking');
+  tcheck(tiers.fromClaude('bypassPermissions'), 'bypass/last-prompt/bypassPermissions', 'Claude Code: bypassPermissions is BYPASS');
+  tcheck(tiers.fromClaude('constructor'), 'neutral/last-prompt/constructor', 'Claude Code: a name that is an Object member is still just an unknown name');
+  tcheck(tiers.fromClaude(undefined), 'neutral/unknown/', 'Claude Code: no mode is no reading');
+  tcheck(tiers.fromAgyCli({ toolPermission: 'request-review' }), 'asks/process-start/request-review', 'Antigravity CLI: request-review asks');
+  tcheck(tiers.fromAgyCli({ toolPermission: 'strict' }), 'asks/process-start/strict', 'Antigravity CLI: strict asks');
+  tcheck(tiers.fromAgyCli({ toolPermission: 'proceed-in-sandbox' }), 'edits/process-start/proceed-in-sandbox', 'Antigravity CLI: proceed-in-sandbox edits on its own');
+  tcheck(tiers.fromAgyCli({ toolPermission: 'always-proceed' }), 'bypass/process-start/always-proceed', 'Antigravity CLI: always-proceed is BYPASS');
+  tcheck(tiers.fromAgyCli({ toolPermission: 'request-review', skipPermissions: true }), 'bypass/process-start/request-review+--dangerously-skip-permissions', 'Antigravity CLI: the skip flag is BYPASS over any setting');
+  tcheck(tiers.fromAgyCli({ toolPermission: 'request-review', mode: 'plan' }), 'asks/process-start/request-review+plan', 'Antigravity CLI: --mode and the setting span tiers, the riskiest wins');
+  tcheck(tiers.fromAgyCli({ toolPermission: 'no-such-setting' }), 'neutral/process-start/no-such-setting', 'Antigravity CLI: an unknown setting is neutral');
+  tcheck(tiers.fromAgyEditor({ permissionPreset: 'AGENT_PERMISSION_PRESET_TURBO', autoExecutionPolicy: 'CASCADE_COMMANDS_AUTO_EXECUTION_EAGER', nonWorkspaceFileAccessPolicy: 'AGENT_SETTING_POLICY_ALLOW' }), 'bypass/configured/AGENT_PERMISSION_PRESET_TURBO+CASCADE_COMMANDS_AUTO_EXECUTION_EAGER+AGENT_SETTING_POLICY_ALLOW', 'Antigravity editor: TURBO, EAGER and ALLOW are BYPASS, configured, in the editor\'s own words');
+  tcheck(tiers.fromAgyEditor({ permissionPreset: 'REQUEST_REVIEW', autoExecutionPolicy: 'OFF', nonWorkspaceFileAccessPolicy: 'ASK' }), 'asks/configured/REQUEST_REVIEW+OFF+ASK', 'Antigravity editor: REQUEST_REVIEW, OFF and ASK ask');
+  tcheck(tiers.fromAgyEditor({ nonWorkspaceFileAccessPolicy: 'DENY' }), 'asks/configured/DENY', 'Antigravity editor: DENY asks');
+  tcheck(tiers.fromAgyEditor({ permissionPreset: 'AUTO', autoExecutionPolicy: 'AUTO' }), 'edits/configured/AUTO', 'Antigravity editor: AUTO and AUTO edit on their own');
+  tcheck(tiers.fromAgyEditor({ permissionPreset: 'TURBO', autoExecutionPolicy: 'OFF', nonWorkspaceFileAccessPolicy: 'ASK' }), 'bypass/configured/TURBO+OFF+ASK', 'Antigravity editor: one bypass setting makes it BYPASS');
+  tcheck(tiers.fromAgyEditor({ permissionPreset: 'DEFAULT' }), 'neutral/configured/DEFAULT', 'Antigravity editor: DEFAULT is neutral');
+  tcheck(tiers.fromAgyEditor({ permissionPreset: 'VETTED' }), 'neutral/configured/VETTED', 'Antigravity editor: VETTED is neutral');
+  tcheck(tiers.fromAgyEditor({ permissionPreset: 'NONE', autoExecutionPolicy: 'OFF' }), 'asks/configured/NONE+OFF', 'Antigravity editor: a neutral name never outvotes a known tier');
+  tcheck(tiers.fromAgyEditor({}), 'neutral/unknown/', 'Antigravity editor: no keys is no reading');
+  const paged = tiers.forPage({ tier: 'not-a-tier', currency: 'sometime', names: ['a@example.com', 'x'.repeat(200), 7, null], fullAccess: 'yes' }, (s) => s.replace(/@.*/, '@redacted'));
+  check(paged.tier === 'neutral' && paged.currency === 'unknown' && paged.fullAccess === false && paged.names.length === 2 && paged.names[0] === 'a@redacted' && paged.names[1] === '[long name]', 'what the page gets uses the fixed vocabulary, a short list of names (a long one is replaced, never cut), and the redactor over them', J(paged));
+  check(tiers.enteredBypass({ tier: 'asks' }, { tier: 'bypass' }) && !tiers.enteredBypass(null, { tier: 'bypass' }) && !tiers.enteredBypass({ tier: 'bypass' }, { tier: 'bypass' }) && !tiers.enteredBypass({ tier: 'asks' }, { tier: 'reviewer' }), 'only a switch from another reading into bypass is an alert');
+
+  const dshAnalysis = analyzeEvents([
+    at('permission/preset', 1, { preset: 'workspace-write' }, now - 50000),
+    at('sandbox/mode', 2, { mode: 'workspace-write' }, now - 49000),
+    at('approval/policy', 3, { policy: 'ask' }, now - 48000),
+    at('permission/preset', 4, { preset: 'danger-full-access' }, now - 30000),
+    at('sandbox/mode', 5, { mode: 'danger-full-access' }, now - 29000),
+    at('approval/policy', 6, { policy: 'never' }, now - 28000),
+  ], now);
+  check(dshAnalysis.permission.tier === 'bypass' && dshAnalysis.permission.currency === 'exact' && dshAnalysis.permission.fullAccess === true, 'the log analysis reads the latest of the three events: after the switch it is BYPASS', J(dshAnalysis.permission));
+  check(analyzeEvents([at('permission/preset', 1, { preset: 'workspace-write' }, now - 50000), at('sandbox/mode', 2, { mode: 'workspace-write' }, now - 49000), at('approval/policy', 3, { policy: 'ask' }, now - 48000)], now).permission.tier === 'asks', 'and before it, asks');
+
+  // The Antigravity CLI log: toolPermission and flags at process start, the conversations served.
+  const pm = agyStatus.parseLog([
+    agyStart(t0, 77),
+    glog(t0 + 5, 'args: [agy --dangerously-skip-permissions --mode plan]'),
+    glog(t0 + 10, 'CLI settings initialized: permissions=<nil>, toolPermission=always-proceed'),
+    agySent(t0 + 1000, C1),
+    glog(t0 + 2000, 'prompt text: --mode auto --dangerously-skip-permissions toolPermission=strict'),
+    glog(t0 + 3000, 'CLI settings initialized: permissions=<nil>, toolPermission=strict'),
+    agySent(t0 + 4000, C2),
+  ].join('\n'), agyLogName(t0));
+  check(pm.toolPermission === 'always-proceed' && pm.skipPermissions === true && pm.mode === 'plan', 'the log gives the setting and the startup flags, and the first reading stands', J(pm));
+  check(pm.served.length === 2 && pm.served.includes(C1) && pm.served.includes(C2), 'and the conversations the process served', J(pm.served));
+  const plain = agyStatus.parseLog([agyStart(t0, 78), glog(t0 + 10, 'CLI settings initialized: permissions=<nil>, toolPermission=request-review'), agySent(t0 + 1000, C1)].join('\n'), agyLogName(t0));
+  check(plain.toolPermission === 'request-review' && plain.skipPermissions === false && plain.mode === null, 'without flags only the setting is known', J(plain));
+  const secret = agyStatus.parseLog([agyStart(t0, 79), glog(t0 + 10, 'CLI settings initialized: permissions=<nil>, toolPermission=request-review SECRET_TEXT=hunter2 and more'), agySent(t0 + 1000, C1)].join('\n'), agyLogName(t0));
+  check(secret.toolPermission === 'request-review' && !J(secret).includes('hunter2') && !J(secret).includes('SECRET_TEXT'), 'only the value is kept, never the rest of the line', J(secret));
+  check(agyStatus.parseLog(agyStart(t0, 80) + '\n' + glog(t0 + 10, 'CLI settings initialized: toolPermission=' + 'x'.repeat(90)), agyLogName(t0)).toolPermission === null, 'a value that is not a short plain token is not kept');
+
+  const agyPerm = path.join(tmp, 'agy-cli-permission');
+  fs.mkdirSync(path.join(agyPerm, 'log'), { recursive: true });
+  const writePermLog = (ms, pid, setting, convs) => fs.writeFileSync(path.join(agyPerm, 'log', agyLogName(ms)),
+    [agyStart(ms, pid), glog(ms + 10, `CLI settings initialized: permissions=<nil>, toolPermission=${setting}`), ...convs.map((c, i) => agySent(ms + 100 + i, c))].join('\n') + '\n');
+  writePermLog(now - 3 * 86400000, 1, 'request-review', [C1, C2]);
+  writePermLog(now - 2 * 86400000, 2, 'always-proceed', [C1]);
+  const perms = await agyStatus.readPermissions({ dir: agyPerm, now, fresh: true, alive: () => false, startTimes: null });
+  check(perms.get(C1)?.toolPermission === 'always-proceed' && perms.get(C2)?.toolPermission === 'request-review', 'the latest process to serve a conversation decides, dead or alive, in logs older than a day', J([...perms]));
+  check(!(await agyStatus.readPrompts({ dir: agyPerm, now, fresh: true, alive: () => true, startTimes: null })).size, 'and logs that old still offer no open prompt');
+  agyStatus.resetCache();
+
+  // The editor's settings file: only the three keys, from userSettings.
+  const cfgFile = path.join(tmp, 'agy-editor', 'config.json');
+  fs.mkdirSync(path.dirname(cfgFile), { recursive: true });
+  fs.writeFileSync(cfgFile, J({ userSettings: { permissionPreset: 'AGENT_PERMISSION_PRESET_TURBO', autoExecutionPolicy: 'CASCADE_COMMANDS_AUTO_EXECUTION_EAGER', nonWorkspaceFileAccessPolicy: 'AGENT_SETTING_POLICY_ALLOW', apiKey: 'SECRET_KEY_VALUE', trustedWorkspaces: ['/x'] }, token: 'SECRET_TOKEN' }));
+  const settings = await agyStatus.readEditorSettings(cfgFile);
+  check(J(Object.keys(settings).sort()) === J(['autoExecutionPolicy', 'nonWorkspaceFileAccessPolicy', 'permissionPreset']) && !J(settings).includes('SECRET'), 'the editor settings read gives those three keys and nothing else', J(settings));
+  check(await agyStatus.readEditorSettings(path.join(tmp, 'agy-editor', 'missing.json')) === null, 'a missing settings file is no reading');
+  fs.writeFileSync(cfgFile, '{ not json');
+  check(await agyStatus.readEditorSettings(cfgFile) === null, 'and so is a file caught mid-save');
+  fs.writeFileSync(cfgFile, J({ userSettings: { theme: 'dark' } }));
+  check(await agyStatus.readEditorSettings(cfgFile) === null, 'and one without the keys');
+  const envKeep = { cfg: process.env.ANTIGRAVITY_CONFIG_FILE, cli: process.env.ANTIGRAVITY_CLI_DIR, root: process.env.ANTIGRAVITY_ROOT };
+  const restoreEnv = (name, value) => { if (value === undefined) delete process.env[name]; else process.env[name] = value; };
+  delete process.env.ANTIGRAVITY_CONFIG_FILE;
+  process.env.ANTIGRAVITY_CLI_DIR = path.join(tmp, 'agy-home', 'antigravity-cli');
+  check(agyStatus.editorSettingsFile() === path.join(tmp, 'agy-home', 'config', 'config.json'), 'by default the settings file sits beside the CLI folder, so moving that folder moves this');
+  process.env.ANTIGRAVITY_CONFIG_FILE = cfgFile;
+  check(agyStatus.editorSettingsFile() === cfgFile, 'and ANTIGRAVITY_CONFIG_FILE names it outright');
+
+  // An editor conversation reads the settings file; a CLI conversation never does.
+  const agyEd = path.join(tmp, 'agy-editor-sessions');
+  const edBrain = path.join(agyEd, 'antigravity', 'brain');
+  const edConv = 'abababab-abab-abab-abab-abababababab';
+  fs.mkdirSync(path.join(edBrain, edConv, '.system_generated', 'logs'), { recursive: true });
+  fs.writeFileSync(path.join(edBrain, edConv, '.system_generated', 'logs', 'transcript.jsonl'), J({ step_index: 0, type: 'USER_INPUT', created_at: new Date().toISOString(), content: '<USER_REQUEST>\nEdit things\n</USER_REQUEST>' }) + '\n');
+  process.env.ANTIGRAVITY_ROOT = edBrain;
+  process.env.ANTIGRAVITY_CLI_DIR = path.join(agyEd, 'antigravity-cli');
+  const agyLib = require('../lib/antigravity.js');
+  const setEditor = (userSettings) => { fs.writeFileSync(cfgFile, J({ userSettings })); agyStatus.resetCache(); };
+  setEditor({ permissionPreset: 'AGENT_PERMISSION_PRESET_TURBO', autoExecutionPolicy: 'CASCADE_COMMANDS_AUTO_EXECUTION_EAGER', nonWorkspaceFileAccessPolicy: 'AGENT_SETTING_POLICY_ALLOW' });
+  let edRec = (await agyLib.listSessions({})).find((s) => s.id === edConv);
+  check(!!edRec && edRec.permission.tier === 'bypass' && edRec.permission.currency === 'configured' && edRec.promptsVisible === false, 'an editor conversation reads TURBO / EAGER / ALLOW as BYPASS, configured', J(edRec && edRec.permission));
+  setEditor({ permissionPreset: 'REQUEST_REVIEW', autoExecutionPolicy: 'OFF', nonWorkspaceFileAccessPolicy: 'ASK' });
+  edRec = (await agyLib.listSessions({})).find((s) => s.id === edConv);
+  check(edRec.permission.tier === 'asks' && edRec.permission.currency === 'configured' && edRec.permission.names.join() === 'REQUEST_REVIEW,OFF,ASK', 'and REQUEST_REVIEW / OFF / ASK as asks, after the file changes', J(edRec.permission));
+  fs.rmSync(cfgFile);
+  agyStatus.resetCache();
+  edRec = (await agyLib.listSessions({})).find((s) => s.id === edConv);
+  check(edRec.permission.currency === 'unknown' && edRec.permission.names.length === 0, 'with no settings file there is no reading');
+  const edStream = agyLib.open(edRec, { mapPath: (cwd, p) => p, redactor: { event: (e) => e, text: (v) => v }, maxEvents: 100 });
+  setEditor({ permissionPreset: 'TURBO' });
+  await edStream._poll();
+  check(edStream.permissionNow().tier === 'bypass', 'an open stream follows the settings file on its next poll', J(edStream.permissionNow()));
+  // A CLI conversation, same machine: never the editor's file, only its own process log.
+  const cliHome = path.join(tmp, 'agy-cli-home');
+  const cliBrain = path.join(cliHome, 'brain');
+  fs.mkdirSync(path.join(cliBrain, edConv, '.system_generated', 'logs'), { recursive: true });
+  fs.copyFileSync(path.join(edBrain, edConv, '.system_generated', 'logs', 'transcript.jsonl'), path.join(cliBrain, edConv, '.system_generated', 'logs', 'transcript.jsonl'));
+  process.env.ANTIGRAVITY_ROOT = cliBrain;
+  process.env.ANTIGRAVITY_CLI_DIR = cliHome;
+  agyStatus.resetCache();
+  let cliRec = (await agyLib.listSessions({})).find((s) => s.id === edConv);
+  check(cliRec.permission.currency === 'unknown' && cliRec.permission.names.length === 0, 'a CLI conversation whose process log is gone is not given the editor\'s settings', J(cliRec.permission));
+  fs.mkdirSync(path.join(cliHome, 'log'), { recursive: true });
+  fs.writeFileSync(path.join(cliHome, 'log', agyLogName(t0)), [agyStart(t0, 5), glog(t0 + 10, 'CLI settings initialized: permissions=<nil>, toolPermission=always-proceed'), agySent(t0 + 100, edConv)].join('\n') + '\n');
+  agyStatus.resetCache();
+  cliRec = (await agyLib.listSessions({})).find((s) => s.id === edConv);
+  check(cliRec.permission.tier === 'bypass' && cliRec.permission.currency === 'process-start', 'and with it, the process\'s own setting', J(cliRec.permission));
+  restoreEnv('ANTIGRAVITY_CONFIG_FILE', envKeep.cfg);
+  restoreEnv('ANTIGRAVITY_CLI_DIR', envKeep.cli);
+  restoreEnv('ANTIGRAVITY_ROOT', envKeep.root);
+  agyStatus.resetCache();
 
   /* -------------------------------------------------- status-file reader --- */
   console.log('\nthe Claude Code status-file reader');

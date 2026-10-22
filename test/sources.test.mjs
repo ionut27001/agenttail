@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { frame } from './fixture.mjs';
 
 const PORT = 8894;
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -250,6 +251,127 @@ const old = new Date(now - 600000);
 fs.utimesSync(agyLog(agyPairConv), old, old);
 fs.utimesSync(agyLog(agyFullConv), old, old);
 fs.utimesSync(agyFile, old, old);
+
+// Permission modes: how much each agent may do without asking (lib/tiers.js).
+// Claude Code writes permissionMode on its prompts; the latest one counts.
+const claudeBypassId = '33333333-aaaa-bbbb-cccc-000000000001';
+const claudeOddId = '33333333-aaaa-bbbb-cccc-000000000002';
+const claudeNoModeId = '33333333-aaaa-bbbb-cccc-000000000003';
+const claudePrompt = (id, text, offset, extra = {}) => ({ type: 'user', cwd: workspace, sessionId: id, timestamp: iso(offset), message: { role: 'user', content: text }, ...extra });
+const claudeReply = (id, text, offset, n) => ({ type: 'assistant', cwd: workspace, sessionId: id, timestamp: iso(offset), message: { id: `msg_perm_${id.slice(-1)}_${n}`, model: 'claude-opus-5-5', role: 'assistant', stop_reason: 'end_turn', content: [{ type: 'text', text }], usage: { input_tokens: 1, output_tokens: 1 } } });
+const writeClaude = (id, lines) => {
+  const file = path.join(project, `${id}.jsonl`);
+  fs.writeFileSync(file, lines.map((l) => JSON.stringify(l)).join('\n') + '\n');
+  fs.utimesSync(file, old, old);
+};
+writeClaude(claudeBypassId, [
+  claudePrompt(claudeBypassId, 'Start safely.', 1, { permissionMode: 'default' }),
+  claudeReply(claudeBypassId, 'On it.', 2, 1),
+  claudePrompt(claudeBypassId, 'Now skip the prompts.', 3, { permissionMode: 'bypassPermissions' }),
+  claudeReply(claudeBypassId, 'Skipping.', 4, 2),
+]);
+writeClaude(claudeOddId, [
+  claudePrompt(claudeOddId, 'A mode this build does not know.', 1, { permissionMode: 'futureMode' }),
+  claudeReply(claudeOddId, 'Fine.', 2, 1),
+]);
+writeClaude(claudeNoModeId, [
+  claudePrompt(claudeNoModeId, 'No mode recorded.', 1),
+  claudeReply(claudeNoModeId, 'Fine.', 2, 1),
+]);
+
+// Antigravity CLI logs: one per process, naming the conversations it served and its toolPermission.
+const pad2 = (n, w = 2) => String(n).padStart(w, '0');
+const glog = (ms, text) => { const d = new Date(ms); return `I${pad2(d.getMonth() + 1)}${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}.${pad2(d.getMilliseconds(), 3)}000     1 x.go:1] ${text}`; };
+const cliLogName = (ms) => { const d = new Date(ms); return `cli-${d.getFullYear()}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}_${pad2(d.getHours())}${pad2(d.getMinutes())}${pad2(d.getSeconds())}.log`; };
+const agyFlagConv = 'aaaaaaaa-bbbb-cccc-dddd-000000000004';
+const agyModeConv = 'aaaaaaaa-bbbb-cccc-dddd-000000000005';
+const agyQuotedConv = 'aaaaaaaa-bbbb-cccc-dddd-000000000006';
+for (const conv of [agyFlagConv, agyModeConv, agyQuotedConv]) {
+  fs.mkdirSync(path.dirname(agyLog(conv)), { recursive: true });
+  fs.writeFileSync(agyLog(conv), JSON.stringify({ step_index: 0, source: 'USER_EXPLICIT', type: 'USER_INPUT', created_at: iso(1), content: '<USER_REQUEST>\nA permission fixture\n</USER_REQUEST>' }) + '\n');
+  fs.utimesSync(agyLog(conv), old, old);
+}
+fs.mkdirSync(path.join(agyRoot, 'log'), { recursive: true });
+const writeCliLog = (hoursAgo, pid, toolPermission, convs, { startup = [], later = [] } = {}) => {
+  const at = now - hoursAgo * 3600000;
+  const lines = [
+    glog(at, `Starting language server process with pid ${pid}`),
+    ...startup.map((t, i) => glog(at + 10 + i, t)),
+    ...(toolPermission ? [glog(at + 50, `CLI settings initialized: permissions=<nil>, toolPermission=${toolPermission}`)] : []),
+    ...convs.map((c, i) => glog(at + 100 + i, `Sending user message to conversation ${c} (items=1, media=0)`)),
+    ...later.map((t, i) => glog(at + 500 + i, t)),
+  ];
+  fs.writeFileSync(path.join(agyRoot, 'log', cliLogName(at)), lines.join('\n') + '\n');
+};
+// The older process asked; the newer one served the same conversation and proceeds always.
+writeCliLog(5, 9001, 'request-review', [agyConv, agyPairConv], { later: ['Tool args: --dangerously-skip-permissions typed in a prompt'] });
+writeCliLog(4, 9002, 'always-proceed', [agyPairConv]);
+writeCliLog(3, 9003, 'request-review', [agyFlagConv], { startup: ['args: [agy --dangerously-skip-permissions]'] });
+writeCliLog(2, 9004, 'request-review', [agyModeConv], { startup: ['args: [agy --mode accept-edits]'] });
+writeCliLog(1, 9005, 'strict', [agyQuotedConv], { later: ['user typed --mode plan and --dangerously-skip-permissions'] });
+
+// DeepSeek Harness: the mode is set by events in the log, and a switch is an event too.
+const dshWs = path.join(dshRoot, '--tmp-perm-workspace--');
+const dshSwitchId = 'session-aaaaaaaa-0000-0000-0000-000000000001';
+const dshStartsBypassId = 'session-aaaaaaaa-0000-0000-0000-000000000002';
+const dshAutoId = 'session-aaaaaaaa-0000-0000-0000-000000000003';
+const dshCustomId = 'session-aaaaaaaa-0000-0000-0000-000000000004';
+const dshSession = (id) => ({ type: 'session', version: 4, id, createdAt: now - 120000, cwd: workspace, isSeeded: false, delegationDepth: 0, agentPreset: 'standard' });
+const dshEv = (type, seq, data) => ({ type, seq, time: now - 90000 + seq * 1000, data });
+const writeDsh = (id, events) => {
+  fs.mkdirSync(path.join(dshWs, id), { recursive: true });
+  fs.writeFileSync(path.join(dshWs, id, 'session.v4.jsonl.zstd'), frame(events));
+};
+writeDsh(dshSwitchId, [
+  dshSession(dshSwitchId),
+  dshEv('permission/preset', 0, { preset: 'workspace-write' }),
+  dshEv('sandbox/mode', 1, { mode: 'workspace-write' }),
+  dshEv('approval/policy', 2, { policy: 'ask' }),
+  dshEv('turn/start', 3, { turn: 1 }),
+  dshEv('step/start', 4, { turn: 1, step: 1 }),
+  dshEv('step/end', 5, { turn: 1, step: 1 }),
+  dshEv('turn/end', 6, { turn: 1 }),
+  dshEv('permission/preset', 7, { preset: 'danger-full-access' }),
+  dshEv('sandbox/mode', 8, { mode: 'danger-full-access' }),
+  dshEv('approval/policy', 9, { policy: 'never' }),
+  dshEv('turn/start', 10, { turn: 2 }),
+  dshEv('step/start', 11, { turn: 2, step: 1 }),
+  dshEv('step/end', 12, { turn: 2, step: 1 }),
+  dshEv('turn/end', 13, { turn: 2 }),
+]);
+const dshLiveId = 'session-aaaaaaaa-0000-0000-0000-000000000005';
+writeDsh(dshLiveId, [
+  dshSession(dshLiveId),
+  dshEv('permission/preset', 0, { preset: 'workspace-write' }),
+  dshEv('sandbox/mode', 1, { mode: 'workspace-write' }),
+  dshEv('approval/policy', 2, { policy: 'ask' }),
+  dshEv('turn/start', 3, { turn: 1 }),
+  dshEv('step/start', 4, { turn: 1, step: 1 }),
+]);
+writeDsh(dshStartsBypassId, [
+  dshSession(dshStartsBypassId),
+  dshEv('permission/preset', 0, { preset: 'danger-full-access' }),
+  dshEv('sandbox/mode', 1, { mode: 'danger-full-access' }),
+  dshEv('approval/policy', 2, { policy: 'never' }),
+  dshEv('turn/start', 3, { turn: 1 }),
+  dshEv('turn/end', 4, { turn: 1 }),
+]);
+writeDsh(dshAutoId, [
+  dshSession(dshAutoId),
+  dshEv('permission/preset', 0, { preset: 'auto' }),
+  dshEv('sandbox/mode', 1, { mode: 'danger-full-access' }),
+  dshEv('approval/policy', 2, { policy: 'ask' }),
+  dshEv('turn/start', 3, { turn: 1 }),
+  dshEv('turn/end', 4, { turn: 1 }),
+]);
+writeDsh(dshCustomId, [
+  dshSession(dshCustomId),
+  dshEv('permission/preset', 0, { preset: 'custom' }),
+  dshEv('sandbox/mode', 1, { mode: 'workspace-write' }),
+  dshEv('approval/policy', 2, { policy: 'never' }),
+  dshEv('turn/start', 3, { turn: 1 }),
+  dshEv('turn/end', 4, { turn: 1 }),
+]);
 
 const server = spawn(process.execPath, [path.join(import.meta.dirname, '..', 'server.js')], {
   env: {
@@ -646,6 +768,92 @@ try {
   check(!!agyAgent && agyAgent.touched.some((t) => t.path.endsWith('notes.md')) && !!agyAgent.activity, 'Antigravity reports its last action and written files', JSON.stringify(agyAgent));
   const pairAgent = (agents.body.groups || []).flatMap((g) => g.agents).find((a) => a.source === 'antigravity' && a.id === agyPairConv);
   check(pairAgent?.activity?.name === 'job_output' && /node serve\.js/.test(pairAgent.activity.label), 'the agents overview names the last tool the same way', JSON.stringify(pairAgent?.activity));
+
+  console.log('\npermission modes');
+  const tierOf = (s) => s && s.permission && s.permission.tier;
+  const claudePerm = (await getJson('/api/sessions?source=claude')).body.sessions;
+  const bypassSession = claudePerm.find((s) => s.id === claudeBypassId);
+  check(bypassSession?.permission?.tier === 'bypass' && bypassSession.permission.currency === 'last-prompt' && JSON.stringify(bypassSession.permission.names) === '["bypassPermissions"]' && bypassSession.permission.fullAccess === false,
+    'Claude Code: the latest prompt says bypassPermissions, an older one default: BYPASS, as of the last prompt', JSON.stringify(bypassSession?.permission));
+  const oddSession = claudePerm.find((s) => s.id === claudeOddId);
+  check(oddSession?.permission?.tier === 'neutral' && JSON.stringify(oddSession.permission.names) === '["futureMode"]' && oddSession.permission.currency === 'last-prompt',
+    'Claude Code: a mode name this build does not know is neutral and keeps its name', JSON.stringify(oddSession?.permission));
+  const noModeSession = claudePerm.find((s) => s.id === claudeNoModeId);
+  check(tierOf(noModeSession) === 'neutral' && noModeSession.permission.currency === 'unknown' && noModeSession.permission.names.length === 0,
+    'Claude Code: a transcript with no mode has no reading', JSON.stringify(noModeSession?.permission));
+  check(tierOf(claudePerm.find((s) => s.id === claudeId)) === 'neutral' && claudePerm.find((s) => s.id === claudeId).permission.currency === 'unknown', 'the older fixture without a permissionMode reads as unknown');
+  const bypassStream = await readSse(
+    `${BASE}/api/stream?source=claude&id=${encodeURIComponent(claudeBypassId)}`,
+    (e) => e.event === 'status',
+  );
+  check(bypassStream.find((e) => e.event === 'meta')?.data.session.permission?.tier === 'bypass'
+    && bypassStream.find((e) => e.event === 'status')?.data.permission?.tier === 'bypass'
+    && bypassStream.find((e) => e.event === 'status')?.data.permission?.currency === 'last-prompt',
+  'Claude Code: the stream meta and status carry the same reading', JSON.stringify(bypassStream.filter((e) => e.event !== 'ev').map((e) => [e.event, e.data.permission || e.data.session?.permission])));
+
+  const agyPerm = (await getJson('/api/sessions?source=antigravity')).body.sessions;
+  const agyOf = (id) => agyPerm.find((s) => s.id === id)?.permission;
+  check(agyOf(agyConv)?.tier === 'asks' && agyOf(agyConv).currency === 'process-start' && JSON.stringify(agyOf(agyConv).names) === '["request-review"]',
+    'Antigravity CLI: toolPermission=request-review is asks, as of process start', JSON.stringify(agyOf(agyConv)));
+  check(agyOf(agyPairConv)?.tier === 'bypass' && agyOf(agyPairConv).currency === 'process-start' && JSON.stringify(agyOf(agyPairConv).names) === '["always-proceed"]',
+    'Antigravity CLI: the latest process to serve a conversation decides (always-proceed is BYPASS)', JSON.stringify(agyOf(agyPairConv)));
+  check(agyOf(agyFlagConv)?.tier === 'bypass' && agyOf(agyFlagConv).names.includes('--dangerously-skip-permissions'),
+    'Antigravity CLI: --dangerously-skip-permissions on the startup line is BYPASS whatever toolPermission says', JSON.stringify(agyOf(agyFlagConv)));
+  check(agyOf(agyModeConv)?.tier === 'edits' && JSON.stringify(agyOf(agyModeConv).names) === '["request-review","accept-edits"]',
+    'Antigravity CLI: a --mode value on the startup line counts, and the riskiest reading wins', JSON.stringify(agyOf(agyModeConv)));
+  check(agyOf(agyQuotedConv)?.tier === 'asks' && JSON.stringify(agyOf(agyQuotedConv).names) === '["strict"]',
+    'Antigravity CLI: flags quoted later in the log (typed text) are not read as flags', JSON.stringify(agyOf(agyQuotedConv)));
+  check(agyOf(agyFullConv)?.tier === 'neutral' && agyOf(agyFullConv).currency === 'unknown' && agyOf(agyFullConv).names.length === 0,
+    'Antigravity CLI: a conversation no log on disk served has no reading', JSON.stringify(agyOf(agyFullConv)));
+  const agyBypassStream = await readSse(
+    `${BASE}/api/stream?source=antigravity&id=${encodeURIComponent(agyPairConv)}`,
+    (e) => e.event === 'status',
+  );
+  check(agyBypassStream.find((e) => e.event === 'meta')?.data.session.permission?.tier === 'bypass'
+    && agyBypassStream.find((e) => e.event === 'status')?.data.permission?.tier === 'bypass',
+  'Antigravity CLI: the stream meta and status carry the reading', JSON.stringify(agyBypassStream.filter((e) => e.event !== 'ev').map((e) => [e.event, e.data.permission || e.data.session?.permission])));
+
+  const dshPerm = (await getJson('/api/sessions?source=dsh')).body.sessions;
+  const dshOf = (id) => dshPerm.find((s) => s.id === id)?.permission;
+  check(dshOf(dshSwitchId)?.tier === 'bypass' && dshOf(dshSwitchId).currency === 'exact' && dshOf(dshSwitchId).fullAccess === true && dshOf(dshSwitchId).names.includes('danger-full-access') && dshOf(dshSwitchId).names.includes('never'),
+    'DeepSeek Harness: a session that switched to danger-full-access + never reads BYPASS, exact, with the full-access flag', JSON.stringify(dshOf(dshSwitchId)));
+  check(dshOf(dshAutoId)?.tier === 'reviewer' && dshOf(dshAutoId).fullAccess === true, 'DeepSeek Harness: the auto review integration is a reviewer with full access', JSON.stringify(dshOf(dshAutoId)));
+  check(dshOf(dshCustomId)?.tier === 'neutral' && dshOf(dshCustomId).names[0] === 'custom', 'DeepSeek Harness: an unmatched pair ("custom") is neutral and shows its name', JSON.stringify(dshOf(dshCustomId)));
+  const switchStream = await readSse(
+    `${BASE}/api/stream?source=dsh&id=${encodeURIComponent(dshSwitchId)}`,
+    (e) => e.event === 'status',
+  );
+  const switchEvs = eventsOf(switchStream);
+  const alerts = switchEvs.filter((e) => e.t === 'permissionAlert');
+  const presetAt = switchEvs.findIndex((e) => e.t === 'preset' && e.preset === 'danger-full-access');
+  check(alerts.length === 1 && alerts[0].tier === 'bypass' && alerts[0].from === 'asks' && alerts[0].currency === 'exact' && alerts[0].fullAccess === true && JSON.stringify(alerts[0].names) === '["danger-full-access","never"]' && switchEvs.indexOf(alerts[0]) > presetAt && presetAt >= 0,
+    'DeepSeek Harness: a mid-session switch into the bypass tier is one alert event, right after the switch', JSON.stringify(alerts));
+  check(switchStream.find((e) => e.event === 'status')?.data.permission?.tier === 'bypass', 'DeepSeek Harness: the status carries the new tier');
+  // The same switch arriving while the page is watching.
+  const liveFile = path.join(dshWs, dshLiveId, 'session.v4.jsonl.zstd');
+  setTimeout(() => fs.appendFileSync(liveFile, frame([
+    dshEv('permission/preset', 5, { preset: 'danger-full-access' }),
+    dshEv('sandbox/mode', 6, { mode: 'danger-full-access' }),
+    dshEv('approval/policy', 7, { policy: 'never' }),
+  ])), 700);
+  const liveStream = await readSse(
+    `${BASE}/api/stream?source=dsh&id=${encodeURIComponent(dshLiveId)}`,
+    (e) => e.event === 'ev' && e.data.t === 'permissionAlert',
+  );
+  const liveAlert = eventsOf(liveStream).find((e) => e.t === 'permissionAlert');
+  const liveBefore = liveStream.find((e) => e.event === 'status');
+  check(liveStream.find((e) => e.event === 'meta')?.data.session.permission?.tier === 'asks' && !!liveAlert && liveAlert.from === 'asks' && liveAlert.tier === 'bypass',
+    'DeepSeek Harness: a switch appended while the stream is open raises the alert live, after the stream said asks', JSON.stringify([liveAlert, liveBefore && liveBefore.data.permission]));
+  const startsEvs = eventsOf(await readSse(`${BASE}/api/stream?source=dsh&id=${encodeURIComponent(dshStartsBypassId)}`, (e) => e.event === 'status'));
+  check(!startsEvs.some((e) => e.t === 'permissionAlert'), 'DeepSeek Harness: a session that starts in bypass was not switched, so no alert');
+  const autoEvs = eventsOf(await readSse(`${BASE}/api/stream?source=dsh&id=${encodeURIComponent(dshAutoId)}`, (e) => e.event === 'status'));
+  check(!autoEvs.some((e) => e.t === 'permissionAlert'), 'DeepSeek Harness: a reviewer is not a bypass, so no alert');
+
+  const agentsPerm = (await getJson('/api/agents')).body;
+  const everyAgent = (agentsPerm.groups || []).flatMap((g) => g.agents);
+  const agentOf = (source, id) => everyAgent.find((a) => a.source === source && a.id === id);
+  check(agentOf('claude', claudeBypassId)?.permission?.tier === 'bypass' && agentOf('antigravity', agyPairConv)?.permission?.tier === 'bypass' && agentOf('dsh', dshSwitchId)?.permission?.tier === 'bypass',
+    'the agents overview carries every source\'s reading', JSON.stringify(everyAgent.map((a) => [a.source, a.id.slice(-4), a.permission?.tier])));
 } catch (err) {
   console.error(err);
   failures.push(String(err && err.stack || err));
