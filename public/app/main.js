@@ -1239,11 +1239,21 @@ function termSay(text, agent) {
   }
 }
 
-function termUser(text, agent) {
+function termUser(text, agent, origin) {
   const one = clean(text).replace(/\s*\n\s*/g, ' ').trim();
   if (!one) return;
   const cut = one.length > 300 ? one.slice(0, 300) + '…' : one;
-  term.write(`\r\n${C.magenta}${agent ? '↳ ' : ''}» user: ${esc(cut)}${C.reset}\r\n`);
+  term.write(`\r\n${C.magenta}${agent ? '↳ ' : ''}» ${esc(originTag(origin) || 'user')}: ${esc(cut)}${C.reset}\r\n`);
+}
+
+/**
+ * Who wrote a prompt, when it was not simply the person. Claude Code says so
+ * for every prompt; an origin this page does not know is shown as it came.
+ */
+const ORIGIN_TAGS = { queued: 'queued', task_notification: 'task notification', peer: 'another agent', sdk: 'SDK', scheduled: 'scheduled' };
+function originTag(origin) {
+  if (!origin || origin === 'person' || origin === 'system') return null;
+  return ORIGIN_TAGS[origin] || String(origin);
 }
 
 /*
@@ -1562,6 +1572,11 @@ async function applyEvent(ev) {
         : chat.log.filter((x) => x.kind === 'turn' && x.turn === ev.turn).pop();
       if (item) {
         item.endedAt = ev.time || Date.now();
+        // A reply that ran into its output limit ends the turn mid-sentence.
+        if (ev.reason === 'max_tokens') {
+          item.cutShort = true;
+          chatPush({ kind: 'divider', text: 'cut short (max tokens)', chatOnly: true });
+        }
         state.turnCosts.push({ turn: item.turn, cost: item.cost, tokens: tokenTotal(item.usage) });
         if (state.turnCosts.length > 60) state.turnCosts.shift();
         drawTurnSpark();
@@ -1634,6 +1649,14 @@ async function applyEvent(ev) {
       break;
     }
 
+    case 'compacted': {
+      // The agent's context was summarised; what follows no longer remembers all that came before.
+      const tokens = Number.isFinite(ev.before) && Number.isFinite(ev.after) ? ` (${fmtInt(ev.before)} → ${fmtInt(ev.after)} tokens)` : '';
+      chatPush({ kind: 'divider', text: `context compacted${tokens}` });
+      termNote('⇲ context compacted', C.grey);
+      break;
+    }
+
     case 'deleted': {
       if (ev.key) state.deletedKeys.add(ev.key);
       if (ev.path) state.deletedPaths.add(ev.path);
@@ -1646,10 +1669,10 @@ async function applyEvent(ev) {
 
     case 'user':
       if (ev.text) {
-        if (!ev.system) termUser(ev.text, ev.agent);
+        if (!ev.system) termUser(ev.text, ev.agent, ev.origin);
         chatPush(ev.system
-          ? { kind: 'system', label: ev.systemLabel || '⟐ system', text: ev.text, agent: ev.agent }
-          : { kind: 'user', text: ev.text, agent: ev.agent });
+          ? { kind: 'system', label: [ev.systemLabel || '⟐ system', originTag(ev.origin)].filter(Boolean).join(' · '), text: ev.text, agent: ev.agent }
+          : { kind: 'user', text: ev.text, agent: ev.agent, origin: ev.origin });
         if (!ev.system) setActivity('thinking', 'reading your message', 'chat');
       }
       break;
@@ -3951,14 +3974,20 @@ function chatAppend(item) {
     el.className = 'chat-problem';
     el.textContent = `✗ ${item.text}`;
     item.el = el;
+  } else if (item.kind === 'divider') {
+    el = dividerRow(item);
+    item.el = el;
   } else {
     el = document.createElement('div');
-    el.className = `chat-msg ${item.kind}`;
-    // Only label what is not obvious: your turns and sub-agents.
+    const tag = item.kind === 'user' ? originTag(item.origin) : null;
+    // A prompt someone else wrote is not styled as yours.
+    el.className = `chat-msg ${item.kind}${tag && item.origin !== 'queued' ? ' from-other' : ''}`;
+    // Only label what is not obvious: your turns, other writers and sub-agents.
     if (item.kind === 'user' || item.agent) {
       const who = document.createElement('span');
       who.className = 'who';
-      who.textContent = item.kind === 'user' ? `you${item.agent ? ' · ' + item.agent : ''}` : `↳ ${item.agent}`;
+      const you = tag ? (item.origin === 'queued' ? `you · ${tag}` : tag) : 'you';
+      who.textContent = item.kind === 'user' ? `${you}${item.agent ? ' · ' + item.agent : ''}` : `↳ ${item.agent}`;
       el.appendChild(who);
     }
     if (item.thought) el.appendChild(thoughtToggle(item.thought));
@@ -3969,6 +3998,16 @@ function chatAppend(item) {
   }
   log.appendChild(el);
   if (followActive() || chat.pinned) log.scrollTop = log.scrollHeight;
+}
+
+/** A thin line across the conversation: the context was compacted, a reply was cut short. */
+function dividerRow(item) {
+  const el = document.createElement('div');
+  el.className = 'chat-divider';
+  const label = document.createElement('span');
+  label.textContent = item.text || '';
+  el.appendChild(label);
+  return el;
 }
 
 /** A collapsed "reasoning" toggle inside a reply. */
@@ -4044,13 +4083,13 @@ function chatPush(item) {
   closeStreamingThinking();
   if ((item.kind === 'agent' || item.kind === 'user') && !String(item.text || '').trim()) return;
   item.stream = !!state.historyDone && !state.replaying;
-  chatLogPush({ ...item });
+  if (!item.chatOnly) chatLogPush({ ...item });
   chat.items.push(item);
   if (chat.items.length > 400) {
     chat.items.splice(0, chat.items.length - 400);
     if (!layout.chatCollapsed) {
       const log = $('chatLog');
-      const first = log.querySelector('.chat-msg, .chat-think, .chat-tools, .chat-sys, .chat-problem');
+      const first = log.querySelector('.chat-msg, .chat-think, .chat-tools, .chat-sys, .chat-problem, .chat-divider');
       if (first) first.remove();
     }
   }
@@ -4218,9 +4257,20 @@ function renderLog() {
       log.appendChild(row);
       continue;
     }
+    if (item.kind === 'divider') {
+      log.appendChild(dividerRow(item));
+      continue;
+    }
     const row = document.createElement('div');
     row.className = `log-row ${item.kind === 'user' ? 'log-user' : 'log-say'}`;
     renderMarkdown(row, item.text || '');
+    const tag = item.kind === 'user' ? originTag(item.origin) : null;
+    if (tag) {
+      const label = document.createElement('span');
+      label.className = 'log-origin';
+      label.textContent = tag;
+      row.insertBefore(label, row.firstChild);
+    }
     if (item.__thought) {
       row.insertBefore(thoughtToggle(item.__thought), row.firstChild);
       delete item.__thought;
@@ -4256,6 +4306,7 @@ function turnRow(item) {
   const files = item.files ? item.files.size : 0;
   if (files) part(plural(files, 'file') + ' changed', 'lt-files');
   if (item.errors) part(plural(item.errors, 'failure'), 'lt-err');
+  if (item.cutShort) part('cut short (max tokens)', 'lt-err');
   part(`${fmtInt(tokenTotal(item.usage))} tokens`);
   if (item.cost > 0) part(`$${item.cost.toFixed(4)}`);
   part(item.startedAt && item.endedAt ? fmtActivityTime(item.endedAt - item.startedAt) : 'running', item.endedAt ? '' : 'lt-run');

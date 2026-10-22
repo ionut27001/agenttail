@@ -346,6 +346,90 @@ try {
   check(answer >= 0 && answer < firstEnd && turnStream.events[answer].turn === 1, 'the turn closes after the answer, not after its thinking line', JSON.stringify({ answer, firstEnd }));
   check(turnStream.events.filter((e) => e.t === 'step').length === 1 && turnStream.events.filter((e) => e.usage).length === 1, 'a reply split over lines is one step with one usage');
 
+  // Prompts typed while a turn runs are queued_command attachments; prompts can
+  // also come from somewhere other than the person.
+  const feedStream = (id, entries, redactor = { event: (e) => e, text: (t) => t }) => {
+    const stream = claudeLib.open({ id, file: path.join(tmp, `${id}.jsonl`), cwd: workspace }, { mapPath: (p) => p, redactor, maxEvents: 1000 });
+    entries.forEach((e, i) => stream.processEntry({ timestamp: new Date(now - 60000 + i * 1000).toISOString(), ...e }, null));
+    return stream;
+  };
+  const prompt = (text, extra = {}) => ({ type: 'user', message: { role: 'user', content: text }, ...extra });
+  const queued = (text, origin) => ({ type: 'attachment', attachment: { type: 'queued_command', prompt: text, commandMode: 'prompt', ...(origin ? { origin } : {}) } });
+  const toolStep = (id) => ({ type: 'assistant', message: { id: `m-${id}`, model: 'claude-opus-5-5', stop_reason: 'tool_use', content: [{ type: 'tool_use', id, name: 'Read', input: { file_path: 'a.txt' } }], usage: { output_tokens: 1 } } });
+  const toolDone = (id) => ({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: 'ok' }] } });
+  const endStep = (id, text, reason = 'end_turn') => ({ type: 'assistant', message: { id: `m-${id}`, model: 'claude-opus-5-5', stop_reason: reason, content: [{ type: 'text', text }], usage: { output_tokens: 1 } } });
+  const userRows = (s) => s.events.filter((e) => e.t === 'user').map((e) => `${e.origin}:${e.turn ?? '-'}:${e.text.slice(0, 22)}`);
+  const turnRows = (s) => s.events.filter((e) => /^turn/.test(e.t)).map((e) => `${e.t}:${e.turn}`).join(' ');
+  const qs = feedStream('queued', [
+    prompt('start the build'),
+    toolStep('t1'),
+    queued('also run the tests', { kind: 'human' }),
+    queued('and lint', { kind: 'human' }),
+    prompt('and lint'), // the same prompt, also written as a user entry
+    toolDone('t1'),
+    prompt('<task-notification>\n<task-id>b1</task-id>\n<status>completed</status>\n</task-notification>', { origin: { kind: 'task-notification' } }),
+    endStep('a1', 'built, tested, linted'),
+    prompt('check docs'),
+    queued('check docs'), // the attachment comes after the user entry this time
+    toolStep('t2'),
+    queued('more', { kind: 'human' }),
+    endStep('a2', 'docs fine'),
+    prompt('more'), // the turn has ended; the queued prompt now starts the next one
+  ]);
+  const wantUsers = [
+    'person:1:start the build', 'queued:1:also run the tests', 'queued:1:and lint', 'task_notification:1:<task-notification>\n<t',
+    'person:2:check docs', 'queued:2:more',
+  ];
+  check(JSON.stringify(userRows(qs)) === JSON.stringify(wantUsers), 'queued prompts show once each, in order, with their origin', JSON.stringify(userRows(qs)));
+  check(qs.events.filter((e) => e.t === 'user' && e.text === 'and lint').length === 1 && qs.events.filter((e) => e.t === 'user' && e.text === 'check docs').length === 1, 'a queued prompt also written as a user entry is not shown twice, in either order');
+  const note = qs.events.find((e) => e.t === 'user' && e.origin === 'task_notification');
+  check(note && note.system === true, 'a task notification is a system message with its origin');
+  check(turnRows(qs) === 'turn:1 turnEnd:1 turn:2 turnEnd:2 turn:3', 'queued prompts open no turn of their own, and the one that follows a finished turn opens the next', turnRows(qs));
+  check(qs.events.filter((e) => e.t === 'user' && e.origin === 'queued' && e.system).length === 0, 'a queued person prompt is not a system message');
+  const os = feedStream('origins', [
+    prompt('run nightly', { turnOrigin: 'scheduled' }),
+    prompt('sync notes', { origin: { kind: 'peer' } }),
+    prompt('via sdk', { origin: 'sdk' }),
+    prompt('odd one', { origin: { kind: 'carrier-pigeon' } }),
+    prompt('typed by you', { turnOrigin: 'human' }),
+    prompt('plain'),
+  ]);
+  check(os.events.filter((e) => e.t === 'user').map((e) => e.origin).join() === 'scheduled,peer,sdk,carrier-pigeon,person,person', 'every prompt is labelled by its origin: scheduled, another agent, SDK, the raw value when unknown, the person', os.events.filter((e) => e.t === 'user').map((e) => e.origin).join());
+  const sdkStream = feedStream('queued-secret', [prompt('go'), queued('mail ada.lovelace@example.com now', { kind: 'secret-origin@example.com' })], new (createRequire(import.meta.url)('../lib/redact.js').Redactor)({ configPath: redactFile }));
+  check(!JSON.stringify(sdkStream.events).includes('ada.lovelace@example.com') && !JSON.stringify(sdkStream.events).includes('secret-origin@example.com'), 'a queued prompt and an unknown origin go through the redactor');
+
+  // A compaction is not a prompt and not a turn; max_tokens ends a turn.
+  const cs = feedStream('compact', [
+    prompt('long task'),
+    endStep('c1', 'first part done', 'tool_use'),
+    { type: 'system', subtype: 'compact_boundary', content: 'Conversation compacted', compactMetadata: { trigger: 'auto', preTokens: 180000, postTokens: 12000 } },
+    prompt('This session is being continued from a previous conversation that ran out of context. Summary: ...', { isCompactSummary: true, isVisibleInTranscriptOnly: true }),
+    toolStep('t3'),
+    endStep('c2', 'all done'),
+    prompt('Still the summary of a second compaction, with no boundary line', { isVisibleInTranscriptOnly: true }),
+    prompt('next job'),
+  ]);
+  const compacted = cs.events.filter((e) => e.t === 'compacted');
+  check(compacted.length === 2 && compacted[0].before === 180000 && compacted[0].after === 12000 && compacted[0].trigger === 'auto', 'a compaction becomes one marker with the token counts of its boundary', JSON.stringify(compacted));
+  check(compacted[1] && compacted[1].before === undefined && compacted[1].after === undefined, 'a summary with no boundary still marks the compaction, without counts');
+  check(!cs.events.some((e) => e.t === 'user' && /continued from a previous|second compaction/.test(e.text)), 'a compaction summary is not shown as a prompt');
+  check(turnRows(cs) === 'turn:1 turnEnd:1 turn:2', 'a compaction in the middle of a session leaves the turn count unchanged', turnRows(cs));
+  check(sig({ type: 'user', isCompactSummary: true, message: { content: 'summary' } }) === null && sig({ type: 'user', isVisibleInTranscriptOnly: true, message: { content: 'summary' } }) === null, 'a compaction summary says nothing about the turn');
+  const mt = feedStream('maxtok', [
+    prompt('write a long essay'),
+    endStep('x1', 'Once upon a', 'max_tokens'),
+    prompt('go on'),
+    endStep('x2', 'fine', 'end_turn'),
+    prompt('refuse this'),
+    endStep('x3', 'no', 'refusal'),
+  ]);
+  const mtEnds = mt.events.filter((e) => e.t === 'turnEnd');
+  check(turnRows(mt) === 'turn:1 turnEnd:1 turn:2 turnEnd:2 turn:3 turnEnd:3', 'a reply that stops on max_tokens closes its turn; end_turn and refusal still do', turnRows(mt));
+  check(mtEnds[0].reason === 'max_tokens' && mtEnds[1].reason === undefined && mtEnds[2].reason === undefined, 'only the max_tokens turn carries the cut-short reason', JSON.stringify(mtEnds.map((e) => e.reason)));
+  const cut = feedStream('cut', [prompt('write more'), endStep('y1', 'cut off mid-sen', 'max_tokens')]);
+  check(cut.events.at(-1).t === 'turnEnd' && cut.events.at(-1).turn === 1 && cut.turnOpen === false, 'a max_tokens reply closes its turn at once, not after 30 minutes', JSON.stringify(cut.events.map((e) => e.t)));
+  check(sig({ type: 'assistant', message: { stop_reason: 'max_tokens', content: [{ type: 'text', text: 'cut' }] } }) === false, 'max_tokens closes the turn for the session list, too');
+
   const turnDir = path.join(tmp, 'turn-meta');
   fs.mkdirSync(turnDir, { recursive: true });
   const at = new Date().toISOString();
